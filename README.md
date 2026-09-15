@@ -10,7 +10,9 @@ engine that says *when* a bank overtops, not just that a level is high.
 > In an emergency in Thailand call **1784** (DDPM) or **191**.
 > Readings come from third-party telemetry and may be delayed, wrong, or missing.
 
-**Status: Phase 0 — foundation.** Pre-alpha. Not yet deployed. See [`PROGRESS.md`](PROGRESS.md).
+**Status: Phase 1 complete — live map + forecast layer.** Pre-alpha, not yet deployed.
+1,121 Thai river gauges, rainfall and GloFAS discharge forecasts, and tide prediction at 23
+coastal points. See [`PROGRESS.md`](PROGRESS.md).
 
 ---
 
@@ -53,7 +55,9 @@ No dependencies — Python 3.11+ standard library only. No `pip install`, no `np
 # fetch live data and build a snapshot
 cd workers
 python3 -m seraphim.cli build --out ../data
-python3 -m seraphim.cli sources     # list registered adapters
+python3 -m seraphim.cli sources              # list registered adapters
+python3 -m seraphim.cli build --no-forecast  # water levels only, no upstream forecast calls
+python3 -m seraphim.cli build --refresh-scale 0   # force a forecast refetch
 
 # tests
 python3 -m unittest discover -s tests -v
@@ -70,6 +74,8 @@ cd .. && python3 -m http.server 8000
 | `workers/seraphim/adapters/` | one adapter per source, behind `SourceAdapter` |
 | `workers/seraphim/models.py` | canonical types; the datum contract lives here |
 | `workers/seraphim/publish.py` | snapshot writer — the output contract *is* the API |
+| `workers/seraphim/tide.py` | extremes, lunar phase, empirical tidal-range classification |
+| `workers/seraphim/cache.py` | per-source forecast cache — keeps us inside the API quota |
 | `web/` | static map, no build step |
 | `.github/workflows/ingest.yml` | the cron that runs it all |
 | `docs/PLAN.md` | architecture, risk engine, phases, risks |

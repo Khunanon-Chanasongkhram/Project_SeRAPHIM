@@ -35,6 +35,17 @@ jobs:
       # No pip install: the project is stdlib-only by design. Nothing to cache,
       # no supply chain, and the job starts in seconds — which is what keeps us
       # inside the free minute budget.
+      # Forecasts are cached between runs so the 30-minute cron does not refetch
+      # data that only changes every 6-24 hours. A unique key always writes a fresh
+      # entry; restore-keys pulls the most recent one back.
+      - name: Restore forecast cache
+        uses: actions/cache@v4
+        with:
+          path: data/cache
+          key: forecast-${{ github.run_id }}
+          restore-keys: |
+            forecast-
+
       - name: Tests
         working-directory: workers
         run: python -m unittest discover -s tests -q
@@ -55,7 +66,8 @@ jobs:
               f"- generated: `{m['generated_at']}`\n"
               f"- stations: **{c['stations']}** ({c['with_bank_level']} with bank level)\n"
               f"- at/over bank: **{c['at_or_over_bank']}**\n"
-              f"- stale: {c['stale']} | median age: {a['median']} min\n\n"
+              f"- stale: {c['stale']} | median age: {a['median']} min\n"
+              f"- with forecast: {c.get('with_forecast', 0)} | tide points: {c.get('tide_points', 0)}\n\n"
               + "\n".join(
                   f"- `{s['source']}` ok={s['ok']} stations={s['stations']}"
                   + (f" error={s['error']}" if s.get("error") else "")

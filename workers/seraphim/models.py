@@ -84,12 +84,83 @@ class Observation:
 
 
 @dataclass(frozen=True, slots=True)
+class Forecast:
+    """Forward-looking signals for one station.
+
+    Refreshed on a slower cadence than water levels: GloFAS is a daily product and
+    weather models update roughly 6-hourly, so refetching these every 30 minutes would
+    burn API quota to receive identical numbers.
+    """
+
+    #: When the upstream model was queried. Displayed, because a 6-hour-old forecast
+    #: is fine while a 3-day-old one is not.
+    fetched_at: datetime
+    rain_past_24h_mm: float | None = None
+    rain_next_24h_mm: float | None = None
+    rain_next_72h_mm: float | None = None
+    #: GloFAS river discharge, m³/s.
+    discharge_now_cms: float | None = None
+    discharge_max_7d_cms: float | None = None
+
+    @property
+    def discharge_rise_ratio(self) -> float | None:
+        """Peak forecast discharge ÷ today's. >1 means the model expects a rise.
+
+        Returns None rather than a ratio when today's discharge is ~0, because dividing
+        by a near-zero baseline produces enormous meaningless numbers on dry channels.
+        """
+        now, peak = self.discharge_now_cms, self.discharge_max_7d_cms
+        if now is None or peak is None or now < 0.1:
+            return None
+        return round(peak / now, 2)
+
+
+@dataclass(frozen=True, slots=True)
+class TideExtreme:
+    """A predicted high or low water."""
+
+    at: datetime
+    height_m: float
+    kind: str  # "high" | "low"
+
+
+@dataclass(frozen=True, slots=True)
+class TideSeries:
+    """Predicted sea level at one coastal point.
+
+    Powers two different things from one dataset: the fishing planner (Phase 3) and
+    coastal backwater flooding, where a high tide blocks river drainage (Phase 2).
+    """
+
+    point_id: str
+    name: str
+    name_th: str
+    lat: float
+    lon: float
+    fetched_at: datetime
+    times: list[datetime] = field(default_factory=list)
+    heights_m: list[float] = field(default_factory=list)
+    extremes: list[TideExtreme] = field(default_factory=list)
+
+    @property
+    def range_m(self) -> float | None:
+        """Tidal range over the forecast window."""
+        if not self.heights_m:
+            return None
+        return round(max(self.heights_m) - min(self.heights_m), 2)
+
+    def next_extremes(self, now: datetime, limit: int = 4) -> list[TideExtreme]:
+        return [e for e in self.extremes if e.at >= now][:limit]
+
+
+@dataclass(frozen=True, slots=True)
 class StationState:
     """A station joined to its latest reading, plus what we can honestly derive right now."""
 
     station: Station
     observation: Observation
     generated_at: datetime
+    forecast: Forecast | None = None
 
     @property
     def freeboard_m(self) -> float | None:

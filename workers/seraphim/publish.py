@@ -30,7 +30,7 @@ def build_geojson(states: list[StationState]) -> dict:
     """
     features = []
     for s in states:
-        st, ob = s.station, s.observation
+        st, ob, fc = s.station, s.observation, s.forecast
         features.append(
             {
                 "type": "Feature",
@@ -52,6 +52,18 @@ def build_geojson(states: list[StationState]) -> dict:
                     "discharge_cms": ob.discharge_cms,
                     "storage_percent": ob.storage_percent,
                     # Provenance and honesty.
+                    # Forward-looking signals. Refreshed on a slower cadence than the
+                    # level, so they carry their own age.
+                    "rain_past_24h_mm": fc.rain_past_24h_mm if fc else None,
+                    "rain_next_24h_mm": fc.rain_next_24h_mm if fc else None,
+                    "rain_next_72h_mm": fc.rain_next_72h_mm if fc else None,
+                    "discharge_now_cms": fc.discharge_now_cms if fc else None,
+                    "discharge_max_7d_cms": fc.discharge_max_7d_cms if fc else None,
+                    "discharge_rise_ratio": fc.discharge_rise_ratio if fc else None,
+                    "forecast_age_min": (
+                        round((s.generated_at - fc.fetched_at).total_seconds() / 60, 1)
+                        if fc else None
+                    ),
                     "source_severity": ob.source_severity,
                     "observed_at": ob.observed_at.isoformat(),
                     "data_age_min": s.data_age_minutes,
@@ -62,10 +74,31 @@ def build_geojson(states: list[StationState]) -> dict:
     return {"type": "FeatureCollection", "features": features}
 
 
+def build_tide(summaries: list[dict], generated_at: datetime) -> dict:
+    """tide.json — coastal predictions.
+
+    Published separately from stations because it has a different shape, a different
+    refresh cadence, and two different consumers (coastal flood risk, and the fishing
+    planner in Phase 3).
+    """
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "generated_at": generated_at.isoformat(),
+        "attribution": "Open-Meteo Marine (CC-BY 4.0)",
+        "note": (
+            "Tidal range is classified empirically against each location's own recent "
+            "distribution, not from lunar phase: the Gulf of Thailand is mixed and "
+            "mainly diurnal, where phase is a poor predictor of range."
+        ),
+        "points": summaries,
+    }
+
+
 def build_meta(
     states: list[StationState],
     health: list[SourceHealth],
     generated_at: datetime,
+    tide_points: int = 0,
 ) -> dict:
     """Machine-readable health. Published so a broken feed is visible, not silent."""
     ages = [s.data_age_minutes for s in states]
@@ -79,6 +112,8 @@ def build_meta(
             "with_bank_level": len(with_bank),
             "stale": sum(1 for s in states if s.is_stale),
             "at_or_over_bank": len(overtopped),
+            "with_forecast": sum(1 for s in states if s.forecast is not None),
+            "tide_points": tide_points,
         },
         "data_age_minutes": {
             "min": round(min(ages), 1) if ages else None,
@@ -100,11 +135,16 @@ def build_meta(
     }
 
 
-def write_snapshot(out_dir: Path, geojson: dict, meta: dict) -> list[Path]:
+def write_snapshot(
+    out_dir: Path, geojson: dict, meta: dict, tide: dict | None = None
+) -> list[Path]:
     """Write the current snapshot. Gzip alongside: it is ~10x smaller and CDN-friendly."""
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
-    for name, payload in (("stations.geojson", geojson), ("meta.json", meta)):
+    items = [("stations.geojson", geojson), ("meta.json", meta)]
+    if tide is not None:
+        items.append(("tide.json", tide))
+    for name, payload in items:
         raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         path = out_dir / name
         path.write_bytes(raw)

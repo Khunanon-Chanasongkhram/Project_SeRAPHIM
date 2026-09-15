@@ -1,7 +1,9 @@
-# Snapshot output — published to Cloudflare, never committed.
-# ~600 KB/snapshot x 48/day would add ~10 GB/year to this repo.
-/data/out/
-/data/archive/
+# Everything under /data is generated: snapshots, the time-partitioned archive, and
+# the forecast cache. None of it belongs in git — ~600 KB/snapshot x 48/day would add
+# ~10 GB/year. Snapshots publish to Cloudflare R2; the cache is restored by actions/cache.
+# Ignoring the whole directory rather than each subdirectory, so a new kind of generated
+# output cannot slip in the way /data/cache/ did.
+/data/
 
 __pycache__/
 *.py[cod]

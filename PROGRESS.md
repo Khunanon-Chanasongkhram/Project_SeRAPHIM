@@ -7,9 +7,9 @@ Purpose: survive a closed terminal or an expired token with zero context loss.
 
 ## Current state
 
-**Phase:** 0 (Foundation) — ✅ **code complete, locally verified. Not yet deployed.**
+**Phase:** 1 (Ingest + live map) — ✅ **code complete, locally verified. Not yet deployed.**
 **Next action:** user creates the private GitHub repo + pushes; then wire Cloudflare R2 secrets
-so the cron publishes to a live URL. Then Phase 1.
+so the cron publishes to a live URL. Then Phase 2 (risk engine).
 **Blockers:** none for building. For *public launch*: ThaiWater terms unconfirmed, TMD needs API key.
 **Needs user:** (1) push to private GitHub repo, (2) Cloudflare account for R2 secrets.
 
@@ -17,13 +17,72 @@ so the cron publishes to a live URL. Then Phase 1.
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Foundation | ✅ code complete, not deployed |
-| 1 | Ingest + live map | ⬜ not started |
+| 1 | Ingest + live map | ✅ code complete, not deployed |
 | 2 | Risk engine | ⬜ not started |
 | 3 | Calm mode (tide/fishing) | ⬜ not started |
 | 4 | Respond (SOS) | ⬜ not started |
 | 5 | Terrain / HAND | ⬜ not started |
 | 6 | Harden / scale | ⬜ not started |
 | 7 | Global + multi-hazard | ⬜ not started |
+
+---
+
+## 2026-09-15 — Session 4: Phase 1 built (forecast + tide layer)
+
+**Done — Phase 1 code complete, verified against live data. 45 tests passing.**
+- **Open-Meteo adapters** (`adapters/openmeteo.py`): `RainAdapter` (hourly precipitation,
+  past 24 h + next 72 h) and `DischargeAdapter` (GloFAS 7-day river discharge).
+  New `ForecastAdapter` interface — these *enrich* existing stations rather than create them,
+  so it is deliberately separate from `SourceAdapter`.
+- **Tide** (`adapters/marine.py` + `tide.py`): 23 curated Thai coastal points, extreme
+  detection, tide state/rate, empirical range classification, lunar phase, and
+  `coincidence_window` (high tide ∩ discharge = backwater risk, ready for Phase 2).
+- **Map**: 3 view modes (level / rain 24 h / discharge trend), tide layer with next 5
+  high–low times, enriched popups. Defaults to opening Chao Phraya mouth.
+- **Per-source caching** (`cache.py`) + `actions/cache` in CI.
+
+**Coverage:** rain 1,121/1,121 · discharge trend 1,087/1,121 · tide 23/23.
+Snapshot 878 KB → 106 KB gzipped; tide.json 75 KB → 19 KB.
+**Cold build 50 s, warm build 6 s** — the 30-min cron hits the warm path almost always.
+
+**The quota problem, and the fix**
+Naively refetching forecasts on the 30-min level cadence = ~100,000 Open-Meteo
+location-calls/day against a **10,000/day** free allowance. Two-part fix:
+1. **Batching** — verified the API takes 150 coordinates per request and returns them
+   **in request order**. We use 100. Order is the ONLY link between a result and a station,
+   so a length mismatch **drops the batch** rather than risk pairing the wrong forecast to
+   the wrong river.
+2. **Per-adapter refresh interval** — each adapter declares `refresh_hours` because its data
+   goes stale at its own rate: rain 6 h (weather models), GloFAS 24 h (daily product),
+   tide 24 h (harmonic). Total ≈ **5,600 calls/day**, comfortably inside the allowance,
+   while keeping the time-sensitive input fresh.
+
+**Physics finding that changed the design**
+Validated lunar spring/neap against 25 days of real tide at Chao Phraya mouth. It **failed**:
+"spring" days averaged 2.17 m vs "neap" 1.99 m — only 9% — and two days within 4 days of the
+same new moon ranged 2.48 m and 1.81 m. Cause is real, not a bug: **the upper Gulf of Thailand
+is a mixed, mainly-diurnal tide**, modulated by lunar *declination*, not phase. Shipping a
+"spring tide" badge would have been confidently wrong.
+→ Range is now classified **empirically** against each location's own recent distribution
+(`range_regime`). Works in any tidal regime, so it also scales globally. Moon phase is kept
+only for solunar fishing (Phase 3), where it genuinely applies. Documented in `tide.py`
+and `docs/DATA_SOURCES.md`.
+
+**Other things verified rather than assumed**
+- Marine model resolves **sea cells only** — inland coords return an empty series (confirmed
+  at Ayutthaya). Hence 23 curated coastal points, each individually probed: **23/23 usable**.
+- Regional tide physics confirms itself: upper Gulf river mouths ~2.3 m (why Bangkok gets
+  backwater flooding), southern Gulf 0.47–0.63 m, Andaman 1.7–2.6 m.
+- Parabolic refinement of hourly samples recovers **sub-hourly** extreme timing
+  ("high 18:26", not "high 18:00"), tested against a synthetic curve with a known answer.
+- GloFAS returns no river at 12–34 gauges — expected for canals/gates below the ~5 km model.
+  Left `null`, never 0.
+
+**Next (Phase 2 — risk engine)**
+- Rate of rise from **our own archive** (the interval is known there, unlike
+  `waterlevel_msl_previous`) → **time-to-bank**, the headline number.
+- Tide compounding via `coincidence_window` — already written and tested.
+- Do NOT depend on `situation_level`: null for 302 of 306 overtopped stations (Session 3).
 
 ---
 

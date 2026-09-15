@@ -44,7 +44,27 @@
   .pop-r span:first-child{color:var(--muted)}
   .pop-r span:last-child{font-variant-numeric:tabular-nums;font-weight:500}
   .tag{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;color:#fff;margin-bottom:5px}
-  @media (max-width:520px){ #hud{padding:10px 11px} .stat b{font-size:17px} }
+  .modes{display:flex;gap:4px;margin:10px 0 0}
+  .modes button{flex:1;padding:6px 4px;font:inherit;font-size:11px;cursor:pointer;
+    background:var(--bg);border:1px solid var(--line);border-radius:7px;color:var(--muted);line-height:1.25}
+  .modes button.on{background:var(--fg);border-color:var(--fg);color:#fff;font-weight:600}
+  .modes button:hover:not(.on){border-color:var(--muted)}
+  #tidebar{position:absolute;z-index:2;top:calc(env(safe-area-inset-top,0px) + 10px);right:10px;
+    width:min(232px,calc(100vw - 20px));padding:10px 12px;display:none}
+  #tidebar.show{display:block}
+  #tidebar h2{margin:0 0 2px;font-size:12.5px}
+  #tidebar .sub{margin:0 0 8px}
+  .tide-row{display:flex;justify-content:space-between;gap:10px;padding:3px 0;font-size:12px;
+    border-top:1px solid #f0f2f5}
+  .tide-row b{font-variant-numeric:tabular-nums;font-weight:600}
+  .hi{color:#0b5ed7} .lo{color:#8a6d00}
+  .pill{display:inline-block;font-size:10.5px;padding:1px 7px;border-radius:999px;
+    background:var(--bg);border:1px solid var(--line);color:var(--muted)}
+  @media (max-width:520px){
+    #hud{padding:10px 11px} .stat b{font-size:17px}
+    #tidebar{position:static;width:auto;margin:10px 10px 0;display:none}
+    #tidebar.show{display:block}
+  }
 </style>
 </head>
 <body>
@@ -59,13 +79,18 @@
     <div class="stat"><b id="s-stale" style="color:var(--stale)">–</b><i>ข้อมูลเก่า / stale</i></div>
   </div>
   <div class="age" id="age"><span class="dot"></span><span id="age-t">กำลังโหลด… / loading…</span></div>
-  <div class="legend">
-    <div><span class="sw" style="background:var(--over)"></span> ล้นตลิ่ง · over bank</div>
-    <div><span class="sw" style="background:var(--high)"></span> ต่ำกว่าตลิ่ง &lt; 0.5 ม. · &lt;0.5 m freeboard</div>
-    <div><span class="sw" style="background:var(--mid)"></span> 0.5–1.5 ม.</div>
-    <div><span class="sw" style="background:var(--ok)"></span> &gt; 1.5 ม. · ample</div>
-    <div><span class="sw" style="background:var(--stale);border-style:dashed"></span> ไม่ส่งข้อมูล · not reporting</div>
+  <div class="modes">
+    <button data-mode="level" class="on">ระดับน้ำ<br>Level</button>
+    <button data-mode="rain">ฝน 24 ชม.<br>Rain 24h</button>
+    <button data-mode="discharge">แนวโน้มน้ำท่า<br>Discharge</button>
   </div>
+  <div class="legend" id="legend"></div>
+</div>
+
+<div id="tidebar" class="panel">
+  <h2 id="tide-name">—</h2>
+  <div class="sub" id="tide-state">—</div>
+  <div id="tide-next"></div>
 </div>
 
 <div id="alert" class="panel">
@@ -79,6 +104,7 @@
 const DATA = new URLSearchParams(location.search).get("data")
   || window.SERAPHIM_DATA_URL || "../data/out/stations.geojson";
 const META = DATA.replace(/stations\.geojson$/, "meta.json");
+const TIDE = DATA.replace(/stations\.geojson$/, "tide.json");
 
 const map = new maplibregl.Map({
   container: "map",
@@ -105,10 +131,11 @@ function ageLabel(min) {
 }
 
 map.on("load", async () => {
-  let gj, meta = null;
+  let gj, meta = null, tide = null;
   try {
     gj = await (await fetch(DATA, {cache:"no-cache"})).json();
     meta = await (await fetch(META, {cache:"no-cache"})).json().catch(() => null);
+    tide = await (await fetch(TIDE, {cache:"no-cache"})).json().catch(() => null);
   } catch (e) {
     document.getElementById("age-t").textContent = "โหลดข้อมูลไม่สำเร็จ / failed to load snapshot";
     document.getElementById("age").className = "age bad";
@@ -117,59 +144,159 @@ map.on("load", async () => {
 
   map.addSource("st", {type:"geojson", data: gj});
 
-  // Colour encodes freeboard, but colour is never the ONLY signal: radius scales with
-  // severity too, and stations that stopped reporting get a dashed grey treatment.
-  const colour = [
-    "case",
-      ["get","stale"], "#8b97a3",
-      ["==", ["get","freeboard_m"], null], "#b6bfc9",
-      ["<=", ["get","freeboard_m"], 0],   "#c2182b",
-      ["<",  ["get","freeboard_m"], 0.5], "#e8590c",
-      ["<",  ["get","freeboard_m"], 1.5], "#c99a06",
-      "#1c7ed6"
-  ];
+  // Three ways to read the same stations: where the water is now, what rain is coming,
+  // and what the discharge model expects. Colour always carries a second signal
+  // (radius, stroke) so it is never the only cue.
+  const MODES = {
+    level: {
+      colour: ["case",
+        ["get","stale"], "#8b97a3",
+        ["==", ["get","freeboard_m"], null], "#b6bfc9",
+        ["<=", ["get","freeboard_m"], 0],   "#c2182b",
+        ["<",  ["get","freeboard_m"], 0.5], "#e8590c",
+        ["<",  ["get","freeboard_m"], 1.5], "#c99a06",
+        "#1c7ed6"],
+      big: ["<=", ["coalesce",["get","freeboard_m"], 99], 0],
+      legend: [["#c2182b","ล้นตลิ่ง · over bank"],["#e8590c","&lt; 0.5 ม. freeboard"],
+               ["#c99a06","0.5–1.5 ม."],["#1c7ed6","&gt; 1.5 ม. · ample"],
+               ["#8b97a3","ไม่ส่งข้อมูล · not reporting"]]
+    },
+    rain: {
+      colour: ["case",
+        ["==", ["get","rain_next_24h_mm"], null], "#b6bfc9",
+        [">=", ["get","rain_next_24h_mm"], 90], "#5b21b6",
+        [">=", ["get","rain_next_24h_mm"], 50], "#c2182b",
+        [">=", ["get","rain_next_24h_mm"], 20], "#e8590c",
+        [">=", ["get","rain_next_24h_mm"], 5],  "#c99a06",
+        "#93c5c9"],
+      big: [">=", ["coalesce",["get","rain_next_24h_mm"], 0], 50],
+      legend: [["#5b21b6","≥ 90 มม. · extreme"],["#c2182b","50–90 มม."],
+               ["#e8590c","20–50 มม."],["#c99a06","5–20 มม."],["#93c5c9","&lt; 5 มม."]]
+    },
+    discharge: {
+      colour: ["case",
+        ["==", ["get","discharge_rise_ratio"], null], "#b6bfc9",
+        [">=", ["get","discharge_rise_ratio"], 4], "#c2182b",
+        [">=", ["get","discharge_rise_ratio"], 2], "#e8590c",
+        [">=", ["get","discharge_rise_ratio"], 1.2], "#c99a06",
+        "#1c7ed6"],
+      big: [">=", ["coalesce",["get","discharge_rise_ratio"], 0], 2],
+      legend: [["#c2182b","≥ 4× ของวันนี้ · ≥4× today"],["#e8590c","2–4×"],
+               ["#c99a06","1.2–2×"],["#1c7ed6","ทรงตัว · steady"],
+               ["#b6bfc9","ไม่มีแม่น้ำในแบบจำลอง · no modelled river"]]
+    }
+  };
 
   map.addLayer({
     id:"st-c", type:"circle", source:"st",
     paint:{
-      "circle-color": colour,
+      "circle-color": MODES.level.colour,
       "circle-radius":["interpolate",["linear"],["zoom"],
-        4, ["case",["<=",["get","freeboard_m"],0],4.2,2.6],
-        9, ["case",["<=",["get","freeboard_m"],0],9,5.5],
-        13,["case",["<=",["get","freeboard_m"],0],15,10]],
+        4, ["case", MODES.level.big, 4.2, 2.6],
+        9, ["case", MODES.level.big, 9, 5.5],
+        13,["case", MODES.level.big, 15, 10]],
       "circle-stroke-width":["case",["get","stale"],1.4,1],
       "circle-stroke-color":["case",["get","stale"],"#5b6672","#fff"],
       "circle-opacity":["case",["get","stale"],.55,.92]
     }
   });
 
+  // --- tide points -------------------------------------------------------
+  if (tide?.points?.length) {
+    map.addSource("tide", {type:"geojson", data:{
+      type:"FeatureCollection",
+      features: tide.points.map(p => ({
+        type:"Feature",
+        geometry:{type:"Point", coordinates:[p.lon, p.lat]},
+        properties:{...p, next: JSON.stringify(p.next || [])}
+      }))
+    }});
+    map.addLayer({
+      id:"tide-c", type:"circle", source:"tide",
+      paint:{
+        "circle-color":"#0b5ed7",
+        "circle-radius":["interpolate",["linear"],["zoom"],4,4.5,9,8,13,12],
+        "circle-stroke-width":2.2,
+        "circle-stroke-color":"#fff",
+        "circle-opacity":.95
+      }
+    });
+    map.on("mouseenter","tide-c",()=>map.getCanvas().style.cursor="pointer");
+    map.on("mouseleave","tide-c",()=>map.getCanvas().style.cursor="");
+    map.on("click","tide-c", e => showTide(e.features[0].properties));
+  }
+
+  function showTide(p) {
+    const bar = document.getElementById("tidebar");
+    bar.classList.add("show");
+    document.getElementById("tide-name").textContent = `${p.name_th}`;
+    const regimeTh = {large:"น้ำขึ้นลงมาก", average:"ปานกลาง", small:"น้อย", unknown:"—"}[p.range_regime] || "—";
+    const dirTh = {rising:"กำลังขึ้น", falling:"กำลังลง", slack:"น้ำนิ่ง", unknown:"—"}[p.state] || "—";
+    document.getElementById("tide-state").innerHTML =
+      `${p.name} · ${dirTh} / ${p.state}` +
+      `<br><span class="pill">ช่วงน้ำวันนี้ ${p.range_today_m ?? "—"} ม. · ${regimeTh} (p${p.range_percentile})</span>`;
+    let next = [];
+    try { next = JSON.parse(p.next || "[]"); } catch {}
+    document.getElementById("tide-next").innerHTML = next.slice(0,5).map(e => {
+      const d = new Date(e.at);
+      const t = d.toLocaleString("th-TH",{timeZone:"Asia/Bangkok",day:"2-digit",month:"short",
+        hour:"2-digit",minute:"2-digit"});
+      const cls = e.kind === "high" ? "hi" : "lo";
+      const lbl = e.kind === "high" ? "น้ำขึ้นสูงสุด / high" : "น้ำลงต่ำสุด / low";
+      return `<div class="tide-row"><span class="${cls}">${lbl}</span><b>${t} · ${e.height_m>=0?"+":""}${e.height_m} ม.</b></div>`;
+    }).join("") || `<div class="tide-row"><span>ไม่มีข้อมูล / no data</span></div>`;
+  }
+
+  // --- mode switching ----------------------------------------------------
+  function setMode(name) {
+    const m = MODES[name];
+    map.setPaintProperty("st-c","circle-color", m.colour);
+    map.setPaintProperty("st-c","circle-radius",["interpolate",["linear"],["zoom"],
+      4, ["case", m.big, 4.2, 2.6],
+      9, ["case", m.big, 9, 5.5],
+      13,["case", m.big, 15, 10]]);
+    document.getElementById("legend").innerHTML = m.legend
+      .map(([c,t]) => `<div><span class="sw" style="background:${c}"></span> ${t}</div>`).join("")
+      + `<div><span class="sw" style="background:#0b5ed7;border:2px solid #fff;box-shadow:0 0 0 1px #0b5ed7"></span> จุดน้ำขึ้นน้ำลง · tide point</div>`;
+    document.querySelectorAll(".modes button").forEach(b =>
+      b.classList.toggle("on", b.dataset.mode === name));
+  }
+  document.querySelectorAll(".modes button").forEach(b =>
+    b.addEventListener("click", () => setMode(b.dataset.mode)));
+  setMode("level");
+
   map.on("mouseenter","st-c",()=>map.getCanvas().style.cursor="pointer");
   map.on("mouseleave","st-c",()=>map.getCanvas().style.cursor="");
   map.on("click","st-c", e => {
     const p = e.features[0].properties;
-    const fb = p.freeboard_m === null || p.freeboard_m === "" ? null : Number(p.freeboard_m);
+    const n = k => (p[k] === null || p[k] === undefined || p[k] === "") ? null : Number(p[k]);
+    const fb = n("freeboard_m");
     const over = fb !== null && fb <= 0;
+    const stale = p.stale === true || p.stale === "true";
     const tag = over
       ? `<div class="tag" style="background:var(--over)">ล้นตลิ่ง · OVER BANK</div>`
-      : (p.stale === true || p.stale === "true"
-          ? `<div class="tag" style="background:var(--stale)">ไม่ส่งข้อมูล · NOT REPORTING</div>` : "");
-    new maplibregl.Popup({maxWidth:"310px"})
+      : (stale ? `<div class="tag" style="background:var(--stale)">ไม่ส่งข้อมูล · NOT REPORTING</div>` : "");
+    const rise = n("discharge_rise_ratio");
+    new maplibregl.Popup({maxWidth:"320px"})
       .setLngLat(e.lngLat)
       .setHTML(`
         ${tag}
         <div class="pop-h">${p.name ?? "—"}</div>
         <div class="pop-r"><span>จังหวัด / province</span><span>${p.province ?? "—"}</span></div>
-        <div class="pop-r"><span>ระดับน้ำ / level</span><span>${fmt(p.level_msl," m MSL")}</span></div>
-        <div class="pop-r"><span>ระดับตลิ่ง / bank</span><span>${fmt(p.bank_msl," m MSL")}</span></div>
+        <div class="pop-r"><span>ระดับน้ำ / level</span><span>${fmt(n("level_msl")," m MSL")}</span></div>
+        <div class="pop-r"><span>ระดับตลิ่ง / bank</span><span>${fmt(n("bank_msl")," m MSL")}</span></div>
         <div class="pop-r"><span>${over?"สูงกว่าตลิ่ง / above bank":"ต่ำกว่าตลิ่ง / freeboard"}</span>
           <span style="color:${over?"var(--over)":"inherit"}">${fb===null?"—":fmt(Math.abs(fb)," m")}</span></div>
-        <div class="pop-r"><span>อายุข้อมูล / data age</span><span>${ageLabel(Number(p.data_age_min))}</span></div>
+        <div class="pop-r"><span>ฝน 24 ชม.ที่ผ่านมา / rain past 24h</span><span>${fmt(n("rain_past_24h_mm")," mm",1)}</span></div>
+        <div class="pop-r"><span>ฝนคาดการณ์ 24 ชม. / rain next 24h</span><span>${fmt(n("rain_next_24h_mm")," mm",1)}</span></div>
+        <div class="pop-r"><span>ฝนคาดการณ์ 72 ชม. / next 72h</span><span>${fmt(n("rain_next_72h_mm")," mm",1)}</span></div>
+        <div class="pop-r"><span>น้ำท่า / discharge</span><span>${fmt(n("discharge_now_cms")," m³/s",1)}</span></div>
+        <div class="pop-r"><span>แนวโน้ม 7 วัน / 7-day trend</span><span>${rise===null?"—":rise+"×"}</span></div>
+        <div class="pop-r"><span>อายุข้อมูล / data age</span><span>${ageLabel(n("data_age_min"))}</span></div>
         <div class="pop-r"><span>หน่วยงาน / agency</span><span>${p.agency ?? "—"}</span></div>
       `).addTo(map);
   });
 
-  // Headline counts come from the snapshot's own meta, so the UI cannot disagree with
-  // what the pipeline actually published.
   const c = meta?.counts ?? {};
   document.getElementById("s-total").textContent = c.stations ?? gj.features.length;
   document.getElementById("s-over").textContent  = c.at_or_over_bank ?? "–";
@@ -184,6 +311,11 @@ map.on("load", async () => {
   document.getElementById("age-t").textContent = gen
     ? `อัปเดตเมื่อ ${ageLabel(mins)} ที่แล้ว · median reading age ${ageLabel(med)}`
     : "ไม่ทราบเวลาข้อมูล / snapshot time unknown";
+
+  // Open the upper-Gulf tide point by default: it is the one that drives Bangkok's
+  // backwater flooding, and it makes the tide layer discoverable.
+  const seed = tide?.points?.find(p => p.id === "chaophraya_mouth") || tide?.points?.[0];
+  if (seed) showTide({...seed, next: JSON.stringify(seed.next || [])});
 });
 </script>
 </body>

@@ -45,6 +45,33 @@ class SourceAdapter(ABC):
         """
 
 
+class ForecastAdapter(ABC):
+    """Enriches stations that already exist, rather than producing new ones.
+
+    Separate from SourceAdapter on purpose: these run on a slower cadence (forecasts
+    do not change every 30 minutes) and they answer "what is coming" rather than
+    "what is here now".
+    """
+
+    id: str
+    attribution: str
+    #: How long this source's output stays useful. Set per adapter because rainfall
+    #: models, a daily discharge product and a harmonic tide prediction go stale at
+    #: very different rates — and refetching the slow ones at the fast one's cadence
+    #: is what burns an API allowance for nothing.
+    refresh_hours: float = 6.0
+
+    @abstractmethod
+    def fetch_for(
+        self, points: list[tuple[str, float, float]]
+    ) -> tuple[dict[str, dict], SourceHealth]:
+        """Given (station_id, lat, lon) triples, return {station_id: {field: value}}.
+
+        Like SourceAdapter.fetch, must degrade rather than raise: a missing forecast
+        should grey out one panel, not blank the map.
+        """
+
+
 # ---------------------------------------------------------------------------
 # Parsing helpers.
 #
@@ -148,6 +175,14 @@ def fetch_json(url: str, timeout: int = 60) -> object:
 # ---------------------------------------------------------------------------
 
 registry: dict[str, SourceAdapter] = {}
+forecast_registry: dict[str, ForecastAdapter] = {}
+
+
+def register_forecast(adapter: ForecastAdapter) -> ForecastAdapter:
+    if adapter.id in forecast_registry:
+        raise ValueError(f"duplicate forecast adapter id: {adapter.id}")
+    forecast_registry[adapter.id] = adapter
+    return adapter
 
 
 def register(adapter: SourceAdapter) -> SourceAdapter:
