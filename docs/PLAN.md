@@ -216,7 +216,7 @@ log, CSV & sit-rep export.
 | **2** ✅ Risk engine | freeboard, dh/dt, TTB, rain, tide compounding, explainable scores, alerts | per-tambon risk with a readable "why" |
 | **3** ✅ Calm mode | tide curves, solunar, bite windows, reservoirs | 7-day fishing planner for any Thai coast/river point |
 | ~~**4** Respond~~ | **BUILT THEN REMOVED 2026-09-15**, before deploy. Preserved on the `sos-component` branch. | see note below |
-| **5** Terrain | DEM ingest, HAND, inundation mapping, 3D | "your street floods at 2.1 m at this gauge" |
+| **5** ✅ Terrain | DEM ingest, HAND, inundation mapping, 3D | "your street floods at 2.1 m at this gauge" |
 | **6** ✅ Harden | load test the spike, degraded mode, SMS fallback, observability, security review | survives a simulated national flood event |
 | **7** ✅ Global + multi-hazard | country adapter pattern, GDACS/USGS, i18n | second country live with no core rewrite |
 

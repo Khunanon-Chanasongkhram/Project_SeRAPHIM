@@ -174,3 +174,49 @@ class TestForecastGrid(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestFailSoftPerCountry(unittest.TestCase):
+    """A transient upstream failure must not delete a country from the site.
+
+    The UK API returned a 500 mid-development and the build cheerfully published a
+    Thailand-only site. For the 15 minutes until the next run, British readers would
+    have had nothing at all rather than something slightly old.
+    """
+
+    def test_cache_round_trips_a_country_snapshot(self):
+        import tempfile
+        from pathlib import Path
+
+        from seraphim import cache
+
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            payload = {"files": {"stations-gb.geojson": {"type": "FeatureCollection",
+                                                         "features": []}},
+                       "entry": {"code": "GB", "stations": 3327}}
+            cache.save(root, "country_gb", payload)
+            got = cache.load(root, "country_gb", 24.0)
+            self.assertIsNotNone(got)
+            self.assertEqual(got["data"]["entry"]["code"], "GB")
+            self.assertIn("stations-gb.geojson", got["data"]["files"])
+
+    def test_a_stale_snapshot_expires_rather_than_lingering_forever(self):
+        """Republishing yesterday's rivers as though they were current would be worse
+        than showing nothing, so the fallback has a time limit."""
+        import tempfile
+        from pathlib import Path
+
+        from seraphim import cache
+
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            cache.save(root, "country_gb", {"files": {}, "entry": {"code": "GB"}})
+            self.assertIsNone(cache.load(root, "country_gb", 0))
+
+    def test_the_build_marks_reused_data_as_stale(self):
+        """The flag is what lets the UI say so; without it the fallback would be a
+        silent lie."""
+        src = (ROOT / "seraphim" / "cli.py").read_text(encoding="utf-8")
+        self.assertIn('entry["stale"] = True', src)
+        self.assertIn('entry["stale_since"]', src)

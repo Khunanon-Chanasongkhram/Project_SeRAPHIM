@@ -30,6 +30,49 @@ Then Phase 3 (calm mode / fishing), 5 (terrain) or 6 (harden + load test).
 
 ---
 
+## 2026-09-15 - Session 16: Phase 5, terrain. Two wrong versions before the right one.
+
+He asked directly after I had twice argued against it, so I built it. It turned out to be
+feasible in a way I had not considered, and the interesting work was in refusing to claim
+more than the data supports.
+
+**The unlock: Open-Meteo has an elevation API.** 100 points per call, keyless. That means
+**no DEM download and no raster library**, which matters because this machine has no
+numpy, no rasterio, no GDAL and no pip, and a 30 m DEM for Thailand is about 2.5 GB.
+Terrain is static, so it is sampled once and committed like the province outlines.
+
+**Version 1, wrong.** Subtract DEM elevation from water level to get depth. Tested on four
+over-bank stations: +1.7, **-3.7**, **-2.3**, -0.7 m. Two claim the river flows several
+metres underground. Cause is resolution, not datum: a 90 m cell at a canal gate holds the
+embankment, not the water.
+
+**Version 2, also wrong.** Use the gauge as a relative reference. Sampling one Samut
+Prakan gate returned every point within a kilometre sitting 1 to 7 m BELOW the gauge,
+because the canal is embanked above a delta. Subtracting there turns a 0.4 m overtopping
+into a claim of **3.4 m of water**. Overtopping fills land at a rate set by volume and
+time; this has neither.
+
+**Version 3, shipped.** Relative height, and **no depth claim at all**. Points more than
+1 m below the gauge, shown only where the channel is actually spilling. Says WHERE water
+would go, never HOW DEEP. There is a test that asserts no `depth_m` field exists, so the
+rejected version cannot come back.
+
+**Rate limits shaped the build.** The elevation service 429s under load, so four gauges
+ride per call (25 points each, 100 per call) and topping up is a separate deliberate
+command rather than part of the build. 220 of 1,121 gauges profiled, worst-risk first, so
+a partial dataset is still useful. 2,025 low-ground points published, 29 KB gzipped.
+
+**A resilience gap found by accident.** The UK API returned a 500 mid-session and the
+build cheerfully published a Thailand-only site. For 15 minutes British readers would have
+had nothing rather than something slightly old. Added per-country fail-soft: last known
+good is cached and republished, flagged `stale` with its timestamp, expiring after 24 h so
+yesterday's rivers are never shown as today's. Could not demonstrate it live because the
+UK stayed down, so it is covered by tests instead.
+
+168 tests.
+
+---
+
 ## 2026-09-15 - Session 15: Phase 7. A second country, and what it exposed.
 
 **Added the UK Environment Agency: 3,327 gauges, keyless, two bulk calls.** Total now

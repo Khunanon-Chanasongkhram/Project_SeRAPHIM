@@ -108,8 +108,7 @@ Details, method and the bug I found in my own first attempt at measuring are in
 
 ## Status
 
-Phases 0, 1, 2, 3 and 6 are built and tested locally. Terrain (phase 5) and going global
-(phase 7) are not started.
+All seven phases are built and tested locally.
 
 There used to be an SOS side, where people could ask for help and responders could triage
 it. I built it, then took it out before deploying. Collecting someone's location, phone
@@ -151,6 +150,7 @@ nothing to install.
 | `docs/OPERATIONS.md` | capacity, health checks, what happens when things break |
 | `docs/DATA_SOURCES.md` | every API, tested or not, with the date I checked |
 | `docs/VALIDATION.md` | whether the predictions are any good, measured |
+| `docs/TERRAIN.md` | where water would go, and the two wrong versions |
 | `workers/seraphim/` | the Python that fetches, scores and publishes |
 | `web/` | the map and the fishing page |
 | `scripts/check_js.py` | scans inline JS and translations, since there is no Node here |
@@ -171,6 +171,21 @@ nothing to install.
 Everything in `docs/DATA_SOURCES.md` says whether I actually tested it and when. I did
 not take any of it from documentation alone, because a wrong water level is worse than no
 water level.
+
+## Terrain, and the two versions of it that were wrong
+
+There is a layer showing low ground near gauges whose channel is spilling. It says
+**where water would go, never how deep**, and that restraint took three attempts.
+
+Subtracting a DEM from the water level looked right and produced impossible answers: two
+of four test stations had the river flowing several metres underground, because a 90 m
+DEM cell at a canal gate contains the embankment, not the water. Using the gauge as a
+relative reference instead turned a 0.4 m overtopping into a claim of 3.4 m of water,
+because gauges sit on the high ground and the delta beside them is low.
+
+So it makes no depth claim at all. It needed no DEM download and no raster library, which
+matters because this machine has no numpy, no GDAL and no pip. Details, including the
+numbers that killed the first two versions, are in [`docs/TERRAIN.md`](docs/TERRAIN.md).
 
 ## Two countries, and what the second one taught me
 

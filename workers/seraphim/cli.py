@@ -31,6 +31,7 @@ from seraphim.publish import (
     write_snapshot,
 )
 from seraphim.risk import assess, rollup
+from seraphim import terrain as terrain_mod
 from seraphim.validate import backtest, format_report
 
 
@@ -270,8 +271,52 @@ def build(
         print(f"[validation] {format_report(validation)}")
         print(f"[validation] took {_time.perf_counter() - t0:.1f}s")
 
+    # --- terrain: where water would go where a channel is spilling ---
+    # Profiles are static and shipped with the code, so this costs no upstream calls
+    # at build time. Topping them up is a separate, deliberate command.
+    terrain_layer = None
+    profiles = terrain_mod.load_profiles(terrain_mod.PROFILES_FILE)
+    if profiles:
+        terrain_layer = terrain_mod.build_layer(states, profiles, generated_at)
+        if terrain_layer:
+            extra["terrain.geojson"] = terrain_layer
+            print(f"[terrain] {len(profiles)} profiles, "
+                  f"{terrain_layer['gauges_with_terrain']} gauges covered, "
+                  f"{len(terrain_layer['features'])} low-ground points where a channel is spilling")
+
     # Per-country files so a visitor downloads only the country they are looking at.
     country_files, country_index = split_by_country(states, risks, areas)
+
+    # A transient upstream failure must not delete a country from the site. The UK API
+    # returned a 500 mid-development and the build cheerfully published a Thailand-only
+    # site; for the 15 minutes until the next run, British readers would have had
+    # nothing at all. Last known good is kept and republished instead, and since every
+    # reading already carries its own age, going stale is visible rather than silent.
+    cache_root = out_root / "cache"
+    live = {c["code"] for c in country_index["countries"]}
+    for h in health:
+        adapter = registry.get(h.source)
+        if adapter is None or h.ok or adapter.country in live or adapter.country == "*":
+            continue
+        stale = cache.load(cache_root, f"country_{adapter.country.lower()}", 24.0)
+        if not stale:
+            continue
+        kept = stale["data"]
+        country_files.update(kept["files"])
+        entry = dict(kept["entry"])
+        entry["stale"] = True
+        entry["stale_since"] = stale["fetched_at"]
+        country_index["countries"].append(entry)
+        print(f"[{h.source}] source is down; republishing the last good "
+              f"{adapter.country} snapshot from {stale['fetched_at'][:16]}")
+
+    for entry in country_index["countries"]:
+        if entry.get("stale"):
+            continue
+        cc = entry["code"].lower()
+        keep = {k: v for k, v in country_files.items() if k.endswith(f"-{cc}.geojson")
+                or k.endswith(f"-{cc}.json")}
+        cache.save(cache_root, f"country_{cc}", {"files": keep, "entry": entry})
     country_index["generated_at"] = generated_at.isoformat()
     extra.update(country_files)
     extra["index.json"] = country_index
@@ -325,6 +370,42 @@ def build(
     return 0
 
 
+def _terrain(budget: int) -> int:
+    """Top up terrain profiles, worst-risk gauges first.
+
+    Deliberately a separate command rather than part of the build. Terrain does not
+    change, the elevation service rate-limits, and a build that sometimes makes a
+    hundred extra upstream calls is a build that sometimes fails for no good reason.
+    """
+    profiles = terrain_mod.load_profiles(terrain_mod.PROFILES_FILE)
+    before = len(profiles)
+    collected = []
+    for name, adapter in registry.items():
+        stations, observations, health = adapter.fetch()
+        if not health.ok:
+            print(f"[{name}] FAILED: {health.error}", file=sys.stderr)
+            continue
+        levels = {o.station_id: o.level_msl for o in observations}
+
+        def urgency(st):
+            level, bank = levels.get(st.id), st.bank_msl
+            if level is None or bank is None:
+                return 1e9
+            return bank - level          # smallest freeboard first, negative is worst
+
+        stations.sort(key=urgency)
+        collected += stations
+    if not collected:
+        print("no stations available", file=sys.stderr)
+        return 1
+
+    profiles = terrain_mod.build_profiles(collected, profiles, budget=budget)
+    terrain_mod.save_profiles(terrain_mod.PROFILES_FILE, profiles)
+    print(f"[terrain] {before} -> {len(profiles)} profiles, "
+          f"{terrain_mod.PROFILES_FILE.stat().st_size:,} B")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="seraphim", description="SeRAPHIM snapshot builder")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -347,7 +428,16 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("sources", help="list registered adapters")
 
+    tp = sub.add_parser(
+        "terrain",
+        help="sample ground around gauges (run occasionally; terrain does not change)")
+    tp.add_argument("--budget", type=int, default=60,
+                    help="gauges to sample this run (default 60)")
+    tp.add_argument("--out", type=Path, default=Path("../data"))
+
     args = parser.parse_args(argv)
+    if args.command == "terrain":
+        return _terrain(args.budget)
     if args.command == "sources":
         for name, a in sorted(registry.items()):
             print(f"  level    {name:<18} {a.country:<3} {a.attribution}")

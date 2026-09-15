@@ -281,7 +281,9 @@ const I18N={
     events:"ภัยพิบัติทั่วโลก", events_s:"จาก GDACS", view:"มุมมอง",
     v_th:"ไทย", v_gb:"สหราชอาณาจักร", v_world:"ทั่วโลก",
     alert:"ระดับเตือน", kind:"ประเภท", country:"ประเทศ",
-    notbank:"เครือข่ายนี้ไม่ได้เผยแพร่ระดับตลิ่ง จึงไม่มีการคาดการณ์เวลาน้ำล้น" },
+    notbank:"เครือข่ายนี้ไม่ได้เผยแพร่ระดับตลิ่ง จึงไม่มีการคาดการณ์เวลาน้ำล้น",
+    terrain:"พื้นที่ต่ำใกล้จุดน้ำล้น", terrain_s:"บอกทิศทางน้ำไป ไม่ได้บอกความลึก",
+    below:"ต่ำกว่าจุดวัด", nearstn:"ใกล้สถานี", tcav:"เป็นเพียงภูมิประเทศ ไม่ใช่แบบจำลองน้ำท่วม" },
   en:{ base:"BASEMAP", sat:"Satellite", dark:"Dark", light:"Light",
     over:"LAYERS", prov:"Province risk", stat:"Gauges", tide:"Tide points",
     camnote:"No CCTV layer: no public camera feed has been found to build on.",
@@ -313,7 +315,9 @@ const I18N={
     events:"Global disasters", events_s:"from GDACS", view:"VIEW",
     v_th:"Thailand", v_gb:"United Kingdom", v_world:"World",
     alert:"alert", kind:"type", country:"country",
-    notbank:"This network publishes no bank level, so no overtopping forecast is made." }
+    notbank:"This network publishes no bank level, so no overtopping forecast is made.",
+    terrain:"Low ground", terrain_s:"where water would go, not how deep",
+    below:"below the gauge", nearstn:"near", tcav:"relative terrain only, not a flood model" }
 };
 let LANG = localStorage.getItem("seraphim_lang")
   || ((navigator.language||"").toLowerCase().startsWith("th") ? "th" : "en");
@@ -324,12 +328,13 @@ const loc=(o,base)=> LANG==="th" ? (o[base+"_th"] ?? o[base] ?? "") : (o[base] ?
 /* ------------------------------------------------------------------ data */
 const BASE=(window.SERAPHIM&&window.SERAPHIM.dataBase)||"../data/out";
 const RISK={1:"#2f81f7",2:"#d99e0b",3:"#e8590c",4:"#e5484d",5:"#ff2d55"};
-let gj=null, meta=null, tide=null, areas=null, provinces=null, quakes=null, fires=null, events=null;
+let gj=null, meta=null, tide=null, areas=null, provinces=null, quakes=null, fires=null, events=null, terrain=null;
 let radarFrames=[], radarIdx=0, radarTimer=null;
 let radioAll=[], radioNear=[], radioIdx=0, audio=null;
 let map=null, mode="risk", basemap="satellite";
 const shown={provinces:true, stations:true, tide:true,
-             radar:false, quakes:false, fires:false, radio:false, events:false};
+             radar:false, quakes:false, fires:false, radio:false, events:false,
+             terrain:false};
 
 const OSM="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const SAT="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
@@ -366,6 +371,7 @@ const LAYERS=[
   {id:"fires",     label:"fires",  sub:"fires_s",   colour:"#f97316", optional:true},
   {id:"radio",     label:"radio",  sub:"radio_s",   colour:"#a78bfa"},
   {id:"events",    label:"events", sub:"events_s",  colour:"#ef4444"},
+  {id:"terrain",   label:"terrain",sub:"terrain_s", colour:"#8b5cf6", optional:true},
 ];
 
 /** Where the map looks. Thailand has gauges with bank levels; the UK has gauges with
@@ -426,8 +432,9 @@ async function load(){
   areas = mergedAreas();
   // Province shapes and tide points exist only for Thailand, so they are not part of
   // what every visitor pays for.
-  [meta,quakes,fires,events]=await Promise.all([
-    j("meta.json"), j("quakes.geojson"), j("fires.geojson"), j("events.geojson")]);
+  [meta,quakes,fires,events,terrain]=await Promise.all([
+    j("meta.json"), j("quakes.geojson"), j("fires.geojson"), j("events.geojson"),
+    j("terrain.geojson")]);
   if(country==="th"||loaded.th){
     [tide,provinces]=await Promise.all([j("tide.json"), j("provinces.geojson")]);
   }
@@ -540,6 +547,28 @@ function addHazardLayers(){
     });
     map.on("mouseenter","event-c",()=>map.getCanvas().style.cursor="pointer");
     map.on("mouseleave","event-c",()=>map.getCanvas().style.cursor="");
+  }
+  if(terrain && !map.getSource("terrain")){
+    map.addSource("terrain",{type:"geojson",data:terrain});
+    // Under the gauges: this is context for a spilling channel, not the alert itself.
+    const under = map.getLayer("st-glow") ? "st-glow" : undefined;
+    map.addLayer({id:"terrain-c",type:"circle",source:"terrain",paint:{
+      "circle-color":"#8b5cf6","circle-blur":.85,
+      "circle-radius":["interpolate",["linear"],["zoom"],
+        7,["interpolate",["linear"],["get","below_gauge_m"],1,4,8,12],
+        13,["interpolate",["linear"],["get","below_gauge_m"],1,16,8,46]],
+      "circle-opacity":.42}}, under);
+    map.on("click","terrain-c",e=>{
+      const p=e.features[0].properties;
+      new maplibregl.Popup({maxWidth:"270px"}).setLngLat(e.lngLat).setHTML(
+        `<div class="pt" style="background:#8b5cf6">${esc(t("terrain"))}</div>
+         <div class="pr"><span>${esc(t("below"))}</span><span class="num">${esc(p.below_gauge_m)} m</span></div>
+         <div class="pr"><span>${esc(t("nearstn"))}</span><span>${esc(p.station_name)}</span></div>
+         <div class="pr"><span>${esc(t("over_bank"))}</span><span class="num">${esc(p.over_bank_m)} m</span></div>
+         <div class="conf">${esc(t("tcav"))}</div>`).addTo(map);
+    });
+    map.on("mouseenter","terrain-c",()=>map.getCanvas().style.cursor="pointer");
+    map.on("mouseleave","terrain-c",()=>map.getCanvas().style.cursor="");
   }
   if(!map.getSource("radar")) initRadar();
   if(!map.getSource("radio")) initRadio();
@@ -710,6 +739,7 @@ function applyVisibility(){
   set("fire-c",shown.fires);
   set("radio-c",shown.radio);
   set("event-c",shown.events);
+  set("terrain-c",shown.terrain);
   $("radio").classList.toggle("show",shown.radio);
   if(shown.radio&&!radioNear.length) refreshDial();
   if(!shown.radio&&audio){ audio.pause(); $("rplay").textContent="▶";
@@ -775,7 +805,8 @@ function renderChrome(){
 
   // Tick boxes rather than pills: the user asked to "tick to show and unshow", and a
   // checkbox says what it does without having to be learned.
-  $("layerlist").innerHTML=LAYERS.filter(l=>!l.optional||fires).map(l=>`
+  const have={fires:!!fires, terrain:!!terrain};
+  $("layerlist").innerHTML=LAYERS.filter(l=>!l.optional||have[l.id]).map(l=>`
     <div class="chk${shown[l.id]?" on":" off"}" data-layer="${l.id}">
       <span class="box">✓</span>
       <span>${esc(t(l.label))}${l.sub?`<small>${esc(t(l.sub))}</small>`:""}</span>
@@ -968,6 +999,7 @@ function setBasemap(name){
       if(map.getSource("quakes")&&quakes) map.getSource("quakes").setData(quakes);
       if(map.getSource("fires")&&fires) map.getSource("fires").setData(fires);
       if(map.getSource("events")&&events) map.getSource("events").setData(events);
+      if(map.getSource("terrain")&&terrain) map.getSource("terrain").setData(terrain);
       renderChrome();
     } else { renderAge(); }
   },60000);
