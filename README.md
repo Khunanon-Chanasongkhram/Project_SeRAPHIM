@@ -10,12 +10,16 @@ engine that says *when* a bank overtops, not just that a level is high.
 > In an emergency in Thailand call **1784** (DDPM) or **191**.
 > Readings come from third-party telemetry and may be delayed, wrong, or missing.
 
-**Status: Phase 6 complete — hardened.** Pre-alpha, not yet deployed.
+**Status: Phases 0–4 and 6 complete.** Pre-alpha, not yet deployed.
 Security review ([`docs/SECURITY.md`](docs/SECURITY.md)), spike load test and degraded
 mode ([`docs/OPERATIONS.md`](docs/OPERATIONS.md)).
 1,121 Thai river gauges, rainfall and GloFAS discharge forecasts, tide prediction at 23 coastal
 points, and an explainable risk score with **time-to-bank** across 479 districts in all 77
 provinces. See [`PROGRESS.md`](PROGRESS.md).
+
+**Calm mode:** the same tide, weather and lunar data becomes a fishing planner for 40
+spots — 23 coastal, 17 inland. Not a side feature: an app opened twice in a lifetime is
+an app nobody has installed when it matters. Retention is a safety feature.
 
 **SOS:** citizens request help offline-first; verified responders triage on a live map with
 duplicate-collapsing clusters. Full PDPA controls — recorded consent, 90-day auto-purge,
@@ -95,8 +99,10 @@ cd workers && python3 -m seraphim.devserver --port 8788 --seed
 | `workers/seraphim/risk.py` | the risk engine — scoring, time-to-bank, tide compounding, reasons |
 | `workers/seraphim/history.py` | archive replay + least-squares rate of rise |
 | `workers/seraphim/tide.py` | extremes, lunar phase, empirical tidal-range classification |
+| `workers/seraphim/astro.py` | sun/moon position, rise, set, transit — validated |
+| `workers/seraphim/fishing.py` | solunar windows and transparent bite scoring |
 | `workers/seraphim/cache.py` | per-source forecast cache — keeps us inside the API quota |
-| `web/` | static map (`index.html`), SOS form (`sos.html`), ops console (`ops.html`) |
+| `web/` | map (`index.html`), fishing (`fish.html`), SOS (`sos.html`), ops (`ops.html`) |
 | `api/` | Cloudflare Worker + D1 schema for SOS; conformance suite |
 | `workers/seraphim/devserver.py` | Python dev server for the SOS API — no node needed |
 | `.github/workflows/ingest.yml` | the cron that runs it all |

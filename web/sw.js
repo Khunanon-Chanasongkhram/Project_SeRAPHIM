@@ -5,11 +5,11 @@
  * page keeps working offline; submissions queue in IndexedDB and flush on reconnect.
  */
 const CACHE = "seraphim-v1";
-const SHELL = ["./sos.html", "./index.html", "./ops.html"];
+const SHELL = ["./sos.html", "./index.html", "./ops.html", "./fish.html"];
 // Snapshots are cached too, so a failed origin degrades to last-known data rather
 // than a blank page. During a flood, yesterday's water levels clearly labelled as
 // old beat nothing at all.
-const DATA = /\/(stations\.geojson|meta\.json|tide\.json|areas\.json)$/;
+const DATA = /\/(stations\.geojson|meta\.json|tide\.json|areas\.json|fishing\.json)$/;
 
 self.addEventListener("install", (e) => {
   // Cache what we can; a single failed asset must not abort the whole install and

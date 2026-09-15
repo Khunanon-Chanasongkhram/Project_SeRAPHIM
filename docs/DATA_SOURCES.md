@@ -26,6 +26,19 @@ Per-station fields that matter (confirmed in live response):
 
 > ⚠️ Terms of use NOT yet confirmed. Must contact HII for production use + attribution. Do not ship to real users until cleared.
 
+### ⚠️ `storage_percent` is NOT reservoir storage
+Verified 2026-09-15 across **794 stations, 100% agreement**:
+
+    storage_percent = (waterlevel_msl − ground_level) / (min_bank − ground_level) × 100
+
+It is the fraction of **channel depth** filled, bed to bank — so 115% means 15% *above
+bank*, i.e. flooding. Reading it as "reservoir 115% full" would be badly wrong in the
+most dangerous possible direction. There is no dam or reservoir dataset in this feed:
+every one of the 1,121 stations is `station_type: tele_waterlevel`.
+
+**Consequence:** reservoir drawdown is deliberately NOT modelled in the fishing planner.
+It needs a real dam dataset from RID or EGAT.
+
 ### ThaiWater history — ❌ not available
 `public/waterlevel_graph` accepts `station_id` but returns a **Go panic** (`index out of range`)
 rather than data; other history paths 404. Probing stopped rather than hammer a government API.
@@ -96,6 +109,17 @@ mainly **diurnal**, modulated by lunar *declination* rather than phase. So range
 **empirically** against each location's own recent distribution, which is also what makes the
 method valid anywhere the project expands to. Moon phase is retained only for solunar fishing
 periods (Phase 3), where it genuinely applies.
+
+## Tier 2b — Astronomy (computed, not fetched)
+Sun and moon positions are computed locally (`workers/seraphim/astro.py`), so calm mode
+costs no API quota and works offline.
+- **Solar validated against Open-Meteo's own sunrise/sunset** across 5 Thai locations ×
+  7 days: agreement within **37 s worst case, 17 s mean** (their values are floored to
+  the minute). Fixtures captured in `workers/tests/fixtures_sun.json`.
+- **Lunar validated against physical invariants** — no ephemeris available, so the sky is
+  the oracle: transit drifts **47.7 min/day** (expect ~50), transit↔antitransit sits
+  **12.4 h** apart (half a lunar day), and at full moon **moonrise lands within 0.4 h of
+  sunset**.
 
 ## Tier 3 — Terrain (Phase 5)
 - **FABDEM** (Copernicus GLO-30 with buildings/trees removed) — best free DEM for flood work; non-commercial licence, check

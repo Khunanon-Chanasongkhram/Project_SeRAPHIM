@@ -140,6 +140,32 @@ def build_areas(areas: list[dict], generated_at: datetime) -> dict:
     }
 
 
+def build_fishing_doc(spots: list[dict], generated_at: datetime) -> dict:
+    """fishing.json — calm mode.
+
+    The same tide, weather and lunar data that drives flood risk, answering the
+    question people actually have on the other 350 days of the year.
+    """
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "generated_at": generated_at.isoformat(),
+        "attribution": "Open-Meteo (CC-BY 4.0); tide from Open-Meteo Marine",
+        "method": (
+            "Transparent rule-based scoring, not a model. Fish feed on moving water, so "
+            "the RATE of tidal change is weighted, not the height. Combined with solunar "
+            "periods (lunar transit and antitransit for majors, moonrise and moonset for "
+            "minors), low light at dawn and dusk, moon phase, and falling barometric "
+            "pressure. Every score carries the factors that produced it."
+        ),
+        "caveat": (
+            "Fishing conditions are folklore-rich and evidence-poor. Treat this as a "
+            "starting point, not a promise. Reservoir drawdown is NOT modelled — it needs "
+            "a dam dataset we do not have."
+        ),
+        "spots": spots,
+    }
+
+
 def build_meta(
     states: list[StationState],
     health: list[SourceHealth],
@@ -261,6 +287,7 @@ def write_snapshot(
     meta: dict,
     tide: dict | None = None,
     areas: dict | None = None,
+    fishing: dict | None = None,
 ) -> list[Path]:
     """Write the current snapshot. Gzip alongside: it is ~10x smaller and CDN-friendly."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -270,6 +297,8 @@ def write_snapshot(
         items.append(("tide.json", tide))
     if areas is not None:
         items.append(("areas.json", areas))
+    if fishing is not None:
+        items.append(("fishing.json", fishing))
     for name, payload in items:
         raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         path = out_dir / name

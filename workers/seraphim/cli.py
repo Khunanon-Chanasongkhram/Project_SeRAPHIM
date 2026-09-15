@@ -12,8 +12,11 @@ from seraphim.adapters import forecast_registry, registry
 from seraphim.adapters.marine import TideAdapter, summarise
 from seraphim.models import Forecast, SourceHealth, StationState
 from seraphim.history import fit_trend, load_history, merge_current
+from seraphim.adapters.spots import all_spots, fetch_weather
+from seraphim.fishing import build_fishing
 from seraphim.publish import (
     build_areas,
+    build_fishing_doc,
     build_geojson,
     build_meta,
     build_tide,
@@ -159,12 +162,33 @@ def build(
         + f" | {sum(1 for r in risks.values() if r.time_to_bank_hr is not None)} with time-to-bank"
     )
 
+    # --- calm mode: the same data, answering the question people have on quiet days ---
+    fishing_doc = None
+    if forecasts and tide_points:
+        spots = all_spots()
+        hit = cache.load(out_root / "cache", "spot_weather", 6.0 * refresh_scale)
+        if hit:
+            spot_weather = hit["data"]
+            print(f"[fishing] spot weather cache hit ({len(spot_weather)} spots)")
+        else:
+            spot_weather, wh = fetch_weather(spots)
+            health.append(wh)
+            if wh.ok:
+                cache.save(out_root / "cache", "spot_weather", spot_weather)
+            else:
+                print(f"[fishing] weather FAILED: {wh.error}", file=sys.stderr)
+        tide_by_id = {t["id"]: t for t in tide_points}
+        plans = build_fishing(spots, tide_by_id, spot_weather, generated_at.date())
+        fishing_doc = build_fishing_doc(plans, generated_at)
+        peak = max((d["peak_score"] for p in plans for d in p["days"]), default=0)
+        print(f"[fishing] {len(plans)} spots x {len(plans[0]['days'])} days | best score {peak}")
+
     geojson = build_geojson(states, risks)
     meta = build_meta(states, health, generated_at, tide_points=len(tide_points), risks=risks)
     tide = build_tide(tide_points, generated_at) if tide_points else None
     areas_doc = build_areas(areas, generated_at)
 
-    written = write_snapshot(out_root / "out", geojson, meta, tide, areas_doc)
+    written = write_snapshot(out_root / "out", geojson, meta, tide, areas_doc, fishing_doc)
     if archive and states:
         written.append(write_archive(out_root / "archive", geojson, generated_at))
     for p in written:

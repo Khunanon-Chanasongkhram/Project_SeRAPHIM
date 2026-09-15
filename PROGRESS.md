@@ -7,7 +7,8 @@ Purpose: survive a closed terminal or an expired token with zero context loss.
 
 ## Current state
 
-**Phase:** 6 (Harden) — ✅ **code complete, locally verified. Not yet deployed.**
+**Phase:** 3 (Calm mode) — ✅ **code complete, locally verified. Not yet deployed.**
+Remaining: Phase 5 (terrain/HAND), Phase 7 (global + multi-hazard).
 **Next action:** user creates the private GitHub repo + pushes; then wire Cloudflare R2 secrets.
 **Deploying matters now**: time-to-bank stays empty until the cron has built ~1-2 h of archive.
 Then Phase 3 (calm mode / fishing), 5 (terrain) or 6 (harden + load test).
@@ -21,11 +22,68 @@ Then Phase 3 (calm mode / fishing), 5 (terrain) or 6 (harden + load test).
 | 0 | Foundation | ✅ code complete, not deployed |
 | 1 | Ingest + live map | ✅ code complete, not deployed |
 | 2 | Risk engine | ✅ code complete, not deployed |
-| 3 | Calm mode (tide/fishing) | ⬜ not started |
+| 3 | Calm mode (tide/fishing) | ✅ code complete, not deployed |
 | 4 | Respond (SOS) | ✅ code complete, not deployed |
 | 5 | Terrain / HAND | ⬜ not started |
 | 6 | Harden / scale | ✅ code complete, not deployed |
 | 7 | Global + multi-hazard | ⬜ not started |
+
+---
+
+## 2026-09-15 — Session 8: Phase 3 built (calm mode — solunar & fishing)
+
+**Done — 162 tests passing.**
+- `astro.py` — sun/moon position, rise, set, transit, civil twilight. Events found
+  **numerically** (scan altitude, bisect crossings) rather than by closed-form hour
+  angle: one code path for both bodies, degrades gracefully where a body never rises.
+- `fishing.py` — solunar windows, transparent bite scoring, clarity advice.
+- `adapters/spots.py` — 40 spots: the 23 verified tide points plus 17 inland reservoirs
+  and river reaches. Weather (pressure + wind) fetched in one batched call.
+- `fishing.json` published (1.09 MB → **42 KB gzipped**, separate file so it never
+  weighs on the flood map). `web/fish.html` with an hourly chart, tide curve, table view.
+
+**Astronomy validated, not assumed**
+- **Solar against Open-Meteo's own sunrise/sunset**, 5 locations × 7 days: agreement
+  within **37 s worst case, 17 s mean** (they floor to the minute). Fixtures captured so
+  the test runs offline.
+- **Lunar against physical invariants** — no ephemeris to hand, so the sky is the oracle:
+  transit drifts **47.7 min/day**, transit↔antitransit **12.4 h**, and at full moon
+  **moonrise falls within 0.4 h of sunset**. All three hold.
+- My first validation harness reported a 1,441-minute error. That was the *harness*
+  mislabelling days — Open-Meteo files Bangkok's 23:06 UTC sunrise under the next local
+  day. Re-matched by nearest event instead of by index.
+
+**A data misreading caught before it shipped**
+I was about to build reservoir mode on ThaiWater's `storage_percent`. Verified across
+**794 stations, 100% agreement**, it is actually
+`(level − ground) / (bank − ground)` — the fraction of CHANNEL depth filled. **115% means
+15% ABOVE BANK, i.e. flooding**, not a full reservoir. Reading it the other way would
+have been wrong in the most dangerous possible direction. Every station is
+`tele_waterlevel`; there is no dam dataset here. Reservoir drawdown is therefore
+explicitly NOT modelled, and `fishing.json` says so in its `caveat`.
+
+**A fairness bug I wrote, then caught**
+My own comment said tideless water must have the tide weight redistributed "otherwise
+every inland spot would look worse than every coastal one for no real reason" — and I
+then applied it only to reservoirs, leaving non-tidal rivers forfeiting 21 points they
+could never earn. The scale was measuring "is it near the sea", not "is it worth going".
+Fixed with `effective_weights(profile, has_tide)`. Inland mean peak went 37-40 → 48;
+the bottom of the ranking is now small-tidal-range Gulf spots (Pattani 0.47 m swing),
+which is physically correct.
+
+**Chart design** — loaded the `dataviz` skill first. It changed two decisions: a
+value-ramp across bars would double-encode height as hue and burn the free colour
+channel (now one series colour with emphasis on the best hours), and the tide curve is a
+**separate chart**, never a second y-axis. Could not run the palette validator (node
+script, no node here) — acceptable only because this uses the reference palette's slot-1
+blue unchanged with a single series, so there is no new palette to validate. Geometry
+verified numerically across **2,880 bars**: no overflow, no label collisions.
+
+**Design notes**
+- Bite score weights the **rate** of tidal change, not height — slack water at high tide
+  is the worst moment of the cycle and the one a height-based score would rate best.
+- Turbidity is **tactics, not score**: muddy water changes how you fish, not whether.
+- Every scored hour carries its factors; 0 hours score above zero without an explanation.
 
 ---
 
