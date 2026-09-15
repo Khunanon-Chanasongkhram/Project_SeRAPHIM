@@ -34,6 +34,12 @@
     display:flex;flex-direction:column;gap:5px;font-size:11.5px;color:var(--muted)}
   .legend div{display:flex;align-items:center;gap:7px}
   .sw{width:11px;height:11px;border-radius:50%;border:1.5px solid rgba(0,0,0,.25);flex:none}
+  #degraded{position:absolute;z-index:4;left:10px;right:10px;
+    top:calc(env(safe-area-inset-top,0px) + 10px);margin:0 auto;max-width:640px;
+    padding:10px 13px;font-size:12.5px;background:#fff6e6;border:1px solid #ffd8a8;
+    color:#7a4a00;border-radius:10px;display:none}
+  #degraded.show{display:block}
+  #degraded b{color:#a15c00}
   #alert{position:absolute;z-index:3;left:10px;right:10px;
     bottom:calc(env(safe-area-inset-bottom,0px) + 10px);margin:0 auto;max-width:640px;
     padding:9px 12px;font-size:12px;background:#fff8f8;border:1px solid #ffc9c9;color:#8b1a1a}
@@ -110,6 +116,8 @@
   <div id="tide-next"></div>
 </div>
 
+<div id="degraded"></div>
+
 <div id="alert" class="panel">
   <b>ไม่ใช่ช่องทางแจ้งเหตุฉุกเฉินทางราชการ</b> — เหตุด่วนโทร <b>1784</b> (ปภ.) หรือ <b>191</b>.
   Not an official emergency channel — call <b>1784</b> / <b>191</b>.
@@ -143,6 +151,15 @@ map.addControl(new maplibregl.AttributionControl({
 map.addControl(new maplibregl.NavigationControl({showCompass:false}), "top-right");
 map.addControl(new maplibregl.GeolocateControl({trackUserLocation:true}), "top-right");
 
+// Escape every value before it reaches innerHTML.
+// `note` and `contact_name` arrive from a PUBLIC, unauthenticated endpoint: without
+// this, a submission containing <img src=x onerror=...> runs in a responder's browser
+// and steals the token that unlocks everyone's personal data. Escaping happens at
+// render, never on input — storing exactly what someone typed matters when the text
+// is a plea for help.
+const ESCAPES = {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};
+const esc = (v) => v == null ? "" : String(v).replace(/[&<>"']/g, (c) => ESCAPES[c]);
+
 const fmt = (v, u = "", d = 2) =>
   (v === null || v === undefined) ? "—" : `${Number(v).toFixed(d)}${u}`;
 
@@ -162,6 +179,11 @@ map.on("load", async () => {
   } catch (e) {
     document.getElementById("age-t").textContent = "โหลดข้อมูลไม่สำเร็จ / failed to load snapshot";
     document.getElementById("age").className = "age bad";
+    const el = document.getElementById("degraded");
+    el.classList.add("show");
+    el.innerHTML = `<b>⚠ โหลดข้อมูลไม่ได้ / Could not load data</b><br>` +
+      `ไม่มีข้อมูลที่บันทึกไว้ในเครื่อง · no cached snapshot available<br>` +
+      `เหตุด่วนโทร <b>1784</b> (ปภ.) หรือ <b>191</b>`;
     return;
   }
 
@@ -265,11 +287,11 @@ map.on("load", async () => {
   function showTide(p) {
     const bar = document.getElementById("tidebar");
     bar.classList.add("show");
-    document.getElementById("tide-name").textContent = `${p.name_th}`;
+    document.getElementById("tide-name").textContent = `${esc(p.name_th)}`;
     const regimeTh = {large:"น้ำขึ้นลงมาก", average:"ปานกลาง", small:"น้อย", unknown:"—"}[p.range_regime] || "—";
     const dirTh = {rising:"กำลังขึ้น", falling:"กำลังลง", slack:"น้ำนิ่ง", unknown:"—"}[p.state] || "—";
     document.getElementById("tide-state").innerHTML =
-      `${p.name} · ${dirTh} / ${p.state}` +
+      `${esc(p.name)} · ${dirTh} / ${esc(p.state)}` +
       `<br><span class="pill">ช่วงน้ำวันนี้ ${p.range_today_m ?? "—"} ม. · ${regimeTh} (p${p.range_percentile})</span>`;
     let next = [];
     try { next = JSON.parse(p.next || "[]"); } catch {}
@@ -321,20 +343,20 @@ map.on("load", async () => {
     // The "why" block is not decoration: a score with no reasoning is either ignored
     // or panics people, and neither is a safe outcome.
     const why = reasons.length ? `<div class="why"><b>เหตุผล · WHY</b><ul>` +
-        reasons.map(r => `<li>${r.th}<br><span style="color:var(--muted)">${r.en}</span></li>`).join("") +
+        reasons.map(r => `<li>${esc(r.th)}<br><span style="color:var(--muted)">${esc(r.en)}</span></li>`).join("") +
         `</ul></div>` : "";
     const ttbHtml = ttb !== null
       ? `<div class="ttb">⚠ ถึงระดับตลิ่งใน ~${ttb} ชม. · ~${ttb} h to bank level</div>` : "";
     const conf = p.risk_confidence
-      ? `<div class="conf">ความเชื่อมั่น / confidence: ${p.risk_confidence}` +
+      ? `<div class="conf">ความเชื่อมั่น / confidence: ${esc(p.risk_confidence)}` +
         (stale ? " · ข้อมูลเก่า / stale" : "") + `</div>` : "";
     new maplibregl.Popup({maxWidth:"320px"})
       .setLngLat(e.lngLat)
       .setHTML(`
         ${tag}
-        <div class="pop-h">${p.name ?? "—"}</div>
+        <div class="pop-h">${esc(p.name) || "—"}</div>
         ${ttbHtml}
-        <div class="pop-r"><span>จังหวัด / province</span><span>${p.province ?? "—"}</span></div>
+        <div class="pop-r"><span>จังหวัด / province</span><span>${esc(p.province) || "—"}</span></div>
         <div class="pop-r"><span>ระดับน้ำ / level</span><span>${fmt(n("level_msl")," m MSL")}</span></div>
         <div class="pop-r"><span>ระดับตลิ่ง / bank</span><span>${fmt(n("bank_msl")," m MSL")}</span></div>
         <div class="pop-r"><span>${over?"สูงกว่าตลิ่ง / above bank":"ต่ำกว่าตลิ่ง / freeboard"}</span>
@@ -345,7 +367,7 @@ map.on("load", async () => {
         <div class="pop-r"><span>น้ำท่า / discharge</span><span>${fmt(n("discharge_now_cms")," m³/s",1)}</span></div>
         <div class="pop-r"><span>แนวโน้ม 7 วัน / 7-day trend</span><span>${rise===null?"—":rise+"×"}</span></div>
         <div class="pop-r"><span>อายุข้อมูล / data age</span><span>${ageLabel(n("data_age_min"))}</span></div>
-        <div class="pop-r"><span>หน่วยงาน / agency</span><span>${p.agency ?? "—"}</span></div>
+        <div class="pop-r"><span>หน่วยงาน / agency</span><span>${esc(p.agency) || "—"}</span></div>
         ${why}${conf}
       `).addTo(map);
   });
@@ -371,7 +393,7 @@ map.on("load", async () => {
     document.getElementById("worst").innerHTML = top.length
       ? `<h3>พื้นที่เสี่ยงสูงสุด · HIGHEST RISK DISTRICTS</h3>` + top.map((a, i) =>
           `<a data-i="${i}"><span class="lv" style="background:${RISK_COLOUR[a.level]}">${a.level}</span>` +
-          `<span>${a.district ?? "—"}, ${a.province ?? "—"}` +
+          `<span>${esc(a.district) || "—"}, ${esc(a.province) || "—"}` +
           (a.worst_ttb_hr !== null && a.worst_ttb_hr !== undefined
             ? ` <span style="color:var(--over)">~${a.worst_ttb_hr} ชม.</span>` : "") +
           `</span></a>`).join("")
@@ -389,7 +411,28 @@ map.on("load", async () => {
   // backwater flooding, and it makes the tide layer discoverable.
   const seed = tide?.points?.find(p => p.id === "chaophraya_mouth") || tide?.points?.[0];
   if (seed) showTide({...seed, next: JSON.stringify(seed.next || [])});
+
+  // Degraded mode. The dangerous failure is the quiet one: the map still renders and
+  // the numbers behind it stopped being true hours ago. Say so, loudly.
+  const limit = meta?.health?.snapshot_stale_after_minutes ?? 90;
+  const unhealthy = meta?.health?.status && meta.health.status !== "pass";
+  if (!navigator.onLine || (mins !== null && mins > limit) || unhealthy) {
+    const el = document.getElementById("degraded");
+    el.classList.add("show");
+    const why = !navigator.onLine
+      ? "ออฟไลน์ — กำลังแสดงข้อมูลล่าสุดที่บันทึกไว้ / Offline — showing last saved data"
+      : (mins !== null && mins > limit)
+        ? `ข้อมูลเก่ากว่า ${Math.round(limit)} นาที / Snapshot is older than ${Math.round(limit)} min`
+        : "ระบบเก็บข้อมูลมีปัญหาบางส่วน / Pipeline reporting degraded";
+    const failed = (meta?.health?.checks || [])
+      .filter(c => c.status !== "pass").map(c => esc(c.detail)).join(" · ");
+    el.innerHTML = `<b>⚠ ข้อมูลอาจไม่เป็นปัจจุบัน / Data may be out of date</b><br>${esc(why)}` +
+      (failed ? `<br><span style="opacity:.85">${failed}</span>` : "") +
+      `<br>อย่าใช้ตัดสินใจเรื่องความปลอดภัยเพียงอย่างเดียว — โทร 1784 / 191`;
+  }
 });
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});
 </script>
 </body>
 </html>

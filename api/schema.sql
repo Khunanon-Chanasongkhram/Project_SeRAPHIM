@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS sos_requests (
   has_vulnerable  INTEGER NOT NULL DEFAULT 0 CHECK (has_vulnerable IN (0,1)),
 
   source          TEXT NOT NULL DEFAULT 'web' CHECK (source IN ('web','sms','phone','import')),
+  -- Stable per-browser id. The device is the real actor; an IP is a shared resource.
+  device_hash     TEXT,
   -- Client-generated id. An offline phone may retry the same request many times as
   -- connectivity flickers; this is what stops one family becoming twelve pins.
   client_id       TEXT,
@@ -120,9 +122,15 @@ CREATE INDEX IF NOT EXISTS idx_access_actor ON access_log(actor_id, at);
 
 -- ---------------------------------------------------------------------------
 -- Abuse resistance. A false "30 people trapped" diverts a boat from someone real.
+--
+-- Keyed by an arbitrary bucket ("dev:<hash>" or "ip:<hash>") rather than by IP alone.
+-- Thai mobile networks use carrier-grade NAT heavily, so thousands of subscribers can
+-- share one public address: a per-IP limit tight enough to stop an abuser would block
+-- an entire neighbourhood, and the people behind a shared mobile NAT are exactly the
+-- ones least likely to have a landline to call 1784 from.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS rate_limits (
-  ip_hash      TEXT PRIMARY KEY,
+  bucket       TEXT PRIMARY KEY,
   window_start INTEGER NOT NULL,
   count        INTEGER NOT NULL DEFAULT 0
 );

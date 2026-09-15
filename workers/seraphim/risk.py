@@ -51,6 +51,9 @@ TIDAL_BANK_ELEV_M = 5.0
 #: How close to high water counts as "drainage is blocked".
 TIDE_COINCIDENCE_HOURS = 3.0
 
+#: Ceiling for any level reached by forecast rather than observation.
+MAX_FORECAST_LEVEL = 4
+
 LEVEL_NAMES = {
     1: ("ปกติ", "Normal"),
     2: ("เฝ้าระวัง", "Watch"),
@@ -256,7 +259,16 @@ def assess(
         reasons.append(tide_reason)
         # Only compounds an already-elevated situation; a high tide alone floods nothing.
         if level >= 3 or (fb is not None and fb <= FREEBOARD_WATCH_M):
-            level = min(5, level + 1)
+            # Capped below 5 deliberately. Level 5 means "water is over the bank now" —
+            # an observed fact. A forecast, however well founded, must not wear the same
+            # badge as a river that is already out, or a responder scanning the map
+            # cannot tell what is happening from what might. Only `over_bank` reaches 5.
+            #
+            # Written as a guarded increment, not min(): a naive min() would DEMOTE an
+            # already-overtopped station from 5 to 4, which is how a cap intended to
+            # prevent overstatement ends up understating a river that is already out.
+            if level < MAX_FORECAST_LEVEL:
+                level += 1
 
     # --- honesty about the data ---------------------------------------------
     trend_conf = trend.confidence if trend else "none"

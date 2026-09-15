@@ -284,3 +284,40 @@ class TestGeo(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLevelFiveMeansObserved(unittest.TestCase):
+    """Level 5 must mean 'water is over the bank now', never a forecast.
+
+    Otherwise a responder scanning the map cannot distinguish a river that is already
+    out from one that might be in sixteen hours, and the top of the scale stops
+    carrying information exactly when it matters most.
+    """
+
+    def test_forecast_escalation_cannot_reach_five(self):
+        s = state(level=1.7, bank=2.0)  # 0.3 m freeboard, below bank
+        r = assess(s, rising_trend(0.02), TIDE, NOW)
+        self.assertTrue(any(x.code == "tide_block" for x in r.reasons))
+        self.assertLessEqual(r.level, 4)
+
+    def test_over_bank_still_reaches_five(self):
+        r = assess(state(level=2.5, bank=2.0), None, TIDE, NOW)
+        self.assertEqual(r.level, 5)
+        self.assertTrue(any(x.code == "over_bank" for x in r.reasons))
+
+    def test_a_five_always_carries_the_over_bank_reason(self):
+        for st in (state(level=2.5, bank=2.0), state(level=9.0, bank=2.0)):
+            r = assess(st, rising_trend(0.3), TIDE, NOW)
+            if r.level == 5:
+                self.assertTrue(any(x.code == "over_bank" for x in r.reasons))
+
+    def test_escalation_never_demotes_an_over_bank_station(self):
+        """A cap meant to prevent overstatement must not understate. Written as a
+        regression test because the first version of the cap used min() and silently
+        downgraded flooding rivers from 5 to 4."""
+        s = state(level=2.5, bank=2.0)
+        with_tide = assess(s, rising_trend(0.3), TIDE, NOW)
+        without = assess(s, rising_trend(0.3), [], NOW)
+        self.assertEqual(without.level, 5)
+        self.assertGreaterEqual(with_tide.level, without.level,
+                                "compounding must never reduce a risk level")

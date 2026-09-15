@@ -20,6 +20,16 @@ from seraphim.models import SourceHealth, StationState
 #: Bump when the output shape changes in a way clients must notice.
 SCHEMA_VERSION = 1
 
+#: Risk level at or above which full reasoning is published per station.
+REASONS_FROM_LEVEL = 2
+
+# Health thresholds. Published in meta.json so any monitor can read one field rather
+# than re-deriving judgement, and so "is it working" has a single agreed answer.
+MIN_EXPECTED_STATIONS = 800        # ~1,121 normally; a big drop means a silent break
+MAX_MEDIAN_AGE_MINUTES = 180.0
+MAX_STALE_FRACTION = 0.60
+MAX_SNAPSHOT_AGE_MINUTES = 90.0    # cron is every 30 min; 3 misses is a real fault
+
 
 def build_geojson(states: list[StationState], risks: dict | None = None) -> dict:
     """One feature per station, carrying its latest reading and derived freeboard.
@@ -76,9 +86,13 @@ def build_geojson(states: list[StationState], risks: dict | None = None) -> dict
                     "time_to_bank_hr": rk.time_to_bank_hr if rk else None,
                     "rate_m_per_hr": rk.rate_m_per_hr if rk else None,
                     "risk_confidence": rk.confidence if rk else None,
+                    # Reasons ride along with the score — but only where the score
+                    # asks something of the reader. At level 1 they are boilerplate
+                    # ("2.4 m below bank"), and on a failing flood-network connection
+                    # every kilobyte is a real cost to someone.
                     "reasons": (
                         [{"code": r.code, "th": r.th, "en": r.en} for r in rk.reasons]
-                        if rk else []
+                        if rk and rk.level >= REASONS_FROM_LEVEL else []
                     ),
                     "observed_at": ob.observed_at.isoformat(),
                     "data_age_min": s.data_age_minutes,
@@ -149,6 +163,10 @@ def build_meta(
             "tide_points": tide_points,
         },
         "risk": _risk_counts(risks or {}),
+        "health": build_health(states, health, {
+            "stations": len(states),
+            "stale": sum(1 for s in states if s.is_stale),
+        }),
         "data_age_minutes": {
             "min": round(min(ages), 1) if ages else None,
             "median": round(sorted(ages)[len(ages) // 2], 1) if ages else None,
@@ -165,6 +183,56 @@ def build_meta(
         "disclaimer": (
             "SeRAPHIM is not an official emergency channel. In an emergency in Thailand "
             "call 1784 (DDPM) or 191."
+        ),
+    }
+
+
+def build_health(states, health, meta_counts: dict) -> dict:
+    """An explicit verdict, not a pile of numbers.
+
+    The failure this guards against is the quiet one: the pipeline keeps running, the
+    map keeps rendering, and the data behind it stopped being true hours ago. Each
+    check names what is wrong in words a human can act on.
+    """
+    checks: list[dict] = []
+
+    def check(name: str, ok: bool, detail: str, severity: str = "fail") -> None:
+        checks.append({"check": name, "status": "pass" if ok else severity,
+                       "detail": detail})
+
+    total = meta_counts["stations"]
+    check("station_count", total >= MIN_EXPECTED_STATIONS,
+          f"{total} stations (expect >= {MIN_EXPECTED_STATIONS})")
+
+    failed = [h.source for h in health if not h.ok]
+    check("sources", not failed,
+          "all sources ok" if not failed else f"failed: {', '.join(failed)}")
+
+    ages = [s.data_age_minutes for s in states]
+    median = sorted(ages)[len(ages) // 2] if ages else None
+    check("data_freshness", median is not None and median <= MAX_MEDIAN_AGE_MINUTES,
+          f"median reading age {median} min (limit {MAX_MEDIAN_AGE_MINUTES:g})",
+          severity="warn")
+
+    stale_fraction = (meta_counts["stale"] / total) if total else 1.0
+    check("reporting_rate", stale_fraction <= MAX_STALE_FRACTION,
+          f"{stale_fraction:.0%} of stations not reporting (limit {MAX_STALE_FRACTION:.0%})",
+          severity="warn")
+
+    worst = "pass"
+    for c in checks:
+        if c["status"] == "fail":
+            worst = "fail"
+            break
+        if c["status"] == "warn":
+            worst = "warn"
+    return {
+        "status": worst,
+        "checks": checks,
+        "snapshot_stale_after_minutes": MAX_SNAPSHOT_AGE_MINUTES,
+        "note": (
+            "A client whose snapshot is older than snapshot_stale_after_minutes should "
+            "tell the reader the data is stale rather than render it as current."
         ),
     }
 

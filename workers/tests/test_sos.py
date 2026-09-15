@@ -77,7 +77,9 @@ class TestConformance(unittest.TestCase):
     def test_worker_shares_the_thresholds(self):
         js = WORKER_JS.read_text(encoding="utf-8")
         for token in ("DEPTH_LIFE_THREATENING_CM = 150", "DEPTH_DANGEROUS_CM = 100",
-                      "LARGE_GROUP = 10", "AGE_ESCALATE_MINUTES = 360"):
+                      "LARGE_GROUP = 10", "AGE_ESCALATE_MINUTES = 360",
+                      "RATE_MAX_DEVICE = 8", "RATE_MAX_IP = 300",
+                      "RATE_MAX_IP_CRITICAL = 900"):
             self.assertIn(token, js, f"threshold drift: {token}")
 
 
@@ -184,18 +186,44 @@ class TestOfflineIdempotency(unittest.TestCase):
 class TestAbuseResistance(unittest.TestCase):
     """A fake request diverts a boat from someone real."""
 
-    def test_rate_limit_blocks_a_flood_from_one_source(self):
+    def test_one_device_spamming_is_stopped(self):
         conn = db()
-        codes = [ds.submit(conn, dict(BASE, client_id=f"c{i}"), "same-ip")[0]
-                 for i in range(ds.RATE_MAX + 4)]
-        self.assertEqual(codes.count(429), 4)
-        self.assertEqual(codes.count(201), ds.RATE_MAX)
+        codes = [ds.submit(conn, dict(BASE, client_id=f"c{i}", device_id="same-device"),
+                           "ip-a")[0] for i in range(ds.RATE_MAX_DEVICE + 6)]
+        self.assertEqual(codes.count(201), ds.RATE_MAX_DEVICE)
+        self.assertEqual(codes.count(429), 6)
+
+    def test_carrier_nat_does_not_block_a_neighbourhood(self):
+        """Thai mobile networks put thousands of subscribers behind one address.
+        A per-IP limit tight enough to stop an abuser would silently block the
+        people least able to call 1784 instead."""
+        conn = db()
+        codes = [ds.submit(conn, dict(BASE, client_id=f"n{i}", device_id=f"dev-{i}"),
+                           "one-shared-nat")[0] for i in range(250)]
+        self.assertEqual(codes.count(201), 250, "distinct devices on one NAT must get through")
+
+    def test_life_threatening_reports_get_extra_headroom(self):
+        """A real mass-casualty event in one soi produces exactly the traffic shape
+        a rate limiter mistakes for abuse. A false accept costs a triage review;
+        a false reject can cost a life."""
+        conn = db()
+        codes = [ds.submit(conn, dict(BASE, needs=["medical"], client_id=f"m{i}",
+                                      device_id=f"dev-{i}"), "one-shared-nat")[0]
+                 for i in range(ds.RATE_MAX_IP + 100)]
+        self.assertEqual(codes.count(429), 0)
+
+    def test_non_critical_traffic_still_has_an_ip_ceiling(self):
+        conn = db()
+        codes = [ds.submit(conn, dict(BASE, client_id=f"f{i}", device_id=f"dev-{i}"),
+                           "nat")[0] for i in range(ds.RATE_MAX_IP + 20)]
+        self.assertEqual(codes.count(201), ds.RATE_MAX_IP)
+        self.assertEqual(codes.count(429), 20)
 
     def test_rate_limit_is_per_source(self):
         conn = db()
-        for i in range(ds.RATE_MAX):
-            ds.submit(conn, dict(BASE, client_id=f"x{i}"), "ip-a")
-        status, _ = ds.submit(conn, dict(BASE, client_id="other"), "ip-b")
+        for i in range(ds.RATE_MAX_IP):
+            ds.submit(conn, dict(BASE, client_id=f"x{i}", device_id=f"d{i}"), "ip-a")
+        status, _ = ds.submit(conn, dict(BASE, client_id="other", device_id="dz"), "ip-b")
         self.assertEqual(status, 201, "one abuser must not block everyone else")
 
 
@@ -382,3 +410,63 @@ class TestNeedHelpers(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSecurityFixes(unittest.TestCase):
+    """Regression tests for docs/SECURITY.md. Each one fails if a fix is reverted."""
+
+    def test_f2_scoped_responder_cannot_read_outside_its_province(self):
+        conn = db()
+        _, mine = post(conn, province="สมุทรปราการ", client_id="a")
+        _, theirs = post(conn, province="เชียงใหม่", client_id="b")
+        actor = ds.actor_for(conn, "Bearer " + ds.create_actor(conn, scope="สมุทรปราการ"))
+        inside = conn.execute("SELECT * FROM sos_requests WHERE id=?", (mine["id"],)).fetchone()
+        outside = conn.execute("SELECT * FROM sos_requests WHERE id=?", (theirs["id"],)).fetchone()
+        self.assertFalse(ds.out_of_scope(actor, inside))
+        self.assertTrue(ds.out_of_scope(actor, outside))
+
+    def test_f2_scoped_responder_cannot_modify_outside_its_province(self):
+        conn = db()
+        _, theirs = post(conn, province="เชียงใหม่", client_id="b")
+        actor = ds.actor_for(conn, "Bearer " + ds.create_actor(conn, scope="สมุทรปราการ"))
+        status, body = ds.update_request(conn, actor, theirs["id"], {"status": "resolved"})
+        self.assertEqual(status, 404, "must not leak existence via 403")
+        self.assertEqual(
+            conn.execute("SELECT status FROM sos_requests WHERE id=?",
+                         (theirs["id"],)).fetchone()[0], "new")
+
+    def test_f2_unscoped_responder_still_reaches_everything(self):
+        conn = db()
+        _, r = post(conn, province="เชียงใหม่")
+        actor = ds.actor_for(conn, "Bearer " + ds.create_actor(conn))
+        row = conn.execute("SELECT * FROM sos_requests WHERE id=?", (r["id"],)).fetchone()
+        self.assertFalse(ds.out_of_scope(actor, row))
+
+    def test_f3_worker_refuses_the_placeholder_salt(self):
+        js = WORKER_JS.read_text(encoding="utf-8")
+        self.assertIn("PLACEHOLDER_SALT", js)
+        self.assertIn('fail(503, "misconfigured"', js)
+
+    def test_f1_every_page_escapes_before_innerhtml(self):
+        for name in ("ops.html", "sos.html", "index.html"):
+            html = (ROOT.parent / "web" / name).read_text(encoding="utf-8")
+            self.assertIn("const esc =", html, f"{name} must define an escaper")
+
+    def test_f1_sensitive_fields_are_escaped_in_the_ops_console(self):
+        import re
+        html = (ROOT.parent / "web" / "ops.html").read_text(encoding="utf-8")
+        risky = re.compile(r"\b(r|c|h)\.(note|contact_name|district|province|status|action|to_status)\b")
+        unescaped = [m for m in re.findall(r"\$\{([^}]*)\}", html)
+                     if risky.search(m) and "esc(" not in m]
+        self.assertEqual(unescaped, [], f"unescaped user data reaches innerHTML: {unescaped}")
+
+    def test_f4_untrusted_api_override_is_ignored(self):
+        html = (ROOT.parent / "web" / "sos.html").read_text(encoding="utf-8")
+        self.assertIn("resolveApi", html)
+        self.assertIn("Ignoring untrusted", html)
+
+    def test_f5_csp_is_configured(self):
+        headers = (ROOT.parent / "web" / "_headers").read_text(encoding="utf-8")
+        for token in ("Content-Security-Policy", "frame-ancestors 'none'",
+                      "X-Content-Type-Options", "form-action 'self'"):
+            self.assertIn(token, headers)

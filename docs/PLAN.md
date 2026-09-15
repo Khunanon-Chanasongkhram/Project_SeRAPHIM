@@ -205,7 +205,7 @@ log, CSV & sit-rep export.
 | **3** Calm mode | tide curves, solunar, bite windows, reservoirs | 7-day fishing planner for any Thai coast/river point |
 | **4** ✅ Respond | SOS intake (offline PWA) → Worker + D1, triage console, trust tiers, PDPA controls, audit | citizen → responder round trip, load-tested |
 | **5** Terrain | DEM ingest, HAND, inundation mapping, 3D | "your street floods at 2.1 m at this gauge" |
-| **6** Harden | load test the spike, degraded mode, SMS fallback, observability, security review | survives a simulated national flood event |
+| **6** ✅ Harden | load test the spike, degraded mode, SMS fallback, observability, security review | survives a simulated national flood event |
 | **7** Global + multi-hazard | country adapter pattern, GDACS/USGS, i18n | second country live with no core rewrite |
 
 **Global scaling is already half-solved** — Open-Meteo Flood/Marine/Forecast and GDACS are

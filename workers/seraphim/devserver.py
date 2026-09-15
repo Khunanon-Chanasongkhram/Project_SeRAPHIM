@@ -33,7 +33,15 @@ DISCLAIMER = {
 }
 RETENTION_DAYS = 90
 RATE_WINDOW_MS = 10 * 60_000
-RATE_MAX = 12
+#: A device is the real actor. An IP is a shared resource: Thai mobile networks use
+#: carrier-grade NAT, so a limit tight enough to stop an abuser would block a whole
+#: neighbourhood of mobile-only users — the people least able to call 1784 instead.
+RATE_MAX_DEVICE = 8
+RATE_MAX_IP = 300
+#: Life-threatening reports get more headroom: a real mass-casualty event in one soi
+#: produces exactly the traffic shape a rate limiter mistakes for abuse.
+RATE_MAX_IP_CRITICAL = 900
+CRITICAL_NEEDS = frozenset({"medical", "trapped", "missing", "oxygen", "dialysis"})
 OPEN = ("new", "triaged", "assigned", "in_progress")
 ALLOWED_STATUS = {*OPEN, "resolved", "cancelled", "duplicate"}
 RANK = {"volunteer": 1, "official": 2, "admin": 3}
@@ -89,24 +97,31 @@ def _clean(v, n):
     return v.strip()[:n] if isinstance(v, str) and v.strip() else None
 
 
-def rate_limited(db, ip_hash: str) -> bool:
+def bump_bucket(db, bucket: str, max_count: int) -> bool:
     now = now_ms()
     row = db.execute(
-        "SELECT window_start, count FROM rate_limits WHERE ip_hash=?", (ip_hash,)
+        "SELECT window_start, count FROM rate_limits WHERE bucket=?", (bucket,)
     ).fetchone()
     if row is None or now - row["window_start"] > RATE_WINDOW_MS:
         db.execute(
-            "INSERT INTO rate_limits (ip_hash, window_start, count) VALUES (?,?,1)"
-            " ON CONFLICT(ip_hash) DO UPDATE SET window_start=?, count=1",
-            (ip_hash, now, now),
-        )
+            "INSERT INTO rate_limits (bucket, window_start, count) VALUES (?,?,1)"
+            " ON CONFLICT(bucket) DO UPDATE SET window_start=?, count=1",
+            (bucket, now, now))
         db.commit()
         return False
-    if row["count"] >= RATE_MAX:
+    if row["count"] >= max_count:
         return True
-    db.execute("UPDATE rate_limits SET count=count+1 WHERE ip_hash=?", (ip_hash,))
+    db.execute("UPDATE rate_limits SET count=count+1 WHERE bucket=?", (bucket,))
     db.commit()
     return False
+
+
+def rate_limited(db, ip_hash: str, device_hash: str | None = None,
+                 needs: list[str] | None = None) -> bool:
+    ip_max = RATE_MAX_IP_CRITICAL if set(needs or []) & CRITICAL_NEEDS else RATE_MAX_IP
+    if device_hash and bump_bucket(db, f"dev:{device_hash}", RATE_MAX_DEVICE):
+        return True
+    return bump_bucket(db, f"ip:{ip_hash}", ip_max)
 
 
 def submit(db, body: dict, ip_hash: str) -> tuple[int, dict]:
@@ -123,7 +138,9 @@ def submit(db, body: dict, ip_hash: str) -> tuple[int, dict]:
         return 422, {"ok": False, "error": "no_needs"}
     if body.get("consent") is not True:
         return 422, {"ok": False, "error": "consent_required"}
-    if rate_limited(db, ip_hash):
+    device_hash = (sha256(str(body["device_id"])[:80] + "dev-salt")
+                   if body.get("device_id") else None)
+    if rate_limited(db, ip_hash, device_hash, needs):
         return 429, {"ok": False, "error": "rate_limited"}
 
     client_id = _clean(body.get("client_id"), 64)
@@ -145,15 +162,16 @@ def submit(db, body: dict, ip_hash: str) -> tuple[int, dict]:
         """INSERT INTO sos_requests
            (id, created_at, updated_at, status, severity, severity_auto, lat, lon, geohash,
             province, district, people_count, needs, water_depth_cm, note, contact_name,
-            contact_phone, safe_to_call, has_vulnerable, source, client_id, consent_at, purge_after)
-           VALUES (?,?,?,'new',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'web',?,?,?)""",
+            contact_phone, safe_to_call, has_vulnerable, source, client_id, device_hash,
+            consent_at, purge_after)
+           VALUES (?,?,?,'new',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'web',?,?,?,?)""",
         (rid, now, now, severity, severity, lat, lon, geohash(lat, lon, 7),
          _clean(body.get("province"), 100), _clean(body.get("district"), 100),
          people, json.dumps(needs), depth, _clean(body.get("note"), 1000),
          _clean(body.get("contact_name"), 120), _clean(body.get("contact_phone"), 32),
          0 if body.get("safe_to_call") is False else 1,
          1 if any(NEED_BY_CODE[n].vulnerable for n in needs) else 0,
-         client_id, now, now + RETENTION_DAYS * 86400_000),
+         client_id, device_hash, now, now + RETENTION_DAYS * 86400_000),
     )
     db.execute(
         "INSERT INTO sos_updates (id, request_id, at, actor_id, action, to_status)"
@@ -173,6 +191,15 @@ def actor_for(db, authorization: str | None):
     if row and row["expires_at"] and row["expires_at"] < now_ms():
         return None
     return row
+
+
+def out_of_scope(actor, row) -> bool:
+    """F2: a province-scoped responder must not reach outside it.
+
+    Callers return 404 rather than 403, so the response cannot be used to confirm that
+    a request exists somewhere the caller is not allowed to look.
+    """
+    return bool(actor["scope_province"]) and row["province"] != actor["scope_province"]
 
 
 def responder_view(row, now) -> dict:
@@ -210,8 +237,9 @@ def listing(db, actor, status=None, limit=200) -> list[dict]:
 
 
 def update_request(db, actor, rid, body) -> tuple[int, dict]:
-    row = db.execute("SELECT status FROM sos_requests WHERE id=?", (rid,)).fetchone()
-    if row is None:
+    row = db.execute(
+        "SELECT status, province FROM sos_requests WHERE id=?", (rid,)).fetchone()
+    if row is None or out_of_scope(actor, row):
         return 404, {"ok": False, "error": "not_found"}
     status = body.get("status") if body.get("status") in ALLOWED_STATUS else None
     severity = _int_or_none(body.get("severity"), 1, 5)
@@ -312,7 +340,7 @@ def make_handler(db):
             if path.startswith("/api/sos/"):
                 rid = path.rsplit("/", 1)[-1]
                 row = db.execute("SELECT * FROM sos_requests WHERE id=?", (rid,)).fetchone()
-                if row is None:
+                if row is None or out_of_scope(actor, row):
                     return self._send(404, {"ok": False, "error": "not_found"})
                 db.execute(
                     "INSERT INTO access_log (id, at, actor_id, request_id, fields, ip_hash)"

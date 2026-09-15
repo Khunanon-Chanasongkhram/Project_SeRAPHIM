@@ -152,8 +152,36 @@
 
 <script>
 // API base. Same origin in dev; the Cloudflare Worker URL in production.
-const API = new URLSearchParams(location.search).get("api")
-  || localStorage.getItem("seraphim_api") || "http://127.0.0.1:8788";
+// F4: the API origin must NEVER come from an untrusted link. A URL like
+// ?api=https://attacker.example would send this person's name, phone, location and
+// medical needs to an attacker while the page still looks legitimate — plausible
+// during a flood, when links spread fast through LINE and Facebook groups.
+// The override is honoured only for localhost, as a developer convenience.
+function resolveApi() {
+  const fallback = localStorage.getItem("seraphim_api") || "http://127.0.0.1:8788";
+  const asked = new URLSearchParams(location.search).get("api");
+  if (!asked) return fallback;
+  try {
+    const u = new URL(asked, location.origin);
+    const local = ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname);
+    if (local || u.origin === location.origin) return u.origin;
+    console.warn("Ignoring untrusted ?api= override:", asked);
+  } catch { /* unparseable, fall through */ }
+  return fallback;
+}
+const API = resolveApi();
+
+// Stable per-browser id. Rate limiting keys on the DEVICE because that is the real
+// actor; the IP is a shared resource on Thai mobile networks, where carrier-grade NAT
+// puts thousands of people behind one address.
+function deviceId() {
+  let d = localStorage.getItem("seraphim_device");
+  if (!d) {
+    d = (crypto.randomUUID?.() || String(Date.now()) + Math.random());
+    try { localStorage.setItem("seraphim_device", d); } catch { /* private mode */ }
+  }
+  return d;
+}
 
 const NEEDS = [
   ["medical","เจ็บป่วยฉุกเฉิน","Medical emergency",1],
@@ -179,6 +207,15 @@ const NEEDS = [
 ];
 
 const $ = (id) => document.getElementById(id);
+// Escape every value before it reaches innerHTML.
+// `note` and `contact_name` arrive from a PUBLIC, unauthenticated endpoint: without
+// this, a submission containing <img src=x onerror=...> runs in a responder's browser
+// and steals the token that unlocks everyone's personal data. Escaping happens at
+// render, never on input — storing exactly what someone typed matters when the text
+// is a plea for help.
+const ESCAPES = {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};
+const esc = (v) => v == null ? "" : String(v).replace(/[&<>"']/g, (c) => ESCAPES[c]);
+
 let lat = null, lon = null, map = null, marker = null;
 
 $("needs").innerHTML = NEEDS.map(([c,th,en,crit]) =>
@@ -304,7 +341,7 @@ function succeeded(res, fromQueue) {
   $("done").hidden = false;
   $("done").innerHTML =
     `<h2>✓ ส่งคำขอแล้ว · Request received</h2>
-     <div>หมายเลขอ้างอิง / reference: <code>${res.id}</code></div>
+     <div>หมายเลขอ้างอิง / reference: <code>${esc(res.id)}</code></div>
      <div style="font-size:13px;color:#5b6672;margin-top:6px">
        ระดับความเร่งด่วน / severity: <b>${res.severity ?? "—"}</b>
        ${res.duplicate ? " · (คำขอนี้ส่งไปแล้ว / already submitted)" : ""}
@@ -325,6 +362,7 @@ $("form").addEventListener("submit", async (e) => {
     contact_phone: $("phone").value || null,
     safe_to_call: $("safe").checked,
     consent: $("consent").checked,
+    device_id: deviceId(),
   };
   $("send").disabled = true;
   $("send").textContent = "กำลังส่ง…";
@@ -336,7 +374,7 @@ $("form").addEventListener("submit", async (e) => {
     await queueAdd(rec);
     $("pending").hidden = false;
     $("pending").innerHTML =
-      `⏳ <b>บันทึกไว้แล้ว — ยังส่งไม่ได้</b> (${err.message})<br>
+      `⏳ <b>บันทึกไว้แล้ว — ยังส่งไม่ได้</b> (${esc(err.message)})<br>
        ระบบจะส่งให้อัตโนมัติเมื่อมีสัญญาณ อย่าปิดหน้านี้<br>
        Saved on this device; it will send automatically when you reconnect.`;
   } finally {
@@ -355,6 +393,11 @@ window.addEventListener("online", netState);
 window.addEventListener("offline", netState);
 netState();
 flush();
+
+// Retry queued submissions periodically, not only on an "online" event. A request
+// rejected by a rate limit, or by a server having a bad minute, is still queued and
+// still needed — and during a flood nobody is going to sit reloading the page.
+setInterval(() => { if (navigator.onLine) flush(); }, 45000);
 
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("./sw.js").catch(() => {});

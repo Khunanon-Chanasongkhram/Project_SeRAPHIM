@@ -55,7 +55,32 @@ const MAX_NOTE = 1000;
 const MAX_NEEDS = 12;
 const RETENTION_DAYS = 90;          // PDPA storage limitation
 const RATE_WINDOW_MS = 10 * 60_000; // 10 minutes
-const RATE_MAX = 12;                // submissions per IP per window
+
+// Two buckets, because they are protecting against different things.
+//
+// A DEVICE is the real actor: one browser submitting 40 times in ten minutes is either
+// broken or malicious, and 8 is generous for a household updating its situation.
+//
+// An IP is a shared resource. Thai mobile networks use carrier-grade NAT, so thousands
+// of subscribers can sit behind one address. A limit tight enough to stop an abuser
+// would block a whole neighbourhood — and mobile-only users are disproportionately the
+// ones with no landline to call 1784 from. So the IP bucket is deliberately loose: it
+// exists to stop a single machine hammering the endpoint, not to police a carrier.
+const RATE_MAX_DEVICE = 8;
+const RATE_MAX_IP = 300;
+// Life-threatening reports get more headroom still: a genuine mass-casualty event in
+// one neighbourhood produces exactly the traffic shape a rate limiter mistakes for
+// abuse. A false accept costs one triage review; a false reject can cost a life.
+const RATE_MAX_IP_CRITICAL = 900;
+const CRITICAL_NEEDS = new Set(["medical", "trapped", "missing", "oxygen", "dialysis"]);
+
+/**
+ * F3: deployed with the placeholder salt, every ip_hash is computed with a publicly
+ * known value, so anyone holding the database can recover submitter IPs by hashing
+ * candidates. We fail closed: a deployment that silently de-anonymises the people
+ * asking for help is worse than one that is visibly misconfigured.
+ */
+const PLACEHOLDER_SALT = "change-me-before-deploy";
 
 function deriveSeverity(needs, peopleCount, waterDepthCm) {
   const known = needs.map((n) => NEEDS[n]).filter(Boolean);
@@ -151,23 +176,30 @@ async function actorFor(request, env) {
 const RANK = { volunteer: 1, official: 2, admin: 3 };
 const atLeast = (actor, role) => !!actor && (RANK[actor.role] || 0) >= RANK[role];
 
-async function rateLimited(env, ipHash) {
+async function bumpBucket(env, bucket, max) {
   const now = Date.now();
   const row = await env.DB.prepare(
-    `SELECT window_start, count FROM rate_limits WHERE ip_hash = ?1`
-  ).bind(ipHash).first();
+    `SELECT window_start, count FROM rate_limits WHERE bucket = ?1`
+  ).bind(bucket).first();
   if (!row || now - row.window_start > RATE_WINDOW_MS) {
     await env.DB.prepare(
-      `INSERT INTO rate_limits (ip_hash, window_start, count) VALUES (?1, ?2, 1)
-       ON CONFLICT(ip_hash) DO UPDATE SET window_start = ?2, count = 1`
-    ).bind(ipHash, now).run();
+      `INSERT INTO rate_limits (bucket, window_start, count) VALUES (?1, ?2, 1)
+       ON CONFLICT(bucket) DO UPDATE SET window_start = ?2, count = 1`
+    ).bind(bucket, now).run();
     return false;
   }
-  if (row.count >= RATE_MAX) return true;
+  if (row.count >= max) return true;
   await env.DB.prepare(
-    `UPDATE rate_limits SET count = count + 1 WHERE ip_hash = ?1`
-  ).bind(ipHash).run();
+    `UPDATE rate_limits SET count = count + 1 WHERE bucket = ?1`
+  ).bind(bucket).run();
   return false;
+}
+
+async function rateLimited(env, ipHash, deviceHash, needs) {
+  const ipMax = needs.some((n) => CRITICAL_NEEDS.has(n))
+    ? RATE_MAX_IP_CRITICAL : RATE_MAX_IP;
+  if (deviceHash && await bumpBucket(env, `dev:${deviceHash}`, RATE_MAX_DEVICE)) return true;
+  return bumpBucket(env, `ip:${ipHash}`, ipMax);
 }
 
 /** Strip every personal field. Used for anything a non-responder can see. */
@@ -218,10 +250,16 @@ async function submit(request, env) {
     return fail(422, "consent_required",
       "Consent to share this information with responders is required (PDPA).");
 
+  if (!env.IP_SALT || env.IP_SALT === PLACEHOLDER_SALT)
+    return fail(503, "misconfigured",
+      "IP_SALT is not set. Run: wrangler secret put IP_SALT");
+
   const ipHash = await sha256(
-    (request.headers.get("CF-Connecting-IP") || "0.0.0.0") + (env.IP_SALT || "seraphim")
+    (request.headers.get("CF-Connecting-IP") || "0.0.0.0") + env.IP_SALT
   );
-  if (await rateLimited(env, ipHash))
+  const deviceHash = body.device_id
+    ? await sha256(String(body.device_id).slice(0, 80) + env.IP_SALT) : null;
+  if (await rateLimited(env, ipHash, deviceHash, needs))
     return fail(429, "rate_limited",
       "Too many submissions from this connection. If this is an emergency call 1784 or 191.");
 
@@ -247,8 +285,9 @@ async function submit(request, env) {
     `INSERT INTO sos_requests
       (id, created_at, updated_at, status, severity, severity_auto, lat, lon, geohash,
        province, district, people_count, needs, water_depth_cm, note, contact_name,
-       contact_phone, safe_to_call, has_vulnerable, source, client_id, consent_at, purge_after)
-     VALUES (?1,?2,?2,'new',?3,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,'web',?17,?2,?18)`
+       contact_phone, safe_to_call, has_vulnerable, source, client_id, device_hash,
+       consent_at, purge_after)
+     VALUES (?1,?2,?2,'new',?3,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,'web',?17,?19,?2,?18)`
   ).bind(
     id, now, severity, lat, lon, geohash(lat, lon, 7),
     clean(body.province, 100), clean(body.district, 100),
@@ -256,7 +295,7 @@ async function submit(request, env) {
     clean(body.contact_name, 120), clean(body.contact_phone, 32),
     body.safe_to_call === false ? 0 : 1,
     needs.some((n) => NEEDS[n].vulnerable) ? 1 : 0,
-    clientId, now + RETENTION_DAYS * 86400_000
+    clientId, now + RETENTION_DAYS * 86400_000, deviceHash
   ).run();
 
   await env.DB.prepare(
@@ -296,9 +335,18 @@ async function list(request, env, actor) {
   return json({ ok: true, count: rows.length, requests: rows });
 }
 
+/**
+ * F2: a responder scoped to one province must not reach outside it. Returns 404 rather
+ * than 403 on an out-of-scope row, so the response cannot be used to confirm that a
+ * request exists somewhere the caller is not allowed to look.
+ */
+function outOfScope(actor, row) {
+  return !!actor.scope_province && row.province !== actor.scope_province;
+}
+
 async function detail(env, actor, id, request) {
   const row = await env.DB.prepare(`SELECT * FROM sos_requests WHERE id = ?1`).bind(id).first();
-  if (!row) return fail(404, "not_found");
+  if (!row || outOfScope(actor, row)) return fail(404, "not_found");
   const { results } = await env.DB.prepare(
     `SELECT * FROM sos_updates WHERE request_id = ?1 ORDER BY at`
   ).bind(id).all();
@@ -318,8 +366,8 @@ async function update(request, env, actor, id) {
   try { body = await request.json(); } catch { return fail(400, "bad_json"); }
 
   const row = await env.DB.prepare(
-    `SELECT status, severity FROM sos_requests WHERE id = ?1`).bind(id).first();
-  if (!row) return fail(404, "not_found");
+    `SELECT status, severity, province FROM sos_requests WHERE id = ?1`).bind(id).first();
+  if (!row || outOfScope(actor, row)) return fail(404, "not_found");
 
   const status = typeof body.status === "string" && ALLOWED_STATUS.has(body.status)
     ? body.status : null;

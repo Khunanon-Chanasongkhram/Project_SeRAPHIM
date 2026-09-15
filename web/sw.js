@@ -6,6 +6,10 @@
  */
 const CACHE = "seraphim-v1";
 const SHELL = ["./sos.html", "./index.html", "./ops.html"];
+// Snapshots are cached too, so a failed origin degrades to last-known data rather
+// than a blank page. During a flood, yesterday's water levels clearly labelled as
+// old beat nothing at all.
+const DATA = /\/(stations\.geojson|meta\.json|tide\.json|areas\.json)$/;
 
 self.addEventListener("install", (e) => {
   // Cache what we can; a single failed asset must not abort the whole install and
@@ -28,6 +32,8 @@ self.addEventListener("fetch", (e) => {
   if (url.pathname.includes("/api/")) return;         // API is always live
 
   // Network-first so a connected user sees fresh data, cache as the fallback.
+  // Snapshots are explicitly included: they are the difference between a degraded
+  // map and no map.
   e.respondWith(
     fetch(request)
       .then((res) => {

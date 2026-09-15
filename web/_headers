@@ -1,0 +1,8 @@
+# Cloudflare Pages headers. F5: defence in depth, so a future HTML-injection mistake
+# degrades to a broken element rather than a stolen responder token.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com; connect-src 'self' https://*.workers.dev https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://api-v3.thaiwater.net; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), payment=(), geolocation=(self)
+  X-Frame-Options: DENY
