@@ -1,220 +1,172 @@
 # Deploy
 
-Everything runs on free tiers. **You do not need Node, npm or wrangler on your own
-machine** — the Worker is deployed from CI. You need a GitHub account (you have one)
-and a Cloudflare account (free, no card).
+The repo is public, so this is simpler than it used to be. **No credit card, and nothing
+to install.** GitHub builds the data and hosts the site. Cloudflare is only needed if you
+want the SOS side, and its free tier does not ask for a card.
 
-Work through this in order. Each step ends with something you can check.
+Two parts, and the first one works on its own:
 
----
+| Part | Where | Card? | Needed for |
+|---|---|---|---|
+| Map, fishing, data | GitHub Pages | no | everything except SOS |
+| SOS form and console | Cloudflare Workers + D1 | no | the emergency side |
 
-## What you are building
-
-```
-GitHub Actions (cron */30)  ──►  Cloudflare R2        (snapshots: JSON + GeoJSON)
-                                       │
-Cloudflare Pages (web/) ───────────────┘   reads snapshots over the CDN
-        │
-        └─►  Cloudflare Worker + D1   (SOS submissions only)
-```
-
-Three Cloudflare pieces: **R2** (data), **Pages** (site), **Worker + D1** (SOS).
+R2 is gone. It was the only piece that wanted a card, and since the site and its data now
+ship together from the same place, there is no cross-origin fetch and no CORS to set up.
 
 ---
 
-## 1 · Push to GitHub
+## Part 1: get the map live (about 5 minutes)
 
-You have no SSH key and no `gh` CLI, so use HTTPS with a Personal Access Token.
+### 1. Turn on Pages
 
-1. GitHub → **Settings → Developer settings → Personal access tokens → Fine-grained** →
-   **Generate new token**. Repository access: *Only select repositories* (you will pick
-   the new repo after creating it). Permissions: **Contents: Read and write**.
-2. Create an **empty private repo** named `Project_SeRAPHIM` (no README, no .gitignore).
-3. Then:
+Repo → **Settings** → **Pages** (left sidebar) → under **Build and deployment**, set
+**Source** to **GitHub Actions**. That is the whole step. Do not pick a branch.
+
+### 2. Run it
+
+Repo → **Actions** tab → **ingest** in the left list → **Run workflow** → **Run workflow**.
+
+It takes two or three minutes. It fetches live data, runs the tests, computes risk,
+bundles the pages and the snapshots together, and deploys.
+
+If the Actions tab says workflows are disabled because it is a fork or a new public repo,
+click the button to enable them.
+
+### 3. Look at it
+
+Your site is at:
+
+```
+https://<your-github-username>.github.io/Project_SeRAPHIM/
+```
+
+The exact URL is printed at the end of the workflow run, under the `deploy` job.
+
+Check it properly:
 
 ```bash
-cd /home/khunanon/Mini_Project/Project_SeRAPHIM
-git remote add origin https://github.com/<you>/Project_SeRAPHIM.git
-git push -u origin main          # username = your GitHub name, password = the token
+python3 scripts/check_deploy.py --data https://<you>.github.io/Project_SeRAPHIM/data/out
 ```
 
-Optional, so you are not asked every push:
-```bash
-git config credential.helper 'store --file ~/.git-credentials-seraphim'
-```
+Everything should pass except **time to bank**, which warns until the archive has built
+up. That is expected and explained below.
 
-**Check:** the repo shows 51 files and 7 commits. The **Actions** tab shows `ingest`
-starting automatically (it runs on push). It will pass and publish nothing yet — no R2
-secrets exist, so the publish step skips itself by design.
+**That is it for the map.** It now refreshes every 15 minutes on its own.
 
 ---
 
-## 2 · Cloudflare R2 — where snapshots live
+## About time to bank being empty at first
 
-Sign up at dash.cloudflare.com (free). Then **R2 → Create bucket**, name it
-`seraphim-snapshots`, location Automatic.
+It will say zero stations for the first hour or two. Nothing is broken.
 
-**Make it publicly readable:**
-bucket → **Settings → Public access → R2.dev subdomain → Allow Access**.
-Copy the URL — it looks like `https://pub-<hash>.r2.dev`.
+Time to bank is worked out from our own stored history, not from a single reading. The
+workflow keeps that history in the Actions cache between runs, so it has to accumulate.
+A trend needs at least 45 minutes of readings before it is allowed to publish a number,
+which at a 15 minute cadence means roughly three or four runs.
 
-> R2.dev is rate-limited and Cloudflare calls it development-grade. Fine to start; move
-> to a custom domain when you have one.
-
-**Add CORS**, or the browser blocks every fetch and shows you an empty map with no
-error. Same Settings page → **CORS policy → Add CORS policy**:
-
-```json
-[
-  {
-    "AllowedOrigins": ["*"],
-    "AllowedMethods": ["GET", "HEAD"],
-    "AllowedHeaders": ["Content-Type", "Range"],
-    "ExposeHeaders": ["Content-Length", "Content-Range"],
-    "MaxAgeSeconds": 3600
-  }
-]
-```
-
-Two notes. `"AllowedHeaders": ["*"]` is common in S3 examples but does not behave the
-same way on R2, so the headers are listed explicitly. And `"AllowedOrigins": ["*"]` is
-fine here because this bucket holds public, read-only flood data and no credentials are
-ever sent to it. Once you have your Pages URL you can narrow it to that origin.
-
-**Verify it before moving on:**
-
-```bash
-python3 scripts/check_deploy.py --data https://pub-<hash>.r2.dev/latest
-```
-
-This will fail until step 3 puts data in the bucket. That is expected.
-
-**Create an API token:** R2 → **Manage API Tokens → Create API token**,
-permission **Object Read & Write**, scoped to this bucket. Save the
-**Access Key ID** and **Secret Access Key** — shown once.
-
-Your **Account ID** is on the R2 overview page (and in the dashboard URL).
+Come back in two hours and there should be numbers.
 
 ---
 
-## 3 · GitHub secrets
+## Part 2: the SOS side (optional, about 20 minutes)
 
-Repo → **Settings → Secrets and variables → Actions → New repository secret**:
+Skip this if you only want the map. The map does not depend on it.
 
-| Secret | Value |
+### 4. Cloudflare account
+
+Sign up at dash.cloudflare.com. Email and password. It will push you to add a domain;
+you do not need one, skip it. **Workers and D1 do not ask for a card.**
+
+### 5. Make the database
+
+Left sidebar → **Workers & Pages** → **D1 SQL Database** → **Create database**.
+Name it `seraphim-sos`. Copy the **Database ID** it shows you.
+
+Open `api/wrangler.toml`, replace `PUT-YOUR-D1-DATABASE-ID-HERE` with that ID, commit
+and push.
+
+### 6. API token
+
+Cloudflare → your profile icon (top right) → **Profile** → **API Tokens** →
+**Create Token** → use the **Edit Cloudflare Workers** template → then **add one more
+permission**: Account, **D1**, **Edit**. Create it and copy the token.
+
+In GitHub: repo → **Settings** → **Secrets and variables** → **Actions** →
+**New repository secret**:
+
+| Name | Value |
 |---|---|
-| `CF_ACCOUNT_ID` | your Cloudflare account id |
-| `CF_R2_BUCKET` | `seraphim-snapshots` |
-| `CF_R2_ACCESS_KEY_ID` | from step 2 |
-| `CF_R2_SECRET_ACCESS_KEY` | from step 2 |
+| `CF_API_TOKEN` | the token you just made |
+| `CF_ACCOUNT_ID` | on the Cloudflare Workers overview page, and in the dashboard URL |
 
-**Check:** Actions → `ingest` → **Run workflow**. The summary should report ~1,121
-stations. Then:
+### 7. Deploy the Worker
 
-```bash
-python3 scripts/check_deploy.py --data https://pub-<hash>.r2.dev/latest
-```
+Actions → **deploy-api** → **Run workflow**, and **tick `apply_schema`** the first time
+so it creates the tables. Note the `*.workers.dev` URL it prints.
 
-Everything should pass except time to bank, which warns until the archive has built up.
+### 8. Set the secret salt
 
-> **Time-to-bank will be empty on the first runs.** It is computed from our own archive,
-> which the cache carries between runs, so it needs roughly 1–2 hours of history before
-> trends clear the 45-minute minimum span. This is expected, not a fault.
+The Worker refuses to accept any submission until this is set, on purpose: the
+placeholder value would make every stored IP hash reversible.
 
----
-
-## 4 · D1 and the SOS Worker
-
-**Create the database:** Cloudflare → **Workers & Pages → D1 → Create database**, name
-it `seraphim-sos`. Copy the **Database ID**.
-
-Paste it into `api/wrangler.toml`, replacing `PUT-YOUR-D1-DATABASE-ID-HERE`, then
-commit and push.
-
-**Create a Cloudflare API token** (different from the R2 one): dashboard → **My Profile
-→ API Tokens → Create Token → Edit Cloudflare Workers** template, and add
-**Account → D1 → Edit**. Add it to GitHub secrets as `CF_API_TOKEN`.
-
-**Set the IP salt** — the Worker refuses to accept submissions without it, deliberately,
-because the placeholder would make every stored IP hash reversible:
-
-Workers & Pages → `seraphim-sos` → *(after first deploy)* **Settings → Variables →
-Add variable → Encrypt**, name `IP_SALT`, value a long random string:
+Make one:
 
 ```bash
 python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-**Deploy:** Actions → **deploy-api → Run workflow**, tick **apply_schema** the first
-time. Note the `*.workers.dev` URL it prints.
+Cloudflare → **Workers & Pages** → `seraphim-sos` → **Settings** → **Variables and
+Secrets** → **Add** → type **Secret**, name `IP_SALT`, paste the value. Save and deploy.
 
-**Check:**
+Check it:
 
 ```bash
 python3 scripts/check_deploy.py --api https://seraphim-sos.<subdomain>.workers.dev
 ```
 
-It confirms the Worker answers, that the disclaimer rides on responses, that an
-unauthenticated caller cannot read the queue, and that the public summary leaks no
-personal data.
+This confirms the Worker answers, that the 1784 / 191 notice rides on responses, that a
+stranger cannot read the request queue, and that the public summary leaks no personal
+data.
 
----
+### 9. Point the site at the Worker
 
-## 5 · Your first responder account
+Repo → **Settings** → **Secrets and variables** → **Actions** → **Variables** tab →
+**New repository variable**:
+
+| Name | Value |
+|---|---|
+| `SERAPHIM_API_BASE` | `https://seraphim-sos.<subdomain>.workers.dev` |
+
+A variable, not a secret, because it ends up in the page source anyway.
+
+Re-run **ingest** so the site picks it up.
+
+### 10. Give yourself an account
 
 ```bash
 python3 scripts/make_token.py --role official --name "Your Name" --scope "สมุทรปราการ"
 ```
 
-It prints a token **once** and an `INSERT` statement. Run the SQL in
-**D1 → seraphim-sos → Console**. Keep the token somewhere safe; only its SHA-256 is
+It prints a token once and an `INSERT` statement. Run that SQL in Cloudflare →
+**D1** → `seraphim-sos` → **Console**. Keep the token somewhere safe; only its hash is
 stored, so it cannot be recovered.
 
-Scope responders to a province unless they genuinely need the whole country.
+Scope people to a province unless they really need the whole country.
 
 ---
 
-## 6 · Cloudflare Pages — the site
+## Check everything
 
-**Workers & Pages → Create → Pages → Connect to Git**, authorise the Cloudflare GitHub
-app for your private repo, select it. Build settings:
-
-| Field | Value |
+| Page | What you should see |
 |---|---|
-| Framework preset | **None** |
-| Build command | *(leave empty)* |
-| Build output directory | `web` |
+| `/` | about 1,121 stations, risk colours, a data age banner that is not red |
+| `/fish.html` | 40 spots, hourly chart, tide curve on the coastal ones |
+| `/sos.html` | submits and gives you a reference id |
+| `/ops.html` | your token signs in, and your test submission is in the queue |
 
-Deploy. You get `https://<project>.pages.dev`.
-
----
-
-## 7 · Point the site at your services
-
-Edit **`web/config.js`** — the only file that changes:
-
-```js
-window.SERAPHIM = {
-  dataBase: "https://pub-<hash>.r2.dev/latest",
-  apiBase:  "https://seraphim-sos.<subdomain>.workers.dev",
-};
-```
-
-Commit and push; Pages redeploys automatically.
-
----
-
-## 8 · Verify
-
-| Page | Expect |
-|---|---|
-| `/index.html` | ~1,121 stations, risk colours, a data-age banner that is not red |
-| `/fish.html` | 40 spots, hourly chart, tide curve on coastal spots |
-| `/sos.html` | submits and returns a reference id |
-| `/ops.html` | your token signs in; the test submission appears |
-
-Then **delete your test SOS request** from the D1 console so it is not sitting in a real
-queue:
+Then delete your test request, so it is not sitting in a real queue. Cloudflare → D1 →
+Console:
 
 ```sql
 DELETE FROM sos_requests WHERE note LIKE '%test%';
@@ -222,41 +174,38 @@ DELETE FROM sos_requests WHERE note LIKE '%test%';
 
 ---
 
-## 9 · Watch the Actions minute budget — this one bites
+## Things worth knowing
 
-Private repos get **2,000 Actions minutes/month** and **every job is rounded up to a
-whole minute**. At `*/30` that is 1,440 runs/month, so the budget only holds while each
-run finishes **under 60 seconds**. A run that takes 61 s is billed as 2 minutes and the
-month costs 2,880.
+**GitHub Pages has a soft bandwidth limit of 100 GB a month.** Fine for normal use and
+for a provincial flood. A nationwide event would go past it, and GitHub throttles rather
+than bills. If this ever gets real traffic, put Cloudflare in front of the Pages site or
+move the site to Cloudflare Pages, which is unmetered. See `OPERATIONS.md`.
 
-After the first day: **Settings → Billing → Plans → Actions usage**.
+**Actions minutes are unlimited now** because the repo is public. That is why the cron
+runs every 15 minutes instead of every 30.
 
-- Comfortably under → leave it.
-- Trending over → change the cron in `.github/workflows/ingest.yml` to `*/45`.
-- Making the repo **public** removes the limit entirely (unlimited minutes) and lets you
-  drop to `*/15` or `*/10`.
+**Scheduled workflows switch off after 60 days with no activity in the repo.** There is a
+`keepalive` workflow that makes a tiny commit monthly to prevent that. If you ever see
+the cron quietly stop, that is the first thing to check.
+
+**The ThaiWater terms of use are still unconfirmed.** The repo is public now, so this
+matters more than it did. Contact HII before you promote it anywhere, and leave the
+attribution visible.
+
+**The Worker has never run anywhere.** Step 7 is genuinely its first execution. Check
+`/api/health` before trusting it with anything.
 
 ---
 
-## Known limits at this point
+## When it breaks
 
-- **A national-scale flood exceeds the free Worker tier** (~204k requests vs 100k/day).
-  Provincial and regional events fit. The fix is the $5/month Workers Paid plan and no
-  code changes. See [`OPERATIONS.md`](OPERATIONS.md).
-- **R2.dev is development-grade.** Move to a custom domain before real users depend on it.
-- **ThaiWater's terms of use are unconfirmed.** Contact HII before promoting this
-  publicly, and keep the attribution visible.
-- **The Worker has never run anywhere yet.** Its logic is held to `api/conformance/`,
-  but step 4 is genuinely its first execution — check `/api/health` before trusting it.
-
-## If something breaks
-
-| Symptom | Cause |
+| What you see | Usually means |
 |---|---|
-| Map loads, no stations | `dataBase` wrong, or R2 CORS missing — check the browser console |
-| Fetches blocked, no error shown | CSP in `web/_headers`; add your domain to `connect-src` |
-| SOS returns 503 `misconfigured` | `IP_SALT` not set — that is the guard working |
-| SOS returns 429 immediately | rate limit; see the buckets in `OPERATIONS.md` |
-| Ops console rejects the token | wrong API URL, or the `INSERT` never ran |
-| Time-to-bank always empty | fewer than ~2 h of archive yet, or the cache is not restoring |
-| Cron silently stopped | scheduled workflows disable after 60 days idle; `keepalive.yml` guards this |
+| 404 on the Pages URL | Source is not set to GitHub Actions, or `ingest` has not finished |
+| Map loads but no stations | open the browser console; if the fetch 404s, check the deploy step copied `data/out` |
+| Blocked requests in the console | the CSP in the page head; add the host to `connect-src` |
+| Time to bank always empty | fewer than about two hours of runs, or the cache is not restoring |
+| SOS returns 503 `misconfigured` | `IP_SALT` not set, which is the guard working |
+| SOS returns 429 straight away | rate limit, see the buckets in `OPERATIONS.md` |
+| Ops console rejects your token | wrong API URL, or the `INSERT` never ran |
+| Cron silently stopped | 60 day inactivity rule, see `keepalive` above |

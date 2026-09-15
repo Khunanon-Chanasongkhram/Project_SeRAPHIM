@@ -30,6 +30,43 @@ Then Phase 3 (calm mode / fishing), 5 (terrain) or 6 (harden + load test).
 
 ---
 
+## 2026-09-15 - Session 10: repo went public, hosting moved to GitHub Pages
+
+**Why:** R2 asks for a credit card even on its free tier, despite Cloudflare's own page
+saying otherwise. Verified before sending him into it. He made the repo public instead,
+which unlocked a better option.
+
+**Verified, not assumed**
+- GitHub Pages' "10 builds per hour" limit **does not apply** to custom Actions workflows
+  deploying an artifact, so a 15 minute cron is fine.
+- **Cloudflare Workers and D1 need no card.** R2 was the only piece that did, so it is
+  now gone entirely.
+- Public repo means **unlimited Actions minutes**, so the cron went from */30 back to */15
+  and the whole 2,000 minute budget worry disappears.
+
+**What changed**
+- `ingest.yml` now builds the site and the snapshots together and deploys both to GitHub
+  Pages as one artifact. No R2, no secrets needed for the data path at all.
+- **Same origin, so CORS is gone as a concept.** The snapshots live inside the same
+  deployment as the pages, so there is no cross-origin fetch to configure or to fail
+  silently in someone's browser. That was the single most likely way the old path broke.
+- `config.js` is now **generated** by the workflow rather than hand-edited, with `apiBase`
+  from the repo variable `SERAPHIM_API_BASE`.
+- **The CSP had to move into the documents.** GitHub Pages cannot send custom headers, so
+  `web/_headers` is ignored there and the Phase 6 defence-in-depth would have silently
+  vanished on deploy. Added as `<meta http-equiv>` to all four pages, and tested both that
+  it exists and that it does not block the basemap, MapLibre's blob workers or the API.
+  `frame-ancestors` cannot be set this way, which is the one thing lost.
+- Simulated the exact deployed layout locally and served it: pages at root, data at
+  `./data/out`, 1,121 stations and 45 time-to-bank values all resolving.
+
+**Capacity correction.** The read path is no longer unmetered. GitHub Pages has a 100 GB
+per month soft limit: provincial event ~19 GB fits, regional ~86 GB is close, national
+~310 GB goes over by 3x. GitHub throttles rather than bills. Fix if it ever matters is
+Cloudflare in front, no code change.
+
+---
+
 ## 2026-09-15 — Session 9: deployment path (found and fixed a production-breaking gap)
 
 **Done — 167 tests passing. `docs/DEPLOY.md` written.**

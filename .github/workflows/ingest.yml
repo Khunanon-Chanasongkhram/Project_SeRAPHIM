@@ -1,30 +1,36 @@
 name: ingest
 
-# CADENCE NOTE — this is the single most cost-sensitive line in the repo.
-# Private repos get 2,000 Actions minutes/month on the Free plan, and every job is
-# rounded UP to a whole minute. At */30 that is ~1,440 min/month, which fits.
-# At */15 it would be ~2,880 min/month, which does NOT.
-# Public repos get unlimited minutes — when this repo goes public, drop to */15 or */10.
+# Fetches live data, computes risk, and publishes the whole site (pages + snapshots)
+# to GitHub Pages.
+#
+# Public repo, so Actions minutes are unlimited and the old 2,000 minute budget no
+# longer applies. The GitHub Pages "10 builds per hour" limit does not apply either,
+# because this is a custom workflow deploying an artifact rather than a Jekyll build.
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "*/15 * * * *"
   workflow_dispatch: {}
   push:
     branches: [main]
-    paths: ["workers/**", ".github/workflows/ingest.yml"]
-
-concurrency:
-  # Never let a slow run overlap the next tick.
-  group: ingest
-  cancel-in-progress: false
+    paths:
+      - "workers/**"
+      - "web/**"
+      - ".github/workflows/ingest.yml"
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  # Pages deployments must not overlap, and a slow run must not race the next tick.
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
 
@@ -32,21 +38,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      # No pip install: the project is stdlib-only by design. Nothing to cache,
-      # no supply chain, and the job starts in seconds — which is what keeps us
-      # inside the free minute budget.
-      # Two things must survive between runs, because GitHub runners are ephemeral
-      # and data/ is gitignored:
+      # Two things must survive between runs, because runners are ephemeral and
+      # data/ is gitignored:
       #
       #   data/cache   - forecasts, which only change every 6-24 hours
       #   data/archive - the gauge history the risk engine fits trends to. WITHOUT
       #                  THIS, every run starts with an empty archive, no trend ever
-      #                  spans the 45-minute minimum, and time-to-bank — the headline
-      #                  number of the whole project — never appears in production.
-      #
-      # A unique key always writes a fresh entry; restore-keys pulls the most recent
-      # one back. The archive is pruned to a bounded window so the cache cannot grow
-      # without limit.
+      #                  spans the 45-minute minimum, and time-to-bank never appears.
       - name: Restore working state
         uses: actions/cache@v4
         with:
@@ -57,6 +55,8 @@ jobs:
           restore-keys: |
             seraphim-state-
 
+      # No pip install: the project is stdlib-only by design. Nothing to cache and
+      # no supply chain.
       - name: Tests
         working-directory: workers
         run: python -m unittest discover -s tests -q
@@ -65,61 +65,66 @@ jobs:
         working-directory: workers
         run: python -m seraphim.cli build --out ../data --archive-keep-hours 48
 
+      # The site and its data ship together, from the same origin. That removes CORS
+      # from the picture entirely: there is no cross-origin fetch to configure or to
+      # fail silently in someone's browser.
+      - name: Assemble site
+        env:
+          API_BASE: ${{ vars.SERAPHIM_API_BASE }}
+        run: |
+          mkdir -p _site/data/out
+          cp web/*.html web/*.js _site/
+          cp -r data/out/. _site/data/out/
+          # Stop Jekyll from eating files and directories that start with an underscore.
+          touch _site/.nojekyll
+
+          # config.js is generated rather than committed, so the deployed site always
+          # points at itself for data and nobody has to remember to edit a file.
+          cat > _site/config.js <<EOF
+          window.SERAPHIM = {
+            dataBase: "./data/out",
+            apiBase: ${API_BASE:+\"$API_BASE\"}${API_BASE:-null},
+          };
+          EOF
+          echo "config.js:"; cat _site/config.js
+
       - name: Summary
         run: |
           python - <<'PY'
-          import json, pathlib
+          import json, os, pathlib
           m = json.loads(pathlib.Path("data/out/meta.json").read_text(encoding="utf-8"))
-          c, a = m["counts"], m["data_age_minutes"]
-          out = pathlib.Path(__import__("os").environ["GITHUB_STEP_SUMMARY"])
+          c, a, r = m["counts"], m["data_age_minutes"], m.get("risk", {})
+          h = m.get("health", {})
+          by = r.get("by_level", {})
+          out = pathlib.Path(os.environ["GITHUB_STEP_SUMMARY"])
           out.write_text(
               f"### SeRAPHIM snapshot\n\n"
               f"- generated: `{m['generated_at']}`\n"
+              f"- health: **{h.get('status', '?')}**\n"
               f"- stations: **{c['stations']}** ({c['with_bank_level']} with bank level)\n"
-              f"- at/over bank: **{c['at_or_over_bank']}**\n"
-              f"- stale: {c['stale']} | median age: {a['median']} min\n"
-              f"- with forecast: {c.get('with_forecast', 0)} | tide points: {c.get('tide_points', 0)}\n"
-              + (lambda r: f"- risk 5/4/3: **{r['by_level']['5']}** / {r['by_level']['4']} / {r['by_level']['3']}"
-                           f" | time-to-bank on {r['with_time_to_bank']} stations"
-                           f" | soonest: {r['soonest_to_bank_hr']} h\n\n")(m.get("risk", {"by_level":{"5":0,"4":0,"3":0},"with_time_to_bank":0,"soonest_to_bank_hr":None}))
-              + "\n".join(
-                  f"- `{s['source']}` ok={s['ok']} stations={s['stations']}"
-                  + (f" error={s['error']}" if s.get("error") else "")
-                  + "".join(f"\n  - ⚠️ {w}" for w in s.get("warnings", []))
-                  for s in m["sources"]
-              ),
+              f"- at/over bank: **{c['at_or_over_bank']}** | stale: {c['stale']}"
+              f" | median age: {a['median']} min\n"
+              f"- risk 5/4/3: **{by.get('5', 0)}** / {by.get('4', 0)} / {by.get('3', 0)}\n"
+              f"- time-to-bank on **{r.get('with_time_to_bank', 0)}** stations"
+              f" (soonest {r.get('soonest_to_bank_hr')} h)\n"
+              f"- forecast: {c.get('with_forecast', 0)} | tide points: {c.get('tide_points', 0)}\n\n"
+              + "\n".join(f"- ⚠️ {x['detail']}" for x in h.get("checks", [])
+                          if x["status"] != "pass"),
               encoding="utf-8",
           )
           PY
 
-      # Publishes only when R2 secrets exist, so the workflow is green from day one
-      # and starts publishing the moment Cloudflare is wired up.
-      - name: Publish to Cloudflare R2
-        if: ${{ env.CF_ACCOUNT_ID != '' }}
-        env:
-          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-          BUCKET: ${{ secrets.CF_R2_BUCKET }}
-        run: |
-          ENDPOINT="https://${CF_ACCOUNT_ID}.r2.cloudflarestorage.com"
-          # Short max-age so a fresh snapshot is visible quickly, with
-          # stale-while-revalidate keeping the map up if a build fails.
-          CACHE="public, max-age=60, stale-while-revalidate=1800"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
 
-          # Explicit content types. Without these .geojson uploads as
-          # application/octet-stream, which blocks Cloudflare's in-transit
-          # compression and turns a 130 KB payload into 1.2 MB on the wire.
-          aws s3 cp data/out/ "s3://${BUCKET}/latest/" --recursive \
-            --endpoint-url "$ENDPOINT" --cache-control "$CACHE" \
-            --exclude "*" --include "*.json" --content-type "application/json; charset=utf-8"
-          aws s3 cp data/out/ "s3://${BUCKET}/latest/" --recursive \
-            --endpoint-url "$ENDPOINT" --cache-control "$CACHE" \
-            --exclude "*" --include "*.geojson" --content-type "application/geo+json; charset=utf-8"
-
-          # The archive is fetched rarely and only by the risk engine, so it stays
-          # gzipped on disk rather than relying on in-transit compression.
-          aws s3 cp data/archive/ "s3://${BUCKET}/archive/" --recursive \
-            --endpoint-url "$ENDPOINT" --cache-control "public, max-age=31536000, immutable" \
-            --exclude "*" --include "*.json.gz" --content-type "application/gzip"
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

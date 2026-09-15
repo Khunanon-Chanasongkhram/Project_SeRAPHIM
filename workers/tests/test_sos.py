@@ -465,8 +465,29 @@ class TestSecurityFixes(unittest.TestCase):
         self.assertIn("resolveApi", html)
         self.assertIn("Ignoring untrusted", html)
 
-    def test_f5_csp_is_configured(self):
+    def test_f5_csp_ships_in_every_page(self):
+        """GitHub Pages cannot send custom headers, so the CSP has to ride in the
+        document. If it only lived in _headers it would silently vanish on deploy,
+        taking the defence-in-depth behind the XSS fix with it."""
+        for name in ("index.html", "sos.html", "ops.html", "fish.html"):
+            html = (ROOT.parent / "web" / name).read_text(encoding="utf-8")
+            self.assertIn("Content-Security-Policy", html, f"{name} has no CSP")
+            for directive in ("script-src", "connect-src", "base-uri 'self'",
+                              "form-action 'self'"):
+                self.assertIn(directive, html, f"{name} CSP missing {directive}")
+
+    def test_f5_csp_permits_what_the_pages_actually_use(self):
+        """A CSP that blocks the basemap is worse than none: it looks like the app
+        is broken rather than like a security control doing its job."""
+        import re
+        html = (ROOT.parent / "web" / "index.html").read_text(encoding="utf-8")
+        csp = re.search(r'content="(default-src.*?)"', html).group(1)
+        for needed in ("unpkg.com", "basemaps.cartocdn.com", "blob:", "data:",
+                       "workers.dev", "'self'"):
+            self.assertIn(needed, csp, f"CSP would block {needed}")
+
+    def test_f5_cloudflare_headers_kept_for_that_deploy_path(self):
         headers = (ROOT.parent / "web" / "_headers").read_text(encoding="utf-8")
         for token in ("Content-Security-Policy", "frame-ancestors 'none'",
-                      "X-Content-Type-Options", "form-action 'self'"):
+                      "X-Content-Type-Options"):
             self.assertIn(token, headers)

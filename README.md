@@ -115,8 +115,9 @@ cd workers && python3 -m seraphim.devserver --port 8788 --seed
 # console: http://localhost:8000/web/ops.html   (paste the token it prints)
 ```
 
-To put it online, `docs/DEPLOY.md` walks through it. It all fits on free tiers, and you
-do not need Node installed because the Worker deploys from GitHub Actions.
+To put it online, `docs/DEPLOY.md` walks through it. The map takes about five minutes and
+needs nothing but turning on GitHub Pages. No credit card, nothing to install. The SOS
+side needs a free Cloudflare account, which also does not ask for a card.
 
 ## What is where
 

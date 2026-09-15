@@ -3,6 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<!-- GitHub Pages cannot send custom headers, so the CSP rides in the document.
+     It is defence in depth behind the escaping in each page: if HTML injection
+     ever slips through, this keeps it from becoming a stolen responder token.
+     Note frame-ancestors cannot be set this way; that one only works as a header. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com; connect-src 'self' https://*.workers.dev https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com; worker-src 'self' blob:; base-uri 'self'; form-action 'self'">
 <title>เวลาตกปลา · SeRAPHIM Fishing</title>
 <style>
   :root{

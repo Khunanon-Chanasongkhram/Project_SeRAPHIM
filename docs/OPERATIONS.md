@@ -2,7 +2,30 @@
 
 Phase 6. Measured with `python3 -m tests.loadtest` from `workers/`, 2026-09-15.
 
-## The finding that matters
+> **Hosting changed after this was written.** The site and its snapshots now ship
+> together on **GitHub Pages** (public repo, no card, unlimited Actions minutes) rather
+> than Cloudflare R2. That moves the read-path limit from "unmetered" to GitHub's
+> **100 GB per month soft limit**, which is recomputed below. The SOS Worker is
+> unchanged.
+
+## The findings that matter
+
+### Read path: GitHub Pages bandwidth
+
+At roughly 190 KB gzipped per first visit:
+
+| Scenario | Map opens | Bandwidth | vs 100 GB/month |
+|---|---|---|---|
+| Provincial flood | 100,000 | ~19 GB | fits comfortably |
+| Regional flood | 450,000 | ~86 GB | close to the line |
+| National (2011 scale) | 1,632,000 | ~310 GB | **over, by 3x** |
+
+GitHub throttles rather than bills, and it is a soft limit, so a one-off spike is more
+likely to draw an email than an outage. Still, if this ever gets real traffic the fix is
+to put Cloudflare in front of the Pages site, or move the site to Cloudflare Pages, whose
+bandwidth is unmetered. Neither needs a code change.
+
+### Write path: the Cloudflare Worker
 
 **A national-scale event exceeds the free Cloudflare Worker tier.**
 
@@ -12,9 +35,8 @@ Phase 6. Measured with `python3 -m tests.loadtest` from `workers/`, 2026-09-15.
 | Regional flood | 3M | 450,000 | 24,000 | 72,000 | ✅ fits |
 | **National (2011 scale)** | 13.6M | 1,632,000 | 68,000 | **204,000** | ❌ **exceeds** |
 
-The read path is fine at every scale — 311 GB of CDN egress on Pages, which is unmetered,
-because map reads are static files that never reach an origin. **Only SOS submissions
-touch the Worker**, and that is what runs out.
+Map reads are static files and never touch the Worker. **Only SOS submissions do**, and
+that is what runs out.
 
 **The fix costs $5/month.** Cloudflare's Workers Paid plan raises the limit to 10M
 requests/month, roughly 50× what a national event needs. Nothing in the architecture
