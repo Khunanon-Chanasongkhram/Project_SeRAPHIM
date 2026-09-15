@@ -1,11 +1,11 @@
 /* SeRAPHIM service worker.
  *
- * Floods take the network down. A help form that needs a connection is useless at
- * exactly the moment it matters, so the app shell is cached on first visit and the
- * page keeps working offline; submissions queue in IndexedDB and flush on reconnect.
+ * Floods take the network down. The app shell and the latest snapshots are cached on
+ * first visit, so if the network goes the map still opens with the last data it had,
+ * clearly labelled as old rather than blank.
  */
 const CACHE = "seraphim-v1";
-const SHELL = ["./sos.html", "./index.html", "./ops.html", "./fish.html"];
+const SHELL = ["./index.html", "./fish.html"];
 // Snapshots are cached too, so a failed origin degrades to last-known data rather
 // than a blank page. During a flood, yesterday's water levels clearly labelled as
 // old beat nothing at all.
@@ -43,6 +43,6 @@ self.addEventListener("fetch", (e) => {
         }
         return res;
       })
-      .catch(() => caches.match(request).then((hit) => hit || caches.match("./sos.html")))
+      .catch(() => caches.match(request).then((hit) => hit || caches.match("./index.html")))
   );
 });

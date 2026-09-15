@@ -18,7 +18,7 @@ Reference feel: `gods-eye-view` (live 3D globe, public data, inspectable) + `piz
 | Build first | **Live water + flood map** | It's the spine; risk engine, fishing, SOS all read from it |
 | SOS | **Full-featured, clearly marked unofficial** | Real intake + triage, but "call 1784/191" everywhere |
 | Stack | **My choice** | Static-first: Python workers + MapLibre + Cloudflare, no runtime DB for monitoring |
-| Hosting | **Free tier, open source** | GitHub Actions + Cloudflare Pages/R2/Workers/D1 — $0/month |
+| Hosting | **Free tier, open source** | GitHub Actions + GitHub Pages, $0/month, no card |
 | Name | **SeRAPHIM** | resolved 2026-09-15 |
 
 ---
@@ -163,7 +163,19 @@ Derived entirely from the verified marine endpoint + astronomy:
 
 ---
 
-## 6. Emergency response (SOS)
+## 6. Emergency response (SOS) - REMOVED
+
+> **This was built, tested and then taken out before deploying.** The reasoning is worth
+> keeping: collecting location, phone number, health needs and vulnerability from people
+> in danger makes you responsible for that data and, worse, for the expectation that
+> somebody is reading it. A side project with nobody on call cannot honour either. A
+> request that goes unanswered is worse than a form that was never offered, because the
+> person might have called 1784 instead.
+>
+> The code is on the `sos-component` branch. Everything below is the original design, kept
+> so that if it ever moves somewhere with real staffing the thinking does not start over.
+
+
 
 **Citizen** — submit in under 30 seconds, one-handed, possibly offline:
 location (GPS or map pin), people count, **specific needs** (boat / medical / food / water /
@@ -203,7 +215,7 @@ log, CSV & sit-rep export.
 | **1** ✅ Ingest + Live map | ThaiWater + Open-Meteo adapters, canonical normalisation, MapLibre map on PMTiles | 1,121 stations live on a public map, refreshing every 15 min |
 | **2** ✅ Risk engine | freeboard, dh/dt, TTB, rain, tide compounding, explainable scores, alerts | per-tambon risk with a readable "why" |
 | **3** ✅ Calm mode | tide curves, solunar, bite windows, reservoirs | 7-day fishing planner for any Thai coast/river point |
-| **4** ✅ Respond | SOS intake (offline PWA) → Worker + D1, triage console, trust tiers, PDPA controls, audit | citizen → responder round trip, load-tested |
+| ~~**4** Respond~~ | **BUILT THEN REMOVED 2026-09-15**, before deploy. Preserved on the `sos-component` branch. | see note below |
 | **5** Terrain | DEM ingest, HAND, inundation mapping, 3D | "your street floods at 2.1 m at this gauge" |
 | **6** ✅ Harden | load test the spike, degraded mode, SMS fallback, observability, security review | survives a simulated national flood event |
 | **7** Global + multi-hazard | country adapter pattern, GDACS/USGS, i18n | second country live with no core rewrite |

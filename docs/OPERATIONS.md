@@ -2,7 +2,12 @@
 
 Phase 6. Measured with `python3 -m tests.loadtest` from `workers/`, 2026-09-15.
 
-> **Hosting changed after this was written.** The site and its snapshots now ship
+> **Two things changed after this was written.** The SOS component was removed before
+> deploy, so every section below about the Worker, D1, rate limiting and PDPA now
+> describes code that lives only on the `sos-component` branch. It is kept because the
+> reasoning still applies if it is ever revived.
+>
+> **Hosting also changed.** The site and its snapshots now ship
 > together on **GitHub Pages** (public repo, no card, unlimited Actions minutes) rather
 > than Cloudflare R2. That moves the read-path limit from "unmetered" to GitHub's
 > **100 GB per month soft limit**, which is recomputed below. The SOS Worker is
@@ -25,9 +30,15 @@ likely to draw an email than an outage. Still, if this ever gets real traffic th
 to put Cloudflare in front of the Pages site, or move the site to Cloudflare Pages, whose
 bandwidth is unmetered. Neither needs a code change.
 
-### Write path: the Cloudflare Worker
+### Write path: removed
 
-**A national-scale event exceeds the free Cloudflare Worker tier.**
+There is no write path any more. Nothing is submitted, stored or served from an origin,
+so the only capacity question left is the bandwidth above.
+
+<details>
+<summary>Historical: the SOS Worker capacity finding</summary>
+
+**A national-scale event exceeded the free Cloudflare Worker tier.**
 
 | Scenario | Affected | Map opens | SOS requests | Worker requests | Free tier (100k/day) |
 |---|---|---|---|---|---|
@@ -44,6 +55,8 @@ changes. Budget it before flood season rather than during one — this is the si
 cheapest thing standing between the system and the day it is needed most.
 
 D1 storage is not a constraint: a national event stores ~40 MB of the 500 MB free.
+
+</details>
 
 ## Health
 
@@ -76,7 +89,7 @@ Each layer fails toward still-being-useful:
 | Rate limited (429) | treated as a retry, not a loss — the request stays queued |
 | Ops API unreachable | the queue is live data with no useful cached version, so the console says so rather than leaving stale requests looking current |
 
-## Rate limiting, and why it is shaped this way
+## Rate limiting, and why it was shaped this way (historical, SOS only)
 
 Load testing found the original design would have **silently blocked flood victims**.
 
@@ -114,7 +127,5 @@ percentiles, throughput, and the capacity table above.
 
 - **SMS / USSD intake** — needs a Thai telco or Twilio agreement. `source` already
   accepts `'sms'`, so intake slots in without a schema change.
-- **The Worker has never been executed** here (no node). Its logic is held to
-  `api/conformance/`; the first real run is `wrangler dev`.
 - **Real-network load testing** against a deployed Worker, rather than against the
   Python reference implementation.

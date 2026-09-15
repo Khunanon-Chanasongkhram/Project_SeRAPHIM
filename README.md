@@ -6,6 +6,8 @@ A flood watching map for Thailand. It reads 1,121 public river gauges, mixes in 
 tide forecasts, and tries to answer one question: how long until this river comes over
 its bank?
 
+It watches. It does not collect anything about you, and it cannot call anyone for help.
+
 When nothing is flooding it turns into a fishing planner, because the same tide and moon
 data answers a much nicer question.
 
@@ -72,20 +74,20 @@ is about to block drainage, which is a big part of why Bangkok floods the way it
 Every score comes with the reasons behind it, in Thai and English, so you can disagree
 with it.
 
-**Respond.** People can ask for help from a form that works with no signal and sends
-later when it reconnects. Volunteers and officials triage on a live map, and requests
-from the same soi get grouped so you send one boat instead of fourteen. Consent is
-recorded, data deletes itself after 90 days, and every look at someone's details is
-logged.
-
 **Fish.** Tide, moon and weather for 40 spots, sea and reservoir and river. Partly
 because it is useful, and partly because an app you open twice in your life is an app
 you do not have installed when you need it.
 
 ## Status
 
-Phases 0, 1, 2, 3, 4 and 6 are built and tested locally. Nothing is deployed yet. Terrain
-(phase 5) and going global (phase 7) are not started.
+Phases 0, 1, 2, 3 and 6 are built and tested locally. Terrain (phase 5) and going global
+(phase 7) are not started.
+
+There used to be an SOS side, where people could ask for help and responders could triage
+it. I built it, then took it out before deploying. Collecting someone's location, phone
+number and medical needs during an emergency is a serious thing to be responsible for,
+and a hobby project with nobody on call is the wrong place for it. The code is still in
+git history on the `sos-component` branch if it ever finds a proper home.
 
 `PROGRESS.md` has the full build log, including the bugs. I kept the mistakes in there on
 purpose, including a few where I broke something and my own test caught it.
@@ -107,17 +109,9 @@ cd .. && python3 -m http.server 8000
 # then open http://localhost:8000/web/
 ```
 
-For the SOS side you also need the local API:
-
-```bash
-cd workers && python3 -m seraphim.devserver --port 8788 --seed
-# form:    http://localhost:8000/web/sos.html?api=http://127.0.0.1:8788
-# console: http://localhost:8000/web/ops.html   (paste the token it prints)
-```
-
-To put it online, `docs/DEPLOY.md` walks through it. The map takes about five minutes and
-needs nothing but turning on GitHub Pages. No credit card, nothing to install. The SOS
-side needs a free Cloudflare account, which also does not ask for a card.
+To put it online, `docs/DEPLOY.md` walks through it. It takes about five minutes and
+needs nothing but turning on GitHub Pages. No credit card, no account anywhere else,
+nothing to install.
 
 ## What is where
 
@@ -129,8 +123,7 @@ side needs a free Cloudflare account, which also does not ask for a card.
 | `docs/OPERATIONS.md` | capacity, health checks, what happens when things break |
 | `docs/DATA_SOURCES.md` | every API, tested or not, with the date I checked |
 | `workers/seraphim/` | the Python that fetches, scores and publishes |
-| `web/` | the map, the fishing page, the SOS form, the ops console |
-| `api/` | the Cloudflare Worker and database for SOS |
+| `web/` | the map and the fishing page |
 
 ## Where the data comes from
 

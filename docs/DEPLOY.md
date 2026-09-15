@@ -1,22 +1,14 @@
 # Deploy
 
-The repo is public, so this is simpler than it used to be. **No credit card, and nothing
-to install.** GitHub builds the data and hosts the site. Cloudflare is only needed if you
-want the SOS side, and its free tier does not ask for a card.
+The repo is public, so this is about as simple as deploying gets. **No credit card, no
+account anywhere except GitHub, nothing to install.** GitHub Actions builds the data and
+GitHub Pages serves it alongside the site.
 
-Two parts, and the first one works on its own:
+Since the pages and the snapshots ship together from the same place, there is no
+cross-origin fetch and no CORS to configure, which removes the most common way this sort
+of setup breaks.
 
-| Part | Where | Card? | Needed for |
-|---|---|---|---|
-| Map, fishing, data | GitHub Pages | no | everything except SOS |
-| SOS form and console | Cloudflare Workers + D1 | no | the emergency side |
-
-R2 is gone. It was the only piece that wanted a card, and since the site and its data now
-ship together from the same place, there is no cross-origin fetch and no CORS to set up.
-
----
-
-## Part 1: get the map live (about 5 minutes)
+Three steps, about five minutes.
 
 ### 1. Turn on Pages
 
@@ -69,108 +61,12 @@ Come back in two hours and there should be numbers.
 
 ---
 
-## Part 2: the SOS side (optional, about 20 minutes)
-
-Skip this if you only want the map. The map does not depend on it.
-
-### 4. Cloudflare account
-
-Sign up at dash.cloudflare.com. Email and password. It will push you to add a domain;
-you do not need one, skip it. **Workers and D1 do not ask for a card.**
-
-### 5. Make the database
-
-Left sidebar → **Workers & Pages** → **D1 SQL Database** → **Create database**.
-Name it `seraphim-sos`. Copy the **Database ID** it shows you.
-
-Open `api/wrangler.toml`, replace `PUT-YOUR-D1-DATABASE-ID-HERE` with that ID, commit
-and push.
-
-### 6. API token
-
-Cloudflare → your profile icon (top right) → **Profile** → **API Tokens** →
-**Create Token** → use the **Edit Cloudflare Workers** template → then **add one more
-permission**: Account, **D1**, **Edit**. Create it and copy the token.
-
-In GitHub: repo → **Settings** → **Secrets and variables** → **Actions** →
-**New repository secret**:
-
-| Name | Value |
-|---|---|
-| `CF_API_TOKEN` | the token you just made |
-| `CF_ACCOUNT_ID` | on the Cloudflare Workers overview page, and in the dashboard URL |
-
-### 7. Deploy the Worker
-
-Actions → **deploy-api** → **Run workflow**, and **tick `apply_schema`** the first time
-so it creates the tables. Note the `*.workers.dev` URL it prints.
-
-### 8. Set the secret salt
-
-The Worker refuses to accept any submission until this is set, on purpose: the
-placeholder value would make every stored IP hash reversible.
-
-Make one:
-
-```bash
-python3 -c "import secrets; print(secrets.token_urlsafe(32))"
-```
-
-Cloudflare → **Workers & Pages** → `seraphim-sos` → **Settings** → **Variables and
-Secrets** → **Add** → type **Secret**, name `IP_SALT`, paste the value. Save and deploy.
-
-Check it:
-
-```bash
-python3 scripts/check_deploy.py --api https://seraphim-sos.<subdomain>.workers.dev
-```
-
-This confirms the Worker answers, that the 1784 / 191 notice rides on responses, that a
-stranger cannot read the request queue, and that the public summary leaks no personal
-data.
-
-### 9. Point the site at the Worker
-
-Repo → **Settings** → **Secrets and variables** → **Actions** → **Variables** tab →
-**New repository variable**:
-
-| Name | Value |
-|---|---|
-| `SERAPHIM_API_BASE` | `https://seraphim-sos.<subdomain>.workers.dev` |
-
-A variable, not a secret, because it ends up in the page source anyway.
-
-Re-run **ingest** so the site picks it up.
-
-### 10. Give yourself an account
-
-```bash
-python3 scripts/make_token.py --role official --name "Your Name" --scope "สมุทรปราการ"
-```
-
-It prints a token once and an `INSERT` statement. Run that SQL in Cloudflare →
-**D1** → `seraphim-sos` → **Console**. Keep the token somewhere safe; only its hash is
-stored, so it cannot be recovered.
-
-Scope people to a province unless they really need the whole country.
-
----
-
-## Check everything
+## Check it over
 
 | Page | What you should see |
 |---|---|
 | `/` | about 1,121 stations, risk colours, a data age banner that is not red |
 | `/fish.html` | 40 spots, hourly chart, tide curve on the coastal ones |
-| `/sos.html` | submits and gives you a reference id |
-| `/ops.html` | your token signs in, and your test submission is in the queue |
-
-Then delete your test request, so it is not sitting in a real queue. Cloudflare → D1 →
-Console:
-
-```sql
-DELETE FROM sos_requests WHERE note LIKE '%test%';
-```
 
 ---
 
@@ -192,8 +88,9 @@ the cron quietly stop, that is the first thing to check.
 matters more than it did. Contact HII before you promote it anywhere, and leave the
 attribution visible.
 
-**The Worker has never run anywhere.** Step 7 is genuinely its first execution. Check
-`/api/health` before trusting it with anything.
+**There is no SOS side any more.** It was built and then removed before deploying, so
+nothing here collects personal data or promises anyone a response. The code is on the
+`sos-component` branch. See `docs/PLAN.md` for why.
 
 ---
 
@@ -205,7 +102,4 @@ attribution visible.
 | Map loads but no stations | open the browser console; if the fetch 404s, check the deploy step copied `data/out` |
 | Blocked requests in the console | the CSP in the page head; add the host to `connect-src` |
 | Time to bank always empty | fewer than about two hours of runs, or the cache is not restoring |
-| SOS returns 503 `misconfigured` | `IP_SALT` not set, which is the guard working |
-| SOS returns 429 straight away | rate limit, see the buckets in `OPERATIONS.md` |
-| Ops console rejects your token | wrong API URL, or the `INSERT` never ran |
 | Cron silently stopped | 60 day inactivity rule, see `keepalive` above |

@@ -88,6 +88,14 @@ losing it.
 
 A false accept costs one triage review; a false reject can cost a life.
 
+## What remains after removing SOS
+
+There is no login, no personal data, no database and no write path. The remaining attack
+surface is a static site rendering third-party JSON, so the live concerns are exactly two:
+escape everything before it reaches `innerHTML` (F1's fix, still in place and tested), and
+keep the CSP in the page head (F5, now a `<meta>` tag because GitHub Pages cannot send
+headers).
+
 ## Accepted risks (documented, not fixed)
 
 - **Responder tokens live in `localStorage`.** With F1 fixed and F5 in place the

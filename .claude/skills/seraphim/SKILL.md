@@ -45,11 +45,14 @@ Safety-critical water data. Read `docs/PLAN.md` and `PROGRESS.md` before acting.
 - Every user-facing surface must have a degraded-mode render using last-known data.
 - Assume connectivity fails during floods: offline-first PWA, sync on reconnect.
 
-## SOS & privacy
-- Sensitive personal data (location, health, vulnerability). Encrypt at rest, RBAC, retention
-  limits, audit log on every read by an official. Designed in, never retrofitted.
-- Disclaimer + **1784 (DDPM) / 191** on every emergency surface. Never imply official status.
-- Assume abuse: rate limit, dedupe, moderate. A fake request diverts a real boat.
+## Scope
+- The **SOS component was removed before deploy** (2026-09-15). It is preserved on the
+  `sos-component` branch. Do not re-add a form that collects personal data, or anything
+  that implies somebody is on call, without the user explicitly asking. The reasoning is
+  in `docs/PLAN.md` section 6.
+- Nothing here collects personal data. Keep it that way by default.
+- Keep the **"call 1784 (DDPM) / 191"** notice and the vibe-code framing visible. Never
+  imply official status.
 
 ## UI
 - Thai-first, bilingual TH/EN. Thai users are the primary audience; don't treat Thai as a translation.

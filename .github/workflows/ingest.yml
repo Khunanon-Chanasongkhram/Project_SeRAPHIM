@@ -69,8 +69,6 @@ jobs:
       # from the picture entirely: there is no cross-origin fetch to configure or to
       # fail silently in someone's browser.
       - name: Assemble site
-        env:
-          API_BASE: ${{ vars.SERAPHIM_API_BASE }}
         run: |
           mkdir -p _site/data/out
           cp web/*.html web/*.js _site/
@@ -80,11 +78,8 @@ jobs:
 
           # config.js is generated rather than committed, so the deployed site always
           # points at itself for data and nobody has to remember to edit a file.
-          cat > _site/config.js <<EOF
-          window.SERAPHIM = {
-            dataBase: "./data/out",
-            apiBase: ${API_BASE:+\"$API_BASE\"}${API_BASE:-null},
-          };
+          cat > _site/config.js <<'EOF'
+          window.SERAPHIM = { dataBase: "./data/out" };
           EOF
           echo "config.js:"; cat _site/config.js
 

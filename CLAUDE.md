@@ -11,8 +11,9 @@ licensing and safety disclaimers are in scope.
 
 ## Stack — static-first, $0/month
 Python workers on **GitHub Actions cron** → static snapshot JSON + PMTiles → **Cloudflare Pages/R2**
-→ MapLibre GL static site. **Cloudflare Worker + D1 for SOS writes only.**
-No runtime database on the monitoring/prediction path.
+→ MapLibre GL static site.
+No runtime database anywhere. The SOS component was removed before deploy; see
+`sos-component` branch if it is ever revived.
 
 ## Rules that matter here
 
@@ -28,9 +29,8 @@ No runtime database on the monitoring/prediction path.
 6. **The site must stay statically pre-rendered.** SSR would burn the 100k/day Worker cap on
    page views. Never introduce per-request server rendering on public pages.
 7. **Always display data age.** Actions cron drifts 5–20 min; the UI must never imply "live".
-8. **SOS data is sensitive personal data.** Encryption, RBAC, retention, audit — from migration #1.
-9. **Never claim official authority.** Disclaimer + "call 1784 / 191" on every emergency surface.
-10. **Build behind `SourceAdapter`** even with one implementation, so Phase 7 (global) isn't a rewrite.
+8. **Never claim official authority.** Keep the "call 1784 / 191" notice visible.
+9. **Build behind `SourceAdapter`** even with one implementation, so Phase 7 (global) isn't a rewrite.
 
 ## Commands
 (filled in as Phase 0 lands)

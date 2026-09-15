@@ -4,8 +4,7 @@
 Run it after each step of docs/DEPLOY.md so you find out immediately which part is
 wrong, instead of loading the map and seeing a blank screen with no explanation.
 
-    python3 scripts/check_deploy.py --data https://pub-xxxx.r2.dev/latest
-    python3 scripts/check_deploy.py --data ... --api https://seraphim-sos.you.workers.dev
+    python3 scripts/check_deploy.py --data https://you.github.io/Project_SeRAPHIM/data/out
 """
 
 from __future__ import annotations
@@ -49,7 +48,7 @@ def check_data(base: str) -> None:
     status, headers, body = get(f"{base}/meta.json")
     if status != 200:
         record(FAIL, "meta.json reachable",
-               f"got {status}. Check the bucket is public and the URL ends in /latest")
+               f"got {status}. Check Pages is deployed and the URL ends in /data/out")
         return
     record(PASS, "meta.json reachable")
 
@@ -113,58 +112,13 @@ def check_data(base: str) -> None:
         record(PASS if s == 200 else FAIL, f"{name}", "" if s == 200 else f"got {s}")
 
 
-def check_api(base: str) -> None:
-    base = base.rstrip("/")
-    print(f"\nSOS Worker at {base}\n" + "-" * 66)
-
-    status, _, body = get(f"{base}/api/health")
-    if status != 200:
-        record(FAIL, "worker responding", f"got {status}")
-        return
-    record(PASS, "worker responding")
-
-    try:
-        payload = json.loads(body)
-    except json.JSONDecodeError:
-        record(FAIL, "health returns JSON")
-        return
-
-    if "1784" in json.dumps(payload):
-        record(PASS, "disclaimer attached", "1784 / 191 present on responses")
-    else:
-        record(WARN, "disclaimer attached", "expected the 1784 / 191 notice")
-
-    # The queue holds names, phone numbers and locations of people in danger.
-    # It must never answer an unauthenticated caller.
-    status, _, _ = get(f"{base}/api/sos")
-    if status == 401:
-        record(PASS, "queue requires auth", "unauthenticated read returns 401")
-    else:
-        record(FAIL, "queue requires auth",
-               f"got {status}, expected 401. Personal data may be exposed.")
-
-    status, _, body = get(f"{base}/api/public/summary")
-    if status == 200:
-        blob = body.decode("utf-8", "replace")
-        leaky = any(k in blob for k in ('"contact_phone"', '"contact_name"', '"note"'))
-        record(FAIL if leaky else PASS, "public summary has no personal data",
-               "found personal fields" if leaky else "aggregated only")
-    else:
-        record(WARN, "public summary", f"got {status}")
-
-
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", help="R2 base URL, e.g. https://pub-xxxx.r2.dev/latest")
-    ap.add_argument("--api", help="Worker URL, e.g. https://seraphim-sos.you.workers.dev")
+    ap.add_argument("--data", required=True,
+                    help="snapshot base URL, e.g. "
+                         "https://you.github.io/Project_SeRAPHIM/data/out")
     args = ap.parse_args()
-    if not args.data and not args.api:
-        ap.error("give --data and/or --api")
-
-    if args.data:
-        check_data(args.data)
-    if args.api:
-        check_api(args.api)
+    check_data(args.data)
 
     fails = sum(1 for s, _, _ in results if s == FAIL)
     warns = sum(1 for s, _, _ in results if s == WARN)

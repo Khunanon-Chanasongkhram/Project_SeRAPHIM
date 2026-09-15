@@ -30,6 +30,45 @@ Then Phase 3 (calm mode / fishing), 5 (terrain) or 6 (harden + load test).
 
 ---
 
+## 2026-09-15 - Session 11: SOS component removed before deploy
+
+**His call, and a good one.** Asked to remove SOS before deploying.
+
+**Why it is right:** collecting location, phone number, health needs and vulnerability
+from people in danger makes you responsible for that data and, worse, for the expectation
+that somebody is reading it. A hobby project with nobody on call cannot honour either. An
+unanswered request is worse than no form at all, because the person might have called 1784
+instead. Removing it also drops PDPA obligations entirely, removes the only write path,
+and removes the last reason to need a Cloudflare account.
+
+**Preserved first:** branch `sos-component` created at the pre-removal commit, so the whole
+thing is one `git checkout` away. Git history has it regardless.
+
+**Removed:** `api/` (Worker, D1 schema, conformance suite), `web/sos.html`, `web/ops.html`,
+`seraphim/sos.py`, `seraphim/devserver.py`, `seraphim/sos_seed.py`, `tests/test_sos.py`,
+`deploy-api.yml`, `scripts/make_token.py`. 55 tests went with it (169 -> 114).
+
+**Rewired what depended on it**
+- `loadtest.py` imported the dev server for the write-path test. Rewritten to measure only
+  the read path, which is all that is left. Map visit is **183 KB gzipped**.
+- **CSP tightened**: `connect-src` drops `*.workers.dev`, so it is now `'self'` plus the
+  basemap. Removing a feature genuinely shrank the attack surface.
+- `config.js` loses `apiBase`; the workflow's generated version is now one line.
+- `check_deploy.py` loses its `--api` half.
+- `sw.js` caches two pages instead of four, and the offline fallback is the map.
+
+**Docs:** DEPLOY.md halved (211 -> 105 lines), now three steps. SECURITY.md keeps all six
+findings but records that F1, F2, F3, F4 and F6 are retired with the component, while F5
+and F1's escaping discipline still apply, because the map renders upstream ThaiWater
+strings. OPERATIONS.md folds the Worker capacity finding into a historical block. PLAN.md
+section 6 keeps the full SOS design with a note explaining why it was pulled, so the
+thinking survives if it ever moves somewhere properly staffed.
+
+**Left the PROGRESS history alone.** It is an append-only record of what actually happened,
+so earlier sessions still describe building SOS. That is correct.
+
+---
+
 ## 2026-09-15 - Session 10: repo went public, hosting moved to GitHub Pages
 
 **Why:** R2 asks for a credit card even on its free tier, despite Cloudflare's own page
