@@ -79,7 +79,7 @@
   <input type="text" id="apiurl" placeholder="API URL (e.g. http://127.0.0.1:8788)">
   <button id="signin">เข้าสู่ระบบ · Sign in</button>
   <p style="color:#8b1a1a;font-size:11.5px;margin:12px 0 0">
-    ข้อมูลในระบบเป็นข้อมูลส่วนบุคคลที่อ่อนไหว (PDPA) — การเข้าถึงทุกครั้งถูกบันทึกไว้<br>
+    ข้อมูลในระบบเป็นข้อมูลส่วนบุคคลที่อ่อนไหว (PDPA) · การเข้าถึงทุกครั้งถูกบันทึกไว้<br>
     This system holds sensitive personal data. Every access is logged.</p>
 </div>
 
@@ -87,7 +87,7 @@
   <div class="side">
     <div class="hd">
       <h1>คิวขอความช่วยเหลือ</h1>
-      <div class="sub" id="stat">—</div>
+      <div class="sub" id="stat">-</div>
       <div class="warn">ไม่ใช่ช่องทางราชการ · แจ้งผู้ประสบภัยให้โทร <b>1784</b> / <b>191</b> เสมอ</div>
       <div class="tabs">
         <button data-f="open" class="on">เปิดอยู่</button>
@@ -111,7 +111,7 @@ const $ = (id) => document.getElementById(id);
 // `note` and `contact_name` arrive from a PUBLIC, unauthenticated endpoint: without
 // this, a submission containing <img src=x onerror=...> runs in a responder's browser
 // and steals the token that unlocks everyone's personal data. Escaping happens at
-// render, never on input — storing exactly what someone typed matters when the text
+// render, never on input, storing exactly what someone typed matters when the text
 // is a plea for help.
 const ESCAPES = {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};
 const esc = (v) => v == null ? "" : String(v).replace(/[&<>"']/g, (c) => ESCAPES[c]);
@@ -174,7 +174,7 @@ async function load() {
   } catch (err) {
     $("stat").style.color = "var(--s4)";
     $("stat").textContent =
-      `⚠ ติดต่อเซิร์ฟเวอร์ไม่ได้ · API unreachable (${esc(err.message)}) — ` +
+      `⚠ ติดต่อเซิร์ฟเวอร์ไม่ได้ · API unreachable (${esc(err.message)}) · ` +
       `รายการด้านล่างอาจไม่เป็นปัจจุบัน / list below may be out of date`;
   }
 }
@@ -200,7 +200,7 @@ function render() {
     <div class="item${selected === r.id ? " sel" : ""}" data-id="${r.id}">
       <div class="sev" style="background:${SEV[r.effective_severity]}">${r.effective_severity}</div>
       <div class="b">
-        <div class="t">${esc(r.district) || "—"}, ${esc(r.province) || "—"}
+        <div class="t">${esc(r.district) || "-"}, ${esc(r.province) || "-"}
           ${r.effective_severity > r.severity ? `<span class="esc">▲ รอ ${r.waiting_minutes} น.</span>` : ""}</div>
         <div class="m">${r.people_count ?? "?"} คน · น้ำ ${r.water_depth_cm ?? "?"} ซม. · ${esc(r.status)}</div>
         <div class="chips">${needChips(r)}</div>
@@ -225,7 +225,7 @@ function renderClusters(cs) {
   // A cluster is a dispatch hint, never a merge: the underlying requests stay open.
   $("clusters").innerHTML = cs.slice(0, 3).map((c) => `
     <div class="cluster" data-lat="${c.lat}" data-lon="${c.lon}">
-      🚤 <b>${c.count} คำขอในพื้นที่เดียวกัน</b> — ${esc(c.district)} ${esc(c.province)}<br>
+      🚤 <b>${c.count} คำขอในพื้นที่เดียวกัน</b> · ${esc(c.district)} ${esc(c.province)}<br>
       รวม ${c.people} คน · ระดับสูงสุด ${c.severity} · ${esc((c.needs || []).join(", "))}<br>
       <span style="color:#5b6672">ส่งทีมเดียวครอบคลุมได้ · one dispatch may cover all</span>
     </div>`).join("");
@@ -243,16 +243,16 @@ async function open(id) {
   $("detail").innerHTML = `
     <div style="display:flex;gap:9px;align-items:center;margin-bottom:8px">
       <div class="sev" style="background:${SEV[r.effective_severity]}">${r.effective_severity}</div>
-      <div><h2>${esc(r.district) || "—"}, ${esc(r.province) || "—"}</h2>
+      <div><h2>${esc(r.district) || "-"}, ${esc(r.province) || "-"}</h2>
       <div style="font-size:11.5px;color:var(--muted)">${esc(r.status)} · รอ ${r.waiting_minutes} นาที</div></div>
     </div>
     <div class="chips">${needChips(r)}</div>
-    <div class="r"><span>จำนวนคน</span><span>${r.people_count ?? "—"}</span></div>
-    <div class="r"><span>ระดับน้ำ</span><span>${r.water_depth_cm ?? "—"} ซม.</span></div>
+    <div class="r"><span>จำนวนคน</span><span>${r.people_count ?? "-"}</span></div>
+    <div class="r"><span>ระดับน้ำ</span><span>${r.water_depth_cm ?? "-"} ซม.</span></div>
     <div class="r"><span>พิกัด</span><span>${r.lat.toFixed(5)}, ${r.lon.toFixed(5)}</span></div>
-    <div class="r"><span>ผู้แจ้ง</span><span>${esc(r.contact_name) || "—"}</span></div>
+    <div class="r"><span>ผู้แจ้ง</span><span>${esc(r.contact_name) || "-"}</span></div>
     <div class="r"><span>โทร</span><span>${r.contact_phone
-        ? `<a href="tel:${encodeURIComponent(r.contact_phone)}">${esc(r.contact_phone)}</a>` : "—"}
+        ? `<a href="tel:${encodeURIComponent(r.contact_phone)}">${esc(r.contact_phone)}</a>` : "-"}
         ${r.safe_to_call ? "" : " ⚠️ ไม่ปลอดภัยที่จะโทร"}</span></div>
     ${r.note ? `<div class="r" style="display:block"><span>รายละเอียด</span>
        <div style="margin-top:3px">${esc(r.note)}</div></div>` : ""}
@@ -263,7 +263,7 @@ async function open(id) {
       <button data-s="resolved" class="p">เสร็จสิ้น</button>
       <button data-s="duplicate">ซ้ำ</button>
     </div>
-    <div class="pii">🔒 ข้อมูลส่วนบุคคล — การเปิดดูครั้งนี้ถูกบันทึกไว้แล้ว (PDPA)
+    <div class="pii">🔒 ข้อมูลส่วนบุคคล · การเปิดดูครั้งนี้ถูกบันทึกไว้แล้ว (PDPA)
       <br>Personal data. This access has been logged.</div>
     <div style="margin-top:9px;font-size:11px;color:var(--muted)">
       ${(d.history || []).map((h) =>

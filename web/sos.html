@@ -87,8 +87,11 @@
     <a href="tel:191">191 <small>ตำรวจ / Police</small></a>
   </div>
   <div class="notice">
-    <b>นี่ไม่ใช่ช่องทางแจ้งเหตุฉุกเฉินทางราชการ</b> — หากมีอันตรายถึงชีวิต โปรดโทรตามเบอร์ด้านบนก่อน
+    <b>นี่ไม่ใช่ช่องทางแจ้งเหตุฉุกเฉินทางราชการ</b> หากมีอันตรายถึงชีวิต โปรดโทรตามเบอร์ด้านบนก่อน
     <br>This is <b>not</b> an official emergency channel. If life is in danger, call first.
+    <br><br><b>เป็นโปรเจกต์ส่วนตัว</b> ไม่มีหน่วยงานรับรอง อาจไม่มีใครเห็นคำขอนี้
+    <br><span style="opacity:.9">A personal hobby project. Nobody is on duty here and
+    nobody may see this request. Calling is faster and more reliable.</span>
   </div>
 
   <div id="pending" class="pending" hidden></div>
@@ -155,7 +158,7 @@
 // API base. Same origin in dev; the Cloudflare Worker URL in production.
 // F4: the API origin must NEVER come from an untrusted link. A URL like
 // ?api=https://attacker.example would send this person's name, phone, location and
-// medical needs to an attacker while the page still looks legitimate — plausible
+// medical needs to an attacker while the page still looks legitimate, plausible
 // during a flood, when links spread fast through LINE and Facebook groups.
 // The override is honoured only for localhost, as a developer convenience.
 function resolveApi() {
@@ -214,7 +217,7 @@ const $ = (id) => document.getElementById(id);
 // `note` and `contact_name` arrive from a PUBLIC, unauthenticated endpoint: without
 // this, a submission containing <img src=x onerror=...> runs in a responder's browser
 // and steals the token that unlocks everyone's personal data. Escaping happens at
-// render, never on input — storing exactly what someone typed matters when the text
+// render, never on input, storing exactly what someone typed matters when the text
 // is a plea for help.
 const ESCAPES = {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};
 const esc = (v) => v == null ? "" : String(v).replace(/[&<>"']/g, (c) => ESCAPES[c]);
@@ -249,7 +252,7 @@ $("gps").addEventListener("click", () => {
   $("latlon").textContent = "กำลังหาตำแหน่ง…";
   navigator.geolocation.getCurrentPosition(
     (p) => setLoc(p.coords.latitude, p.coords.longitude, `±${Math.round(p.coords.accuracy)} m`),
-    () => { $("latlon").textContent = "หาตำแหน่งไม่ได้ — ลองปักหมุดเอง"; showMap(); },
+    () => { $("latlon").textContent = "หาตำแหน่งไม่ได้ · ลองปักหมุดเอง"; showMap(); },
     { enableHighAccuracy: true, timeout: 12000 });
 });
 $("pin").addEventListener("click", showMap);
@@ -277,7 +280,7 @@ function showMap() {
     });
   };
   js.onerror = () => { $("map").innerHTML =
-    '<div style="padding:14px;font-size:13px;color:#5b6672">โหลดแผนที่ไม่ได้ (ออฟไลน์) — กรุณาใช้ GPS</div>'; };
+    '<div style="padding:14px;font-size:13px;color:#5b6672">โหลดแผนที่ไม่ได้ (ออฟไลน์) · กรุณาใช้ GPS</div>'; };
   document.head.appendChild(js);
 }
 
@@ -336,7 +339,7 @@ async function flush() {
   const left = (await queueAll()).length;
   $("pending").hidden = left === 0;
   if (left) $("pending").innerHTML =
-    `⏳ <b>${left} คำขอรออยู่</b> — จะส่งอัตโนมัติเมื่อมีสัญญาณ<br>
+    `⏳ <b>${left} คำขอรออยู่</b> · จะส่งอัตโนมัติเมื่อมีสัญญาณ<br>
      ${left} request(s) queued offline; they will send automatically when you reconnect.`;
 }
 
@@ -346,7 +349,7 @@ function succeeded(res, fromQueue) {
     `<h2>✓ ส่งคำขอแล้ว · Request received</h2>
      <div>หมายเลขอ้างอิง / reference: <code>${esc(res.id)}</code></div>
      <div style="font-size:13px;color:#5b6672;margin-top:6px">
-       ระดับความเร่งด่วน / severity: <b>${res.severity ?? "—"}</b>
+       ระดับความเร่งด่วน / severity: <b>${res.severity ?? "-"}</b>
        ${res.duplicate ? " · (คำขอนี้ส่งไปแล้ว / already submitted)" : ""}
        <br>ข้อมูลจะถูกลบภายใน ${res.retention_days ?? 90} วัน · deleted within ${res.retention_days ?? 90} days
        <br><b>หากอาการแย่ลง โทร 1784 หรือ 191 ทันที</b></div>`;
@@ -377,7 +380,7 @@ $("form").addEventListener("submit", async (e) => {
     await queueAdd(rec);
     $("pending").hidden = false;
     $("pending").innerHTML =
-      `⏳ <b>บันทึกไว้แล้ว — ยังส่งไม่ได้</b> (${esc(err.message)})<br>
+      `⏳ <b>บันทึกไว้แล้ว · ยังส่งไม่ได้</b> (${esc(err.message)})<br>
        ระบบจะส่งให้อัตโนมัติเมื่อมีสัญญาณ อย่าปิดหน้านี้<br>
        Saved on this device; it will send automatically when you reconnect.`;
   } finally {
@@ -399,7 +402,7 @@ flush();
 
 // Retry queued submissions periodically, not only on an "online" event. A request
 // rejected by a rate limit, or by a server having a bad minute, is still queued and
-// still needed — and during a flood nobody is going to sit reloading the page.
+// still needed, and during a flood nobody is going to sit reloading the page.
 setInterval(() => { if (navigator.onLine) flush(); }, 45000);
 
 if ("serviceWorker" in navigator) {

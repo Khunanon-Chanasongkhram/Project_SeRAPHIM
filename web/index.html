@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>SeRAPHIM — เฝ้าระวังน้ำ / Water Watch</title>
+<title>SeRAPHIM · เฝ้าระวังน้ำ / Water Watch</title>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <style>
   :root{
@@ -112,22 +112,24 @@
 </div>
 
 <div id="tidebar" class="panel">
-  <h2 id="tide-name">—</h2>
-  <div class="sub" id="tide-state">—</div>
+  <h2 id="tide-name">-</h2>
+  <div class="sub" id="tide-state">-</div>
   <div id="tide-next"></div>
 </div>
 
 <div id="degraded"></div>
 
 <div id="alert" class="panel">
-  <b>ไม่ใช่ช่องทางแจ้งเหตุฉุกเฉินทางราชการ</b> — เหตุด่วนโทร <b>1784</b> (ปภ.) หรือ <b>191</b>.
-  Not an official emergency channel — call <b>1784</b> / <b>191</b>.
+  <b>โปรเจกต์ส่วนตัว ไม่ใช่บริการทางราชการ</b> · เหตุด่วนโทร <b>1784</b> (ปภ.) หรือ <b>191</b>
+  <br><span style="opacity:.85">A personal hobby project, built fast with AI help and never tested
+  in a real flood. Not an official service. Verify before you rely on it.
+  Emergency: call <b>1784</b> / <b>191</b>.</span>
 </div>
 
 <script src="./config.js"></script>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script>
-// Snapshot location. Static file on a CDN — there is no API server to fall over.
+// Snapshot location. Static file on a CDN, there is no API server to fall over.
 // Snapshot location. Set window.SERAPHIM.dataBase in config.js to go live;
 // falls back to relative paths so local development needs no configuration.
 const BASE = (window.SERAPHIM && window.SERAPHIM.dataBase) || "../data/out";
@@ -143,7 +145,7 @@ const RISK_EN = {1:"Normal",2:"Watch",3:"Warning",4:"Severe",5:"Critical"};
 
 const map = new maplibregl.Map({
   container: "map",
-  // CARTO Positron: free, no API key, and light — chosen for daylight legibility on a
+  // CARTO Positron: free, no API key, and light, chosen for daylight legibility on a
   // phone rather than for looking dramatic.
   style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
   center: [100.9, 13.6], zoom: 5.1, attributionControl: false
@@ -159,16 +161,16 @@ map.addControl(new maplibregl.GeolocateControl({trackUserLocation:true}), "top-r
 // `note` and `contact_name` arrive from a PUBLIC, unauthenticated endpoint: without
 // this, a submission containing <img src=x onerror=...> runs in a responder's browser
 // and steals the token that unlocks everyone's personal data. Escaping happens at
-// render, never on input — storing exactly what someone typed matters when the text
+// render, never on input, storing exactly what someone typed matters when the text
 // is a plea for help.
 const ESCAPES = {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};
 const esc = (v) => v == null ? "" : String(v).replace(/[&<>"']/g, (c) => ESCAPES[c]);
 
 const fmt = (v, u = "", d = 2) =>
-  (v === null || v === undefined) ? "—" : `${Number(v).toFixed(d)}${u}`;
+  (v === null || v === undefined) ? "-" : `${Number(v).toFixed(d)}${u}`;
 
 function ageLabel(min) {
-  if (min == null) return "—";
+  if (min == null) return "-";
   if (min < 90) return `${Math.round(min)} นาที / min`;
   const h = min / 60;
   return h < 48 ? `${h.toFixed(1)} ชม. / hr` : `${(h/24).toFixed(1)} วัน / days`;
@@ -292,11 +294,11 @@ map.on("load", async () => {
     const bar = document.getElementById("tidebar");
     bar.classList.add("show");
     document.getElementById("tide-name").textContent = `${esc(p.name_th)}`;
-    const regimeTh = {large:"น้ำขึ้นลงมาก", average:"ปานกลาง", small:"น้อย", unknown:"—"}[p.range_regime] || "—";
-    const dirTh = {rising:"กำลังขึ้น", falling:"กำลังลง", slack:"น้ำนิ่ง", unknown:"—"}[p.state] || "—";
+    const regimeTh = {large:"น้ำขึ้นลงมาก", average:"ปานกลาง", small:"น้อย", unknown:"-"}[p.range_regime] || "-";
+    const dirTh = {rising:"กำลังขึ้น", falling:"กำลังลง", slack:"น้ำนิ่ง", unknown:"-"}[p.state] || "-";
     document.getElementById("tide-state").innerHTML =
       `${esc(p.name)} · ${dirTh} / ${esc(p.state)}` +
-      `<br><span class="pill">ช่วงน้ำวันนี้ ${p.range_today_m ?? "—"} ม. · ${regimeTh} (p${p.range_percentile})</span>`;
+      `<br><span class="pill">ช่วงน้ำวันนี้ ${p.range_today_m ?? "-"} ม. · ${regimeTh} (p${p.range_percentile})</span>`;
     let next = [];
     try { next = JSON.parse(p.next || "[]"); } catch {}
     document.getElementById("tide-next").innerHTML = next.slice(0,5).map(e => {
@@ -358,20 +360,20 @@ map.on("load", async () => {
       .setLngLat(e.lngLat)
       .setHTML(`
         ${tag}
-        <div class="pop-h">${esc(p.name) || "—"}</div>
+        <div class="pop-h">${esc(p.name) || "-"}</div>
         ${ttbHtml}
-        <div class="pop-r"><span>จังหวัด / province</span><span>${esc(p.province) || "—"}</span></div>
+        <div class="pop-r"><span>จังหวัด / province</span><span>${esc(p.province) || "-"}</span></div>
         <div class="pop-r"><span>ระดับน้ำ / level</span><span>${fmt(n("level_msl")," m MSL")}</span></div>
         <div class="pop-r"><span>ระดับตลิ่ง / bank</span><span>${fmt(n("bank_msl")," m MSL")}</span></div>
         <div class="pop-r"><span>${over?"สูงกว่าตลิ่ง / above bank":"ต่ำกว่าตลิ่ง / freeboard"}</span>
-          <span style="color:${over?"var(--over)":"inherit"}">${fb===null?"—":fmt(Math.abs(fb)," m")}</span></div>
+          <span style="color:${over?"var(--over)":"inherit"}">${fb===null?"-":fmt(Math.abs(fb)," m")}</span></div>
         <div class="pop-r"><span>ฝน 24 ชม.ที่ผ่านมา / rain past 24h</span><span>${fmt(n("rain_past_24h_mm")," mm",1)}</span></div>
         <div class="pop-r"><span>ฝนคาดการณ์ 24 ชม. / rain next 24h</span><span>${fmt(n("rain_next_24h_mm")," mm",1)}</span></div>
         <div class="pop-r"><span>ฝนคาดการณ์ 72 ชม. / next 72h</span><span>${fmt(n("rain_next_72h_mm")," mm",1)}</span></div>
         <div class="pop-r"><span>น้ำท่า / discharge</span><span>${fmt(n("discharge_now_cms")," m³/s",1)}</span></div>
-        <div class="pop-r"><span>แนวโน้ม 7 วัน / 7-day trend</span><span>${rise===null?"—":rise+"×"}</span></div>
+        <div class="pop-r"><span>แนวโน้ม 7 วัน / 7-day trend</span><span>${rise===null?"-":rise+"×"}</span></div>
         <div class="pop-r"><span>อายุข้อมูล / data age</span><span>${ageLabel(n("data_age_min"))}</span></div>
-        <div class="pop-r"><span>หน่วยงาน / agency</span><span>${esc(p.agency) || "—"}</span></div>
+        <div class="pop-r"><span>หน่วยงาน / agency</span><span>${esc(p.agency) || "-"}</span></div>
         ${why}${conf}
       `).addTo(map);
   });
@@ -391,13 +393,13 @@ map.on("load", async () => {
     ? `อัปเดตเมื่อ ${ageLabel(mins)} ที่แล้ว · median reading age ${ageLabel(med)}`
     : "ไม่ทราบเวลาข้อมูล / snapshot time unknown";
 
-  // Worst districts — a gauge is an instrument, a district is where somebody lives.
+  // Worst districts, a gauge is an instrument, a district is where somebody lives.
   if (areas?.areas?.length) {
     const top = areas.areas.filter(a => a.level >= 3).slice(0, 6);
     document.getElementById("worst").innerHTML = top.length
       ? `<h3>พื้นที่เสี่ยงสูงสุด · HIGHEST RISK DISTRICTS</h3>` + top.map((a, i) =>
           `<a data-i="${i}"><span class="lv" style="background:${RISK_COLOUR[a.level]}">${a.level}</span>` +
-          `<span>${esc(a.district) || "—"}, ${esc(a.province) || "—"}` +
+          `<span>${esc(a.district) || "-"}, ${esc(a.province) || "-"}` +
           (a.worst_ttb_hr !== null && a.worst_ttb_hr !== undefined
             ? ` <span style="color:var(--over)">~${a.worst_ttb_hr} ชม.</span>` : "") +
           `</span></a>`).join("")
@@ -424,7 +426,7 @@ map.on("load", async () => {
     const el = document.getElementById("degraded");
     el.classList.add("show");
     const why = !navigator.onLine
-      ? "ออฟไลน์ — กำลังแสดงข้อมูลล่าสุดที่บันทึกไว้ / Offline — showing last saved data"
+      ? "ออฟไลน์ · กำลังแสดงข้อมูลล่าสุดที่บันทึกไว้ / Offline · showing last saved data"
       : (mins !== null && mins > limit)
         ? `ข้อมูลเก่ากว่า ${Math.round(limit)} นาที / Snapshot is older than ${Math.round(limit)} min`
         : "ระบบเก็บข้อมูลมีปัญหาบางส่วน / Pipeline reporting degraded";
@@ -432,7 +434,7 @@ map.on("load", async () => {
       .filter(c => c.status !== "pass").map(c => esc(c.detail)).join(" · ");
     el.innerHTML = `<b>⚠ ข้อมูลอาจไม่เป็นปัจจุบัน / Data may be out of date</b><br>${esc(why)}` +
       (failed ? `<br><span style="opacity:.85">${failed}</span>` : "") +
-      `<br>อย่าใช้ตัดสินใจเรื่องความปลอดภัยเพียงอย่างเดียว — โทร 1784 / 191`;
+      `<br>อย่าใช้ตัดสินใจเรื่องความปลอดภัยเพียงอย่างเดียว · โทร 1784 / 191`;
   }
 });
 

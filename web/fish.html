@@ -9,7 +9,7 @@
     color-scheme:light;
     --bg:#f6f7f9; --surface:#fcfcfb; --line:#dde3ea;
     --text-primary:#0b0b0b; --text-secondary:#52514e; --text-muted:#787771;
-    --series-1:#2a78d6;      /* reference palette slot 1 — single series */
+    --series-1:#2a78d6;      /* reference palette slot 1 · single series */
     --series-1-rest:#a8c6e9; /* same hue, lighter: emphasis, not a value ramp */
     --grid:#e8ebef;
     --accent:#eb6834;        /* slot 2, used only for solunar annotation bands */
@@ -47,7 +47,7 @@
   .days button.on{background:var(--text-primary);color:var(--surface);
     border-color:var(--text-primary);font-weight:600}
 
-  /* hero number — the answer to "when should I go" is a number, not a chart */
+  /* hero number, the answer to "when should I go" is a number, not a chart */
   .hero{display:flex;align-items:baseline;gap:10px;margin-bottom:2px}
   .hero b{font-size:34px;line-height:1;font-variant-numeric:tabular-nums}
   .hero span{color:var(--text-secondary);font-size:13px}
@@ -120,8 +120,11 @@
 
   <div class="note" id="method"></div>
   <div class="warn">
-    ตรวจสภาพอากาศและความปลอดภัยก่อนออกเรือเสมอ · Always check conditions before going out.
-    เหตุฉุกเฉินทางน้ำ โทร <b>1196</b> (ตำรวจน้ำ) หรือ <b>191</b>.
+    <b>โปรเจกต์ส่วนตัว</b> · คะแนนนี้เป็นเพียงการประมาณ ไม่ใช่คำรับรอง
+    ตรวจสภาพอากาศและความปลอดภัยก่อนออกเรือเสมอ
+    <br><span style="opacity:.85">A personal hobby project. These scores are folklore plus
+    arithmetic, not a promise of fish. Always check conditions before going out.</span>
+    <br>เหตุฉุกเฉินทางน้ำ โทร <b>1196</b> (ตำรวจน้ำ) หรือ <b>191</b>.
   </div>
 </div>
 <div class="tip" id="tip"></div>
@@ -148,7 +151,7 @@ Promise.all([
   doc.tideByPoint={};
   for(const p of (tide?.points||[])) doc.tideByPoint[p.id]=p;
   $("spot").innerHTML=d.spots.map((s,i)=>
-    `<option value="${i}">${esc(s.name_th)} — ${esc(s.name)}</option>`).join("");
+    `<option value="${i}">${esc(s.name_th)} · ${esc(s.name)}</option>`).join("");
   $("method").innerHTML=`<b>วิธีคิด · Method.</b> ${esc(d.method)}<br><br><b>ข้อจำกัด · Caveat.</b> ${esc(d.caveat)}`;
   $("spot").addEventListener("change",()=>{spot=doc.spots[+$("spot").value];dayIndex=0;render();});
   spot=d.spots[0];render();
@@ -173,7 +176,7 @@ function render(){
   $("summary").innerHTML=`
     <h2>${esc(spot.name_th)}</h2>
     <p class="cap">${esc(spot.name)} · ${esc(d.profile)}${d.tide_modelled?"":" · ไม่มีข้อมูลน้ำขึ้นน้ำลง / no tide data here"}</p>
-    <div class="hero"><b>${top?top.score:"—"}</b><span>คะแนนสูงสุด เวลา ${top?esc(ICT(top.at)):"—"} น. · peak at ${top?esc(ICT(top.at)):"—"}</span></div>
+    <div class="hero"><b>${top?top.score:"-"}</b><span>คะแนนสูงสุด เวลา ${top?esc(ICT(top.at)):"-"} น. · peak at ${top?esc(ICT(top.at)):"-"}</span></div>
     <div class="best">
       ${d.best.map(b=>`<div>${esc(ICT(b.at))} <b>${b.score}</b></div>`).join("")}
       <div>🌙 ${Math.round(d.moon_illumination*100)}% ${esc(d.moon_regime)}</div>
@@ -194,7 +197,7 @@ function drawChart(d){
   const bestSet=new Set(d.best.map(b=>b.at));
   let svg="";
 
-  // Solunar windows as a recessive background annotation — context, not a series.
+  // Solunar windows as a recessive background annotation, context, not a series.
   const dayStart=new Date(hours[0].at).getTime();
   for(const w of d.windows){
     const a=(new Date(w.start).getTime()-dayStart)/3600000;
@@ -228,7 +231,7 @@ function drawChart(d){
     const h=hours[+el.dataset.i];
     el.addEventListener("mouseenter",e=>{
       tip.style.display="block";
-      tip.innerHTML=`<b>${esc(ICT(h.at))} น. — ${h.score}/100</b>`+
+      tip.innerHTML=`<b>${esc(ICT(h.at))} น. · ${h.score}/100</b>`+
         (h.factors.length?h.factors.map(f=>
           `<div class="f"><span>${esc(f.en)}</span><i>${f.points>0?"+":""}${f.points}</i></div>`).join("")
           :`<div class="f"><span>no notable factors</span></div>`);
@@ -247,7 +250,7 @@ function drawChart(d){
 function drawTable(d){
   $("tbl").querySelector("tbody").innerHTML=d.hours.map(h=>
     `<tr><td>${esc(ICT(h.at))}</td><td class="n">${h.score}</td>`+
-    `<td>${esc(h.factors.map(f=>`${f.en} (${f.points>0?"+":""}${f.points})`).join("; "))||"—"}</td></tr>`
+    `<td>${esc(h.factors.map(f=>`${f.en} (${f.points>0?"+":""}${f.points})`).join("; "))||"-"}</td></tr>`
   ).join("");
 }
 
