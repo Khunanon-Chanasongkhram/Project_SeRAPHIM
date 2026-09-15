@@ -44,8 +44,8 @@
   .pop-r span:first-child{color:var(--muted)}
   .pop-r span:last-child{font-variant-numeric:tabular-nums;font-weight:500}
   .tag{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;color:#fff;margin-bottom:5px}
-  .modes{display:flex;gap:4px;margin:10px 0 0}
-  .modes button{flex:1;padding:6px 4px;font:inherit;font-size:11px;cursor:pointer;
+  .modes{display:flex;flex-wrap:wrap;gap:4px;margin:10px 0 0}
+  .modes button{flex:1 1 46%;padding:6px 4px;font:inherit;font-size:11px;cursor:pointer;
     background:var(--bg);border:1px solid var(--line);border-radius:7px;color:var(--muted);line-height:1.25}
   .modes button.on{background:var(--fg);border-color:var(--fg);color:#fff;font-weight:600}
   .modes button:hover:not(.on){border-color:var(--muted)}
@@ -58,6 +58,21 @@
     border-top:1px solid #f0f2f5}
   .tide-row b{font-variant-numeric:tabular-nums;font-weight:600}
   .hi{color:#0b5ed7} .lo{color:#8a6d00}
+  .worst{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+  .worst h3{margin:0 0 5px;font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.03em}
+  .worst a{display:flex;align-items:center;gap:7px;padding:3px 0;cursor:pointer;
+    font-size:12px;color:inherit;text-decoration:none}
+  .worst a:hover{color:var(--over)}
+  .lv{width:17px;height:17px;border-radius:5px;display:grid;place-items:center;
+    font-size:10px;font-weight:700;color:#fff;flex:none}
+  .why{margin:7px 0 0;padding:7px 9px;background:var(--bg);border-radius:7px;
+    border:1px solid var(--line)}
+  .why b{display:block;font-size:10.5px;color:var(--muted);margin-bottom:3px;
+    letter-spacing:.03em;font-weight:600}
+  .why li{margin:2px 0 2px -12px;font-size:12px;line-height:1.4}
+  .why ul{margin:0;padding-left:16px}
+  .ttb{font-size:13px;font-weight:600;color:var(--over);margin:5px 0 0}
+  .conf{font-size:10.5px;color:var(--muted);margin-top:4px}
   .pill{display:inline-block;font-size:10.5px;padding:1px 7px;border-radius:999px;
     background:var(--bg);border:1px solid var(--line);color:var(--muted)}
   @media (max-width:520px){
@@ -80,11 +95,13 @@
   </div>
   <div class="age" id="age"><span class="dot"></span><span id="age-t">กำลังโหลด… / loading…</span></div>
   <div class="modes">
-    <button data-mode="level" class="on">ระดับน้ำ<br>Level</button>
+    <button data-mode="risk" class="on">ความเสี่ยง<br>Risk</button>
+    <button data-mode="level">ระดับน้ำ<br>Level</button>
     <button data-mode="rain">ฝน 24 ชม.<br>Rain 24h</button>
     <button data-mode="discharge">แนวโน้มน้ำท่า<br>Discharge</button>
   </div>
   <div class="legend" id="legend"></div>
+  <div class="worst" id="worst"></div>
 </div>
 
 <div id="tidebar" class="panel">
@@ -105,6 +122,12 @@ const DATA = new URLSearchParams(location.search).get("data")
   || window.SERAPHIM_DATA_URL || "../data/out/stations.geojson";
 const META = DATA.replace(/stations\.geojson$/, "meta.json");
 const TIDE = DATA.replace(/stations\.geojson$/, "tide.json");
+const AREAS = DATA.replace(/stations\.geojson$/, "areas.json");
+// Risk 1-5 -> colour. Used for markers, badges and the worst-districts list alike,
+// so one level always looks the same everywhere in the UI.
+const RISK_COLOUR = {1:"#1c7ed6",2:"#c99a06",3:"#e8590c",4:"#c2182b",5:"#7d0d1b"};
+const RISK_TH = {1:"ปกติ",2:"เฝ้าระวัง",3:"เตือนภัย",4:"อันตราย",5:"วิกฤต"};
+const RISK_EN = {1:"Normal",2:"Watch",3:"Warning",4:"Severe",5:"Critical"};
 
 const map = new maplibregl.Map({
   container: "map",
@@ -148,6 +171,19 @@ map.on("load", async () => {
   // and what the discharge model expects. Colour always carries a second signal
   // (radius, stroke) so it is never the only cue.
   const MODES = {
+    risk: {
+      colour: ["case",
+        ["==", ["get","risk_level"], null], "#b6bfc9",
+        ["==", ["get","risk_level"], 5], RISK_COLOUR[5],
+        ["==", ["get","risk_level"], 4], RISK_COLOUR[4],
+        ["==", ["get","risk_level"], 3], RISK_COLOUR[3],
+        ["==", ["get","risk_level"], 2], RISK_COLOUR[2],
+        RISK_COLOUR[1]],
+      big: [">=", ["coalesce",["get","risk_level"], 0], 4],
+      legend: [[RISK_COLOUR[5],"5 วิกฤต · Critical"],[RISK_COLOUR[4],"4 อันตราย · Severe"],
+               [RISK_COLOUR[3],"3 เตือนภัย · Warning"],[RISK_COLOUR[2],"2 เฝ้าระวัง · Watch"],
+               [RISK_COLOUR[1],"1 ปกติ · Normal"]]
+    },
     level: {
       colour: ["case",
         ["get","stale"], "#8b97a3",
@@ -273,15 +309,31 @@ map.on("load", async () => {
     const fb = n("freeboard_m");
     const over = fb !== null && fb <= 0;
     const stale = p.stale === true || p.stale === "true";
-    const tag = over
-      ? `<div class="tag" style="background:var(--over)">ล้นตลิ่ง · OVER BANK</div>`
-      : (stale ? `<div class="tag" style="background:var(--stale)">ไม่ส่งข้อมูล · NOT REPORTING</div>` : "");
     const rise = n("discharge_rise_ratio");
+    const lv = n("risk_level");
+    const tag = lv
+      ? `<div class="tag" style="background:${RISK_COLOUR[lv]}">${lv} ${RISK_TH[lv]} · ${RISK_EN[lv]}</div>`
+      : (over ? `<div class="tag" style="background:var(--over)">ล้นตลิ่ง · OVER BANK</div>` : "");
+    let reasons = p.reasons;
+    if (typeof reasons === "string") { try { reasons = JSON.parse(reasons); } catch { reasons = []; } }
+    reasons = Array.isArray(reasons) ? reasons : [];
+    const ttb = n("time_to_bank_hr");
+    // The "why" block is not decoration: a score with no reasoning is either ignored
+    // or panics people, and neither is a safe outcome.
+    const why = reasons.length ? `<div class="why"><b>เหตุผล · WHY</b><ul>` +
+        reasons.map(r => `<li>${r.th}<br><span style="color:var(--muted)">${r.en}</span></li>`).join("") +
+        `</ul></div>` : "";
+    const ttbHtml = ttb !== null
+      ? `<div class="ttb">⚠ ถึงระดับตลิ่งใน ~${ttb} ชม. · ~${ttb} h to bank level</div>` : "";
+    const conf = p.risk_confidence
+      ? `<div class="conf">ความเชื่อมั่น / confidence: ${p.risk_confidence}` +
+        (stale ? " · ข้อมูลเก่า / stale" : "") + `</div>` : "";
     new maplibregl.Popup({maxWidth:"320px"})
       .setLngLat(e.lngLat)
       .setHTML(`
         ${tag}
         <div class="pop-h">${p.name ?? "—"}</div>
+        ${ttbHtml}
         <div class="pop-r"><span>จังหวัด / province</span><span>${p.province ?? "—"}</span></div>
         <div class="pop-r"><span>ระดับน้ำ / level</span><span>${fmt(n("level_msl")," m MSL")}</span></div>
         <div class="pop-r"><span>ระดับตลิ่ง / bank</span><span>${fmt(n("bank_msl")," m MSL")}</span></div>
@@ -294,6 +346,7 @@ map.on("load", async () => {
         <div class="pop-r"><span>แนวโน้ม 7 วัน / 7-day trend</span><span>${rise===null?"—":rise+"×"}</span></div>
         <div class="pop-r"><span>อายุข้อมูล / data age</span><span>${ageLabel(n("data_age_min"))}</span></div>
         <div class="pop-r"><span>หน่วยงาน / agency</span><span>${p.agency ?? "—"}</span></div>
+        ${why}${conf}
       `).addTo(map);
   });
 
@@ -311,6 +364,26 @@ map.on("load", async () => {
   document.getElementById("age-t").textContent = gen
     ? `อัปเดตเมื่อ ${ageLabel(mins)} ที่แล้ว · median reading age ${ageLabel(med)}`
     : "ไม่ทราบเวลาข้อมูล / snapshot time unknown";
+
+  // Worst districts — a gauge is an instrument, a district is where somebody lives.
+  if (areas?.areas?.length) {
+    const top = areas.areas.filter(a => a.level >= 3).slice(0, 6);
+    document.getElementById("worst").innerHTML = top.length
+      ? `<h3>พื้นที่เสี่ยงสูงสุด · HIGHEST RISK DISTRICTS</h3>` + top.map((a, i) =>
+          `<a data-i="${i}"><span class="lv" style="background:${RISK_COLOUR[a.level]}">${a.level}</span>` +
+          `<span>${a.district ?? "—"}, ${a.province ?? "—"}` +
+          (a.worst_ttb_hr !== null && a.worst_ttb_hr !== undefined
+            ? ` <span style="color:var(--over)">~${a.worst_ttb_hr} ชม.</span>` : "") +
+          `</span></a>`).join("")
+      : `<h3>พื้นที่เสี่ยงสูงสุด · HIGHEST RISK DISTRICTS</h3>
+         <div style="font-size:12px;color:var(--muted)">ไม่มีพื้นที่ระดับ 3 ขึ้นไป · none at level 3+</div>`;
+    document.querySelectorAll("#worst a").forEach(el => el.addEventListener("click", () => {
+      const a = top[+el.dataset.i];
+      const f = gj.features.find(x => x.properties.province === a.province
+        && x.properties.district === a.district && x.properties.risk_level === a.level);
+      if (f) map.flyTo({center: f.geometry.coordinates, zoom: 11});
+    }));
+  }
 
   // Open the upper-Gulf tide point by default: it is the one that drives Bangkok's
   // backwater flooding, and it makes the tide layer discoverable.

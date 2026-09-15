@@ -26,6 +26,16 @@ Per-station fields that matter (confirmed in live response):
 
 > ⚠️ Terms of use NOT yet confirmed. Must contact HII for production use + attribution. Do not ship to real users until cleared.
 
+### ThaiWater history — ❌ not available
+`public/waterlevel_graph` accepts `station_id` but returns a **Go panic** (`index out of range`)
+rather than data; other history paths 404. Probing stopped rather than hammer a government API.
+**Consequence:** history cannot be bootstrapped — the archive must accumulate, so time-to-bank
+is empty for the first ~1-2 h after deployment.
+
+`waterlevel_msl_previous` is **not** usable as a second data point: measured against our archive
+on 2026-09-15, station reporting intervals cluster at **10 / 20 / 30 / 60 min** with no
+documented rule, so a rate over an assumed Δt would be wrong by up to 6×.
+
 ### GISTDA — flood extent / disaster ❓⚠️
 `https://disaster.gistda.or.th/` responds HTTP 200. Sentinel-1 SAR derived flood extent,
 1/3/7/30-day windows, JSON + WMS/WMTS/TMS tiles. **Endpoints not yet probed** — Phase 1 task.

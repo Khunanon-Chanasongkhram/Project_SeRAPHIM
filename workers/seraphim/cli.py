@@ -11,13 +11,16 @@ from seraphim import cache
 from seraphim.adapters import forecast_registry, registry
 from seraphim.adapters.marine import TideAdapter, summarise
 from seraphim.models import Forecast, SourceHealth, StationState
+from seraphim.history import fit_trend, load_history, merge_current
 from seraphim.publish import (
+    build_areas,
     build_geojson,
     build_meta,
     build_tide,
     write_archive,
     write_snapshot,
 )
+from seraphim.risk import assess, rollup
 
 
 def _forecasts(
@@ -137,19 +140,45 @@ def build(
             StationState(station=st, observation=ob, generated_at=generated_at, forecast=fc)
         )
 
-    geojson = build_geojson(states)
-    meta = build_meta(states, health, generated_at, tide_points=len(tide_points))
-    tide = build_tide(tide_points, generated_at) if tide_points else None
+    # --- risk: needs history, which lives in the archive we have already written ---
+    history = load_history(out_root / "archive", generated_at)
+    history = merge_current(history, states)
+    station_trends = {sid: fit_trend(pts) for sid, pts in history.items()}
 
-    written = write_snapshot(out_root / "out", geojson, meta, tide)
+    risks = {
+        s.station.id: assess(s, station_trends.get(s.station.id), tide_points, generated_at)
+        for s in states
+    }
+    areas = rollup(states, risks)
+    conf = {}
+    for r in risks.values():
+        conf[r.trend_confidence] = conf.get(r.trend_confidence, 0) + 1
+    print(
+        f"[risk] {len(risks)} assessed | trend confidence: "
+        + ", ".join(f"{k}={v}" for k, v in sorted(conf.items()))
+        + f" | {sum(1 for r in risks.values() if r.time_to_bank_hr is not None)} with time-to-bank"
+    )
+
+    geojson = build_geojson(states, risks)
+    meta = build_meta(states, health, generated_at, tide_points=len(tide_points), risks=risks)
+    tide = build_tide(tide_points, generated_at) if tide_points else None
+    areas_doc = build_areas(areas, generated_at)
+
+    written = write_snapshot(out_root / "out", geojson, meta, tide, areas_doc)
     if archive and states:
         written.append(write_archive(out_root / "archive", geojson, generated_at))
     for p in written:
         print(f"wrote {p} ({p.stat().st_size:,} bytes)")
 
     c = meta["counts"]
+    rl = meta["risk"]["by_level"]
     print(
-        f"\n{c['stations']} stations | {c['with_bank_level']} with bank level | "
+        f"\nrisk levels: 5={rl['5']} 4={rl['4']} 3={rl['3']} 2={rl['2']} 1={rl['1']}"
+        f" | soonest to bank: {meta['risk']['soonest_to_bank_hr']} h"
+        f" | districts: {len(areas)}"
+    )
+    print(
+        f"{c['stations']} stations | {c['with_bank_level']} with bank level | "
         f"{c['at_or_over_bank']} at/over bank | {c['stale']} stale | "
         f"{c['with_forecast']} with forecast | {c['tide_points']} tide points | "
         f"median age {meta['data_age_minutes']['median']} min"

@@ -7,9 +7,10 @@ Purpose: survive a closed terminal or an expired token with zero context loss.
 
 ## Current state
 
-**Phase:** 1 (Ingest + live map) — ✅ **code complete, locally verified. Not yet deployed.**
-**Next action:** user creates the private GitHub repo + pushes; then wire Cloudflare R2 secrets
-so the cron publishes to a live URL. Then Phase 2 (risk engine).
+**Phase:** 2 (Risk engine) — ✅ **code complete, locally verified. Not yet deployed.**
+**Next action:** user creates the private GitHub repo + pushes; then wire Cloudflare R2 secrets.
+**Deploying matters now**: time-to-bank stays empty until the cron has built ~1-2 h of archive.
+Then Phase 3 (calm mode / fishing) or Phase 4 (SOS).
 **Blockers:** none for building. For *public launch*: ThaiWater terms unconfirmed, TMD needs API key.
 **Needs user:** (1) push to private GitHub repo, (2) Cloudflare account for R2 secrets.
 
@@ -18,12 +19,65 @@ so the cron publishes to a live URL. Then Phase 2 (risk engine).
 |---|---|---|
 | 0 | Foundation | ✅ code complete, not deployed |
 | 1 | Ingest + live map | ✅ code complete, not deployed |
-| 2 | Risk engine | ⬜ not started |
+| 2 | Risk engine | ✅ code complete, not deployed |
 | 3 | Calm mode (tide/fishing) | ⬜ not started |
 | 4 | Respond (SOS) | ⬜ not started |
 | 5 | Terrain / HAND | ⬜ not started |
 | 6 | Harden / scale | ⬜ not started |
 | 7 | Global + multi-hazard | ⬜ not started |
+
+---
+
+## 2026-09-15 — Session 5: Phase 2 built (risk engine)
+
+**Done — Phase 2 code complete, 75 tests passing.**
+- `history.py` — archive replay, duplicate collapsing, **least-squares** rate of rise with
+  R²-based confidence (`good`/`fair`/`poor`/`none`).
+- `risk.py` — explainable 1-5 scoring, **time-to-bank**, tide compounding, district rollup.
+  Every score carries bilingual `reasons`; **1,121/1,121 stations carry reasoning**.
+- `areas.json` — 479 districts, all **77/77 provinces**, ranked worst-first. Verified
+  `(province_code, district_code)` is collision-free on real data.
+- Map: risk mode (now default), a "เหตุผล · WHY" panel in every popup, prominent
+  time-to-bank, and a clickable highest-risk-districts list.
+
+**Why `waterlevel_msl_previous` is still not used (re-tested, decision confirmed)**
+Measured it against our archive: 481 stations matched a prior archived level, but the gaps
+clustered at **10 / 20 / 30 / 60 min with no single interval**, and most "matches" were flat
+readings that prove nothing. A rate from an assumed Δt would be wrong by up to **6×**.
+→ Rate comes only from our own timestamped archive. Regression (not two-point differencing)
+because intervals are irregular and telemetry is noisy — two-point would turn one spurious
+reading into a dramatic false alarm.
+
+**ThaiWater has no usable public history endpoint.** `public/waterlevel_graph` accepts
+`station_id` but returns a **Go panic** (index out of range). Stopped probing rather than
+hammer a government API. Bootstrapping history is therefore not possible; the archive must
+accumulate. Recorded in `docs/DATA_SOURCES.md`.
+
+**Validation**
+- Regression recovers a synthetic 0.10 m/hr exactly (R²=1.0) and 0.1057 under ±3 cm noise.
+- Full replay through a real on-disk archive: 315 real stations given a synthetic 6 h history →
+  **189 with time-to-bank**, arithmetic exact (0.24 m ÷ 0.30 m/hr = 0.8 h).
+- Tide compounding fires correctly on live data at **Phra Pradaeng, Samut Prakan** (20 km from
+  Chao Phraya mouth) and, in replay, **Bang Nam Priao, Chachoengsao** (51 km from Bang Pakong)
+  — both genuinely tidal, flood-prone delta districts.
+- Guards tested: TTB withheld on weak trends, on noise-level rates, when falling, when already
+  over bank, and beyond a 72 h horizon.
+
+**Live output right now:** risk 5=306, 4=2, 3=41, 2=194, 1=578 · **0 with time-to-bank**,
+because the archive spans ~30 min (below the 45 min minimum span). Correct behaviour, and it
+resolves itself once the cron runs.
+
+**Two test bugs I introduced and fixed**
+- A test helper hardcoded `district_code="01"`, collapsing two districts into one bucket.
+  Prompted a real-data check: **no (province, district) collisions across 479 districts**.
+- A `merge_current` assertion expected 1 reading where 2 is correct.
+
+**Deliberate design choices**
+- A stale gauge **keeps** its risk level (a silent gauge over bank is more alarming, not less)
+  but drops to `confidence: poor` with an explicit reason.
+- District rollup takes the **worst** station, never an average: one overtopping river is not
+  cancelled out by three calm ones nearby.
+- A high tide alone never raises a calm river — it only compounds already-elevated risk.
 
 ---
 

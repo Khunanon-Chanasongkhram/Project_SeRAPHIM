@@ -67,7 +67,10 @@ jobs:
               f"- stations: **{c['stations']}** ({c['with_bank_level']} with bank level)\n"
               f"- at/over bank: **{c['at_or_over_bank']}**\n"
               f"- stale: {c['stale']} | median age: {a['median']} min\n"
-              f"- with forecast: {c.get('with_forecast', 0)} | tide points: {c.get('tide_points', 0)}\n\n"
+              f"- with forecast: {c.get('with_forecast', 0)} | tide points: {c.get('tide_points', 0)}\n"
+              + (lambda r: f"- risk 5/4/3: **{r['by_level']['5']}** / {r['by_level']['4']} / {r['by_level']['3']}"
+                           f" | time-to-bank on {r['with_time_to_bank']} stations"
+                           f" | soonest: {r['soonest_to_bank_hr']} h\n\n")(m.get("risk", {"by_level":{"5":0,"4":0,"3":0},"with_time_to_bank":0,"soonest_to_bank_hr":None}))
               + "\n".join(
                   f"- `{s['source']}` ok={s['ok']} stations={s['stations']}"
                   + (f" error={s['error']}" if s.get("error") else "")

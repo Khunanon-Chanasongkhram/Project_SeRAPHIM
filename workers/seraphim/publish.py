@@ -21,16 +21,18 @@ from seraphim.models import SourceHealth, StationState
 SCHEMA_VERSION = 1
 
 
-def build_geojson(states: list[StationState]) -> dict:
+def build_geojson(states: list[StationState], risks: dict | None = None) -> dict:
     """One feature per station, carrying its latest reading and derived freeboard.
 
     GeoJSON because MapLibre consumes it directly with no tile server — which is the
     point of a static architecture. PMTiles replaces this if station counts ever make
     the payload too large for a single fetch.
     """
+    risks = risks or {}
     features = []
     for s in states:
         st, ob, fc = s.station, s.observation, s.forecast
+        rk = risks.get(st.id)
         features.append(
             {
                 "type": "Feature",
@@ -65,6 +67,19 @@ def build_geojson(states: list[StationState]) -> dict:
                         if fc else None
                     ),
                     "source_severity": ob.source_severity,
+                    # Risk, with its reasoning attached. The explanation travels with
+                    # the score by design: a bare colour badge is either ignored or
+                    # causes panic, and neither is a safe outcome.
+                    "risk_level": rk.level if rk else None,
+                    "risk_th": rk.level_th if rk else None,
+                    "risk_en": rk.level_en if rk else None,
+                    "time_to_bank_hr": rk.time_to_bank_hr if rk else None,
+                    "rate_m_per_hr": rk.rate_m_per_hr if rk else None,
+                    "risk_confidence": rk.confidence if rk else None,
+                    "reasons": (
+                        [{"code": r.code, "th": r.th, "en": r.en} for r in rk.reasons]
+                        if rk else []
+                    ),
                     "observed_at": ob.observed_at.isoformat(),
                     "data_age_min": s.data_age_minutes,
                     "stale": s.is_stale,
@@ -94,11 +109,29 @@ def build_tide(summaries: list[dict], generated_at: datetime) -> dict:
     }
 
 
+def build_areas(areas: list[dict], generated_at: datetime) -> dict:
+    """areas.json — district-level rollup, ordered worst-first.
+
+    A gauge is an instrument; a district is where somebody lives. This is the file an
+    official or a resident actually reads.
+    """
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "generated_at": generated_at.isoformat(),
+        "method": (
+            "Each district takes the level of its worst station, not an average: one "
+            "overtopping river is not cancelled out by three calm ones nearby."
+        ),
+        "areas": areas,
+    }
+
+
 def build_meta(
     states: list[StationState],
     health: list[SourceHealth],
     generated_at: datetime,
     tide_points: int = 0,
+    risks: dict | None = None,
 ) -> dict:
     """Machine-readable health. Published so a broken feed is visible, not silent."""
     ages = [s.data_age_minutes for s in states]
@@ -115,6 +148,7 @@ def build_meta(
             "with_forecast": sum(1 for s in states if s.forecast is not None),
             "tide_points": tide_points,
         },
+        "risk": _risk_counts(risks or {}),
         "data_age_minutes": {
             "min": round(min(ages), 1) if ages else None,
             "median": round(sorted(ages)[len(ages) // 2], 1) if ages else None,
@@ -135,8 +169,30 @@ def build_meta(
     }
 
 
+def _risk_counts(risks: dict) -> dict:
+    by_level = {str(i): 0 for i in range(1, 6)}
+    ttbs = []
+    for r in risks.values():
+        by_level[str(r.level)] = by_level.get(str(r.level), 0) + 1
+        if r.time_to_bank_hr is not None:
+            ttbs.append(r.time_to_bank_hr)
+    return {
+        "by_level": by_level,
+        "with_time_to_bank": len(ttbs),
+        "soonest_to_bank_hr": round(min(ttbs), 1) if ttbs else None,
+        "trend_confidence": {
+            c: sum(1 for r in risks.values() if r.trend_confidence == c)
+            for c in ("good", "fair", "poor", "none")
+        },
+    }
+
+
 def write_snapshot(
-    out_dir: Path, geojson: dict, meta: dict, tide: dict | None = None
+    out_dir: Path,
+    geojson: dict,
+    meta: dict,
+    tide: dict | None = None,
+    areas: dict | None = None,
 ) -> list[Path]:
     """Write the current snapshot. Gzip alongside: it is ~10x smaller and CDN-friendly."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -144,6 +200,8 @@ def write_snapshot(
     items = [("stations.geojson", geojson), ("meta.json", meta)]
     if tide is not None:
         items.append(("tide.json", tide))
+    if areas is not None:
+        items.append(("areas.json", areas))
     for name, payload in items:
         raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         path = out_dir / name

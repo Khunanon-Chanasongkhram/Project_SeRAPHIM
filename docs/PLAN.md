@@ -201,7 +201,7 @@ log, CSV & sit-rep export.
 |---|---|---|
 | **0** ✅ Foundation | repo skeleton, `SourceAdapter` interface, Actions cron, Cloudflare Pages deploy, snapshot contract | green cron run publishes a snapshot to a live URL |
 | **1** ✅ Ingest + Live map | ThaiWater + Open-Meteo adapters, canonical normalisation, MapLibre map on PMTiles | 1,121 stations live on a public map, refreshing every 15 min |
-| **2** Risk engine | freeboard, dh/dt, TTB, rain, tide compounding, explainable scores, alerts | per-tambon risk with a readable "why" |
+| **2** ✅ Risk engine | freeboard, dh/dt, TTB, rain, tide compounding, explainable scores, alerts | per-tambon risk with a readable "why" |
 | **3** Calm mode | tide curves, solunar, bite windows, reservoirs | 7-day fishing planner for any Thai coast/river point |
 | **4** Respond | SOS intake (offline PWA) → Worker + D1, triage console, trust tiers, PDPA controls, audit | citizen → responder round trip, load-tested |
 | **5** Terrain | DEM ingest, HAND, inundation mapping, 3D | "your street floods at 2.1 m at this gauge" |

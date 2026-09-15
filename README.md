@@ -10,9 +10,16 @@ engine that says *when* a bank overtops, not just that a level is high.
 > In an emergency in Thailand call **1784** (DDPM) or **191**.
 > Readings come from third-party telemetry and may be delayed, wrong, or missing.
 
-**Status: Phase 1 complete — live map + forecast layer.** Pre-alpha, not yet deployed.
-1,121 Thai river gauges, rainfall and GloFAS discharge forecasts, and tide prediction at 23
-coastal points. See [`PROGRESS.md`](PROGRESS.md).
+**Status: Phase 2 complete — risk engine.** Pre-alpha, not yet deployed.
+1,121 Thai river gauges, rainfall and GloFAS discharge forecasts, tide prediction at 23 coastal
+points, and an explainable risk score with **time-to-bank** across 479 districts in all 77
+provinces. See [`PROGRESS.md`](PROGRESS.md).
+
+> **Time-to-bank needs history.** It is computed from our own archive, so it produces nothing
+> until the cron has been running for ~1-2 hours. That is by design: the source's
+> `waterlevel_msl_previous` field looked like a shortcut, but its interval varies from 10 to 60
+> minutes per station with no documented rule, so a rate derived from it would be wrong by up
+> to 6x. Validated end-to-end against replayed archives instead (`tests/test_risk.py`).
 
 ---
 
@@ -74,6 +81,8 @@ cd .. && python3 -m http.server 8000
 | `workers/seraphim/adapters/` | one adapter per source, behind `SourceAdapter` |
 | `workers/seraphim/models.py` | canonical types; the datum contract lives here |
 | `workers/seraphim/publish.py` | snapshot writer — the output contract *is* the API |
+| `workers/seraphim/risk.py` | the risk engine — scoring, time-to-bank, tide compounding, reasons |
+| `workers/seraphim/history.py` | archive replay + least-squares rate of rise |
 | `workers/seraphim/tide.py` | extremes, lunar phase, empirical tidal-range classification |
 | `workers/seraphim/cache.py` | per-source forecast cache — keeps us inside the API quota |
 | `web/` | static map, no build step |
@@ -104,6 +113,7 @@ These are enforced in review; the reasoning is in [`CLAUDE.md`](CLAUDE.md).
 5. Always display data age. Cron drifts; nothing is labelled "live".
 6. Public pages stay statically pre-rendered.
 7. A dead source degrades the map, it never takes it down.
+8. Time-to-bank is withheld unless the trend earns it — weak fits publish nothing.
 
 ## Licence
 
