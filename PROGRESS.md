@@ -7,10 +7,11 @@ Purpose: survive a closed terminal or an expired token with zero context loss.
 
 ## Current state
 
-**Phase:** 2 (Risk engine) — ✅ **code complete, locally verified. Not yet deployed.**
+**Phase:** 4 (SOS) — ✅ **code complete, locally verified. Not yet deployed.**
 **Next action:** user creates the private GitHub repo + pushes; then wire Cloudflare R2 secrets.
 **Deploying matters now**: time-to-bank stays empty until the cron has built ~1-2 h of archive.
-Then Phase 3 (calm mode / fishing) or Phase 4 (SOS).
+Then Phase 3 (calm mode / fishing), 5 (terrain) or 6 (harden + load test).
+**Worker has never been executed** — no node here. First real run is `wrangler dev`.
 **Blockers:** none for building. For *public launch*: ThaiWater terms unconfirmed, TMD needs API key.
 **Needs user:** (1) push to private GitHub repo, (2) Cloudflare account for R2 secrets.
 
@@ -21,10 +22,69 @@ Then Phase 3 (calm mode / fishing) or Phase 4 (SOS).
 | 1 | Ingest + live map | ✅ code complete, not deployed |
 | 2 | Risk engine | ✅ code complete, not deployed |
 | 3 | Calm mode (tide/fishing) | ⬜ not started |
-| 4 | Respond (SOS) | ⬜ not started |
+| 4 | Respond (SOS) | ✅ code complete, not deployed |
 | 5 | Terrain / HAND | ⬜ not started |
 | 6 | Harden / scale | ⬜ not started |
 | 7 | Global + multi-hazard | ⬜ not started |
+
+---
+
+## 2026-09-15 — Session 6: Phase 4 built (SOS emergency coordination)
+
+**Done — Phase 4 code complete, 117 tests passing.** Verified end-to-end over real HTTP.
+- `api/schema.sql` — D1/SQLite schema. PDPA-shaped: recorded consent, per-row
+  `purge_after`, `access_log`, hashed tokens, hashed IPs.
+- `api/src/index.js` — Cloudflare Worker. Submit / triage / detail / update / clusters /
+  anonymised public summary / nightly purge cron.
+- `workers/seraphim/sos.py` — domain rules (20 need codes, severity, geohash, clustering).
+- `workers/seraphim/devserver.py` — **Python dev server implementing the same contract**,
+  so the front end is testable without node or wrangler. Runs the real `schema.sql`.
+- `web/sos.html` — citizen form, offline-first (IndexedDB queue + service worker).
+- `web/ops.html` — responder triage console: queue, map, clusters, lifecycle, audit.
+
+**The two-implementation problem, and how it is contained**
+Production is a JS Worker; there is no node on this machine, so it cannot be executed
+here. Rather than pretend otherwise: `api/conformance/severity.json` holds hand-reasoned
+cases that BOTH implementations are tested against, plus tests that diff the need codes
+and thresholds straight out of the JS source. If they ever disagree, the conformance file
+is the referee. D1 *is* SQLite, so the dev server exercises the production schema.
+
+**Bug found by the conformance suite**
+My geohash sent a point sitting exactly on a cell midpoint to the LOW cell, so (0,0)
+encoded as `7zzzz` instead of the standard `s0000`. Only matters on exact boundaries —
+but 0/0 is precisely what a broken GPS reports. Fixed to `>=`, matching Redis /
+Elasticsearch / geohash.org. The canonical example (`u4pruydqqvj`) still passes.
+
+**Bug found in my own dev server**
+The responder token was printed but never appeared: Python block-buffers stdout when
+backgrounded, so you could start the server and have no way to sign in. Fixed with
+`flush=True` plus a `--token-file` option.
+
+**Design decisions that matter**
+- **Offline is the default assumption.** Submissions queue in IndexedDB and retry; a
+  client-generated `client_id` makes retries idempotent, so one family cannot become
+  twelve pins and twelve boats. Enforced by a partial unique index in the schema.
+- **Waiting escalates severity** at read time (+1 at 6 h, +2 at 12 h), so the queue
+  reorders itself and nobody is forgotten in arrival order.
+- **Clusters are dispatch hints, never merges** — the underlying requests stay open.
+- **`access_log` outlives the data it describes**: it is the evidence that access was
+  controlled, so it survives the purge.
+- **Consent is mandatory**; submission is refused without it.
+- **Trust tiers** (volunteer → official → admin) with optional province scope, so a
+  district responder cannot read the whole country.
+- `tel:1784` / `tel:191` are the largest, first elements on the citizen form — if
+  someone is in danger, calling beats filling in a form.
+
+**Verified end-to-end over HTTP:** submit → offline retry collapses to one → consent
+refused → unauthenticated read blocked → responder queue sorted worst-first → clusters
+(3 requests in one geohash in บางพลี) → assign → resolve → audit trail intact → public
+summary leaks no PII.
+
+**Explicitly NOT built (and why)**
+- **SMS/USSD intake** — needs a Thai telco or Twilio agreement. `source` already accepts
+  `'sms'`, so it slots in without a schema change.
+- **`.go.th` magic-link sign-in** — needs an email provider. Manual allowlist works today.
+- **Load testing** — Phase 6.
 
 ---
 

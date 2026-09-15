@@ -1,0 +1,42 @@
+/* SeRAPHIM service worker.
+ *
+ * Floods take the network down. A help form that needs a connection is useless at
+ * exactly the moment it matters, so the app shell is cached on first visit and the
+ * page keeps working offline; submissions queue in IndexedDB and flush on reconnect.
+ */
+const CACHE = "seraphim-v1";
+const SHELL = ["./sos.html", "./index.html", "./ops.html"];
+
+self.addEventListener("install", (e) => {
+  // Cache what we can; a single failed asset must not abort the whole install and
+  // leave the user with no offline shell at all.
+  e.waitUntil(caches.open(CACHE)
+    .then((c) => Promise.allSettled(SHELL.map((u) => c.add(u))))
+    .then(() => self.skipWaiting()));
+});
+
+self.addEventListener("activate", (e) => {
+  e.waitUntil(caches.keys()
+    .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+    .then(() => self.clients.claim()));
+});
+
+self.addEventListener("fetch", (e) => {
+  const { request } = e;
+  if (request.method !== "GET") return;               // never cache submissions
+  const url = new URL(request.url);
+  if (url.pathname.includes("/api/")) return;         // API is always live
+
+  // Network-first so a connected user sees fresh data, cache as the fallback.
+  e.respondWith(
+    fetch(request)
+      .then((res) => {
+        if (res.ok && url.origin === location.origin) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(request, copy));
+        }
+        return res;
+      })
+      .catch(() => caches.match(request).then((hit) => hit || caches.match("./sos.html")))
+  );
+});

@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ขอความช่วยเหลือ · SeRAPHIM SOS</title>
+<style>
+  :root{--bg:#f6f7f9;--fg:#12161c;--muted:#5b6672;--line:#dde3ea;--card:#fff;
+        --red:#c2182b;--ok:#1c7ed6;--go:#0f7b3f}
+  *{box-sizing:border-box}
+  html,body{margin:0;font:16px/1.55 system-ui,-apple-system,"Noto Sans Thai",sans-serif;
+    color:var(--fg);background:var(--bg)}
+  .wrap{max-width:560px;margin:0 auto;padding:16px;
+    padding-top:calc(env(safe-area-inset-top,0px) + 16px);
+    padding-bottom:calc(env(safe-area-inset-bottom,0px) + 96px)}
+  h1{font-size:21px;margin:0 0 3px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 14px}
+
+  /* The most important element on the page: if you are in danger, call. */
+  .call{display:flex;gap:9px;margin-bottom:14px}
+  .call a{flex:1;display:block;text-align:center;padding:14px 8px;border-radius:12px;
+    background:var(--red);color:#fff;text-decoration:none;font-weight:700;font-size:17px;
+    box-shadow:0 2px 10px rgba(194,24,43,.28)}
+  .call a small{display:block;font-weight:500;font-size:11px;opacity:.9}
+  .notice{background:#fff8f8;border:1px solid #ffc9c9;color:#8b1a1a;border-radius:10px;
+    padding:10px 12px;font-size:12.5px;margin-bottom:16px}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:14px;margin-bottom:12px}
+  .card h2{font-size:14px;margin:0 0 3px}
+  .card .hint{color:var(--muted);font-size:12px;margin:0 0 10px}
+  .req{color:var(--red)}
+
+  .needs{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:7px}
+  .need{display:flex;align-items:center;gap:8px;padding:11px 10px;border:1.5px solid var(--line);
+    border-radius:10px;cursor:pointer;background:var(--bg);font-size:14px;line-height:1.25}
+  .need input{width:19px;height:19px;accent-color:var(--red);flex:none;margin:0}
+  .need.on{border-color:var(--red);background:#fff4f4}
+  .need small{display:block;color:var(--muted);font-size:11px}
+  .need.crit.on{border-color:var(--red);background:#ffecec}
+
+  label.f{display:block;margin-bottom:10px;font-size:13px;color:var(--muted)}
+  input[type=text],input[type=tel],input[type=number],textarea,select{
+    width:100%;padding:11px 12px;font:inherit;border:1px solid var(--line);
+    border-radius:9px;background:#fff;margin-top:4px;color:var(--fg)}
+  textarea{min-height:74px;resize:vertical}
+  .row{display:flex;gap:9px}.row>*{flex:1}
+
+  .loc{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+  .loc button{padding:11px 14px;font:inherit;font-weight:600;border-radius:9px;cursor:pointer;
+    border:1.5px solid var(--ok);background:#fff;color:var(--ok)}
+  .loc .val{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .loc .val.got{color:var(--go);font-weight:600}
+  #map{height:190px;border-radius:10px;margin-top:10px;border:1px solid var(--line);display:none}
+  #map.show{display:block}
+
+  .consent{display:flex;gap:10px;align-items:flex-start;font-size:12.5px;color:var(--muted)}
+  .consent input{width:19px;height:19px;flex:none;margin:2px 0 0;accent-color:var(--go)}
+
+  .bar{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.97);
+    border-top:1px solid var(--line);padding:11px 16px;
+    padding-bottom:calc(env(safe-area-inset-bottom,0px) + 11px);backdrop-filter:blur(8px)}
+  .bar .inner{max-width:560px;margin:0 auto;display:flex;gap:10px;align-items:center}
+  button.send{flex:1;padding:15px;font:inherit;font-size:17px;font-weight:700;border:0;
+    border-radius:12px;background:var(--red);color:#fff;cursor:pointer}
+  button.send:disabled{background:#c8ced6;cursor:not-allowed}
+  .net{font-size:11px;padding:4px 9px;border-radius:999px;background:#eef6ff;
+    border:1px solid #cfe3f8;color:var(--ok);white-space:nowrap}
+  .net.off{background:#fff6e6;border-color:#ffd8a8;color:#a15c00}
+
+  .done{background:#f0fbf4;border:1px solid #b7e4c7;border-radius:12px;padding:16px;
+    margin-bottom:12px}
+  .done h2{color:var(--go);margin:0 0 6px;font-size:16px}
+  .done code{background:#fff;padding:2px 7px;border-radius:5px;font-size:13px}
+  .pending{background:#fff6e6;border:1px solid #ffd8a8;border-radius:10px;padding:11px;
+    font-size:12.5px;margin-bottom:12px}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>ขอความช่วยเหลือ</h1>
+  <p class="sub">Request help · SeRAPHIM</p>
+
+  <div class="call">
+    <a href="tel:1784">1784 <small>ปภ. สายด่วน / DDPM</small></a>
+    <a href="tel:191">191 <small>ตำรวจ / Police</small></a>
+  </div>
+  <div class="notice">
+    <b>นี่ไม่ใช่ช่องทางแจ้งเหตุฉุกเฉินทางราชการ</b> — หากมีอันตรายถึงชีวิต โปรดโทรตามเบอร์ด้านบนก่อน
+    <br>This is <b>not</b> an official emergency channel. If life is in danger, call first.
+  </div>
+
+  <div id="pending" class="pending" hidden></div>
+  <div id="done" class="done" hidden></div>
+
+  <form id="form">
+    <div class="card">
+      <h2>ต้องการอะไร <span class="req">*</span></h2>
+      <p class="hint">เลือกได้มากกว่า 1 · Select all that apply</p>
+      <div class="needs" id="needs"></div>
+    </div>
+
+    <div class="card">
+      <h2>อยู่ที่ไหน <span class="req">*</span></h2>
+      <p class="hint">ตำแหน่งช่วยให้ทีมกู้ภัยหาคุณเจอ · Location helps responders find you</p>
+      <div class="loc">
+        <button type="button" id="gps">📍 ใช้ตำแหน่งปัจจุบัน</button>
+        <button type="button" id="pin">🗺️ ปักหมุดเอง</button>
+        <span class="val" id="latlon">ยังไม่ได้ระบุ / not set</span>
+      </div>
+      <div id="map"></div>
+    </div>
+
+    <div class="card">
+      <h2>สถานการณ์</h2>
+      <div class="row">
+        <label class="f">จำนวนคน / People
+          <input type="number" id="people" min="0" max="10000" inputmode="numeric" placeholder="เช่น 4"></label>
+        <label class="f">ระดับน้ำ (ซม.) / Depth
+          <input type="number" id="depth" min="0" max="2000" inputmode="numeric" placeholder="เช่น 80"></label>
+      </div>
+      <label class="f">รายละเอียดเพิ่มเติม / Details
+        <textarea id="note" maxlength="1000" placeholder="เช่น ผู้สูงอายุ 1 คน เดินไม่ได้ ชั้นล่างน้ำท่วมแล้ว"></textarea></label>
+    </div>
+
+    <div class="card">
+      <h2>ติดต่อกลับ</h2>
+      <p class="hint">ไม่บังคับ แต่ช่วยให้ติดต่อได้เร็วขึ้น · Optional, but speeds up response</p>
+      <div class="row">
+        <label class="f">ชื่อ / Name <input type="text" id="name" maxlength="120"></label>
+        <label class="f">เบอร์โทร / Phone <input type="tel" id="phone" maxlength="32" inputmode="tel"></label>
+      </div>
+      <label class="consent"><input type="checkbox" id="safe" checked>
+        <span>โทรหาฉันได้อย่างปลอดภัย · Safe to call me
+        <br><small>ไม่ติ๊กหากเสียงโทรศัพท์อาจเป็นอันตราย</small></span></label>
+    </div>
+
+    <div class="card">
+      <label class="consent"><input type="checkbox" id="consent" required>
+        <span><b>ยินยอมให้ส่งข้อมูลนี้แก่ผู้ช่วยเหลือ</b> รวมถึงตำแหน่ง ความต้องการ และเบอร์ติดต่อ
+        เพื่อใช้ในการช่วยเหลือเท่านั้น และจะถูกลบภายใน 90 วัน (PDPA)
+        <br>I consent to sharing this with responders for assistance only; deleted within 90 days.</span></label>
+    </div>
+  </form>
+</div>
+
+<div class="bar"><div class="inner">
+  <button class="send" id="send" form="form" disabled>ส่งคำขอ · Send request</button>
+  <span class="net" id="net">ออนไลน์</span>
+</div></div>
+
+<script>
+// API base. Same origin in dev; the Cloudflare Worker URL in production.
+const API = new URLSearchParams(location.search).get("api")
+  || localStorage.getItem("seraphim_api") || "http://127.0.0.1:8788";
+
+const NEEDS = [
+  ["medical","เจ็บป่วยฉุกเฉิน","Medical emergency",1],
+  ["trapped","ติดอยู่ ออกไม่ได้","Trapped",1],
+  ["missing","คนสูญหาย","Missing person",1],
+  ["rescue_boat","ต้องการเรือ","Boat / rescue",1],
+  ["evacuation","ต้องการอพยพ","Evacuation",0],
+  ["oxygen","ออกซิเจน","Oxygen",1],
+  ["dialysis","ฟอกไต","Dialysis",1],
+  ["insulin","อินซูลิน","Insulin",0],
+  ["medicine","ยาประจำตัว","Medication",0],
+  ["infant","เด็กทารก","Infant",0],
+  ["elderly","ผู้สูงอายุ","Elderly",0],
+  ["disabled","ผู้พิการ","Disability",0],
+  ["pregnant","ตั้งครรภ์","Pregnant",0],
+  ["water","น้ำดื่ม","Drinking water",0],
+  ["food","อาหาร","Food",0],
+  ["shelter","ที่พักพิง","Shelter",0],
+  ["power","ไฟฟ้า","Power",0],
+  ["toilet","ห้องน้ำ/สุขอนามัย","Sanitation",0],
+  ["pets","สัตว์เลี้ยง","Pets",0],
+  ["livestock","ปศุสัตว์","Livestock",0],
+];
+
+const $ = (id) => document.getElementById(id);
+let lat = null, lon = null, map = null, marker = null;
+
+$("needs").innerHTML = NEEDS.map(([c,th,en,crit]) =>
+  `<label class="need${crit?" crit":""}" data-c="${c}">
+     <input type="checkbox" value="${c}"><span>${th}<small>${en}</small></span></label>`).join("");
+document.querySelectorAll(".need").forEach(el => {
+  const cb = el.querySelector("input");
+  cb.addEventListener("change", () => { el.classList.toggle("on", cb.checked); validate(); });
+});
+
+function selectedNeeds() {
+  return [...document.querySelectorAll(".need input:checked")].map(i => i.value);
+}
+function validate() {
+  $("send").disabled = !(selectedNeeds().length && lat !== null && $("consent").checked);
+}
+$("consent").addEventListener("change", validate);
+
+function setLoc(la, lo, label) {
+  lat = la; lon = lo;
+  $("latlon").textContent = `${la.toFixed(5)}, ${lo.toFixed(5)}${label ? " · " + label : ""}`;
+  $("latlon").classList.add("got");
+  validate();
+}
+
+$("gps").addEventListener("click", () => {
+  if (!navigator.geolocation) return alert("อุปกรณ์นี้ไม่รองรับ GPS");
+  $("latlon").textContent = "กำลังหาตำแหน่ง…";
+  navigator.geolocation.getCurrentPosition(
+    (p) => setLoc(p.coords.latitude, p.coords.longitude, `±${Math.round(p.coords.accuracy)} m`),
+    () => { $("latlon").textContent = "หาตำแหน่งไม่ได้ — ลองปักหมุดเอง"; showMap(); },
+    { enableHighAccuracy: true, timeout: 12000 });
+});
+$("pin").addEventListener("click", showMap);
+
+function showMap() {
+  $("map").classList.add("show");
+  if (map) return;
+  // Loaded on demand: most submissions use GPS and never need the map, and on a
+  // failing connection an unnecessary download is a real cost.
+  const css = document.createElement("link");
+  css.rel = "stylesheet"; css.href = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css";
+  document.head.appendChild(css);
+  const js = document.createElement("script");
+  js.src = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js";
+  js.onload = () => {
+    map = new maplibregl.Map({
+      container: "map",
+      style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+      center: [lon ?? 100.5, lat ?? 13.75], zoom: lat ? 15 : 9,
+    });
+    map.on("click", (e) => {
+      setLoc(e.lngLat.lat, e.lngLat.lng, "ปักหมุด");
+      if (marker) marker.remove();
+      marker = new maplibregl.Marker({ color: "#c2182b" }).setLngLat(e.lngLat).addTo(map);
+    });
+  };
+  js.onerror = () => { $("map").innerHTML =
+    '<div style="padding:14px;font-size:13px;color:#5b6672">โหลดแผนที่ไม่ได้ (ออฟไลน์) — กรุณาใช้ GPS</div>'; };
+  document.head.appendChild(js);
+}
+
+// --- offline queue --------------------------------------------------------
+// A submission is never lost because the network was down. It is stored locally and
+// retried; the client_id makes the retry idempotent so one family cannot become
+// twelve pins on a responder's map.
+const DB_NAME = "seraphim-sos", STORE = "queue";
+function idb() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(DB_NAME, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(STORE, { keyPath: "client_id" });
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function queueAdd(rec) {
+  const db = await idb();
+  return new Promise((res) => {
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).put(rec); tx.oncomplete = res;
+  });
+}
+async function queueAll() {
+  const db = await idb();
+  return new Promise((res) => {
+    const rq = db.transaction(STORE).objectStore(STORE).getAll();
+    rq.onsuccess = () => res(rq.result || []); rq.onerror = () => res([]);
+  });
+}
+async function queueDrop(id) {
+  const db = await idb();
+  return new Promise((res) => {
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).delete(id); tx.oncomplete = res;
+  });
+}
+
+async function post(rec) {
+  const r = await fetch(API + "/api/sos", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rec),
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.error || `HTTP ${r.status}`);
+  return body;
+}
+
+async function flush() {
+  const items = await queueAll();
+  if (!items.length) { $("pending").hidden = true; return; }
+  let sent = 0;
+  for (const rec of items) {
+    try { const res = await post(rec); await queueDrop(rec.client_id); sent++; succeeded(res, true); }
+    catch { /* stays queued for the next attempt */ }
+  }
+  const left = (await queueAll()).length;
+  $("pending").hidden = left === 0;
+  if (left) $("pending").innerHTML =
+    `⏳ <b>${left} คำขอรออยู่</b> — จะส่งอัตโนมัติเมื่อมีสัญญาณ<br>
+     ${left} request(s) queued offline; they will send automatically when you reconnect.`;
+}
+
+function succeeded(res, fromQueue) {
+  $("done").hidden = false;
+  $("done").innerHTML =
+    `<h2>✓ ส่งคำขอแล้ว · Request received</h2>
+     <div>หมายเลขอ้างอิง / reference: <code>${res.id}</code></div>
+     <div style="font-size:13px;color:#5b6672;margin-top:6px">
+       ระดับความเร่งด่วน / severity: <b>${res.severity ?? "—"}</b>
+       ${res.duplicate ? " · (คำขอนี้ส่งไปแล้ว / already submitted)" : ""}
+       <br>ข้อมูลจะถูกลบภายใน ${res.retention_days ?? 90} วัน · deleted within ${res.retention_days ?? 90} days
+       <br><b>หากอาการแย่ลง โทร 1784 หรือ 191 ทันที</b></div>`;
+  if (!fromQueue) window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+$("form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const rec = {
+    client_id: (crypto.randomUUID?.() || String(Date.now() + Math.random())),
+    lat, lon, needs: selectedNeeds(),
+    people_count: $("people").value ? Number($("people").value) : null,
+    water_depth_cm: $("depth").value ? Number($("depth").value) : null,
+    note: $("note").value || null,
+    contact_name: $("name").value || null,
+    contact_phone: $("phone").value || null,
+    safe_to_call: $("safe").checked,
+    consent: $("consent").checked,
+  };
+  $("send").disabled = true;
+  $("send").textContent = "กำลังส่ง…";
+  try {
+    succeeded(await post(rec), false);
+  } catch (err) {
+    // Queue rather than fail. The person is in a flood; losing their request is
+    // not an acceptable outcome of a dropped connection.
+    await queueAdd(rec);
+    $("pending").hidden = false;
+    $("pending").innerHTML =
+      `⏳ <b>บันทึกไว้แล้ว — ยังส่งไม่ได้</b> (${err.message})<br>
+       ระบบจะส่งให้อัตโนมัติเมื่อมีสัญญาณ อย่าปิดหน้านี้<br>
+       Saved on this device; it will send automatically when you reconnect.`;
+  } finally {
+    $("send").textContent = "ส่งคำขอ · Send request";
+    validate();
+  }
+});
+
+function netState() {
+  const on = navigator.onLine;
+  $("net").textContent = on ? "ออนไลน์" : "ออฟไลน์";
+  $("net").className = "net" + (on ? "" : " off");
+  if (on) flush();
+}
+window.addEventListener("online", netState);
+window.addEventListener("offline", netState);
+netState();
+flush();
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("./sw.js").catch(() => {});
+}
+</script>
+</body>
+</html>

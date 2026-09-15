@@ -1,0 +1,49 @@
+{
+  "_comment": [
+    "Specification, not a snapshot. Each case was reasoned from the rules, and BOTH the",
+    "Python spec (workers/seraphim/sos.py) and the JS Worker (api/src/index.js) must",
+    "satisfy every one. If the two implementations ever disagree, this file is right.",
+    "Rule: start at the highest base severity among the reported needs, then escalate",
+    "for circumstances that make any need harder to survive. Clamp to 1..5."
+  ],
+  "cases": [
+    {"why": "no needs reported is not an emergency", "needs": [], "expect": 1},
+    {"why": "unknown codes are ignored, not trusted", "needs": ["nonsense"], "expect": 1},
+    {"why": "food alone is a supply run", "needs": ["food"], "expect": 2},
+    {"why": "drinking water outranks food", "needs": ["water"], "expect": 3},
+    {"why": "a boat is urgent movement", "needs": ["rescue_boat"], "expect": 4},
+    {"why": "medical emergency is maximum", "needs": ["medical"], "expect": 5},
+    {"why": "a missing person is maximum", "needs": ["missing"], "expect": 5},
+    {"why": "trapped is maximum", "needs": ["trapped"], "expect": 5},
+    {"why": "dialysis interrupted is life-threatening", "needs": ["dialysis"], "expect": 5},
+    {"why": "highest need wins, not the sum", "needs": ["food", "medical"], "expect": 5},
+    {"why": "an elderly person raises a food request", "needs": ["elderly", "food"], "expect": 3},
+
+    {"why": "chest-deep water escalates any request", "needs": ["food"], "water_depth_cm": 180, "expect": 3},
+    {"why": "149cm is below the chest-deep threshold", "needs": ["food"], "water_depth_cm": 149, "expect": 2},
+    {"why": "waist-deep is dangerous for the vulnerable", "needs": ["elderly"], "water_depth_cm": 120, "expect": 4},
+    {"why": "waist-deep alone does not escalate the able-bodied", "needs": ["food"], "water_depth_cm": 120, "expect": 2},
+    {"why": "depth escalation cannot exceed the maximum", "needs": ["medical"], "water_depth_cm": 200, "expect": 5},
+
+    {"why": "a large group needs a different response", "needs": ["food"], "people_count": 25, "expect": 3},
+    {"why": "nine people is still a household-scale response", "needs": ["food"], "people_count": 9, "expect": 2},
+    {"why": "escalations stack but clamp at 5", "needs": ["rescue_boat"], "people_count": 30, "water_depth_cm": 200, "expect": 5},
+    {"why": "zero people is not a large group", "needs": ["food"], "people_count": 0, "expect": 2},
+
+    {"why": "infant formula is a vulnerability marker", "needs": ["infant"], "expect": 3},
+    {"why": "pets do not raise human severity", "needs": ["pets"], "expect": 1},
+    {"why": "pets alongside food do not escalate", "needs": ["pets", "food"], "expect": 2}
+  ],
+  "age_cases": [
+    {"why": "fresh request keeps its severity", "severity": 3, "waiting_minutes": 10, "expect": 3},
+    {"why": "unanswered for 6h escalates once", "severity": 3, "waiting_minutes": 360, "expect": 4},
+    {"why": "unanswered for 12h escalates twice", "severity": 2, "waiting_minutes": 720, "expect": 4},
+    {"why": "escalation still clamps at 5", "severity": 5, "waiting_minutes": 9999, "expect": 5},
+    {"why": "just under the threshold does not escalate", "severity": 3, "waiting_minutes": 359, "expect": 3}
+  ],
+  "geohash_cases": [
+    {"why": "canonical reference value", "lat": 57.64911, "lon": 10.40744, "precision": 11, "expect": "u4pruydqqvj"},
+    {"why": "precision 7 is about one soi", "lat": 13.7563, "lon": 100.5018, "precision": 7, "expect": "w4rqqbr"},
+    {"why": "null island", "lat": 0, "lon": 0, "precision": 5, "expect": "s0000"}
+  ]
+}

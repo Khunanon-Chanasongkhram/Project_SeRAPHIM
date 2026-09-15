@@ -10,10 +10,14 @@ engine that says *when* a bank overtops, not just that a level is high.
 > In an emergency in Thailand call **1784** (DDPM) or **191**.
 > Readings come from third-party telemetry and may be delayed, wrong, or missing.
 
-**Status: Phase 2 complete — risk engine.** Pre-alpha, not yet deployed.
+**Status: Phase 4 complete — SOS emergency coordination.** Pre-alpha, not yet deployed.
 1,121 Thai river gauges, rainfall and GloFAS discharge forecasts, tide prediction at 23 coastal
 points, and an explainable risk score with **time-to-bank** across 479 districts in all 77
 provinces. See [`PROGRESS.md`](PROGRESS.md).
+
+**SOS:** citizens request help offline-first; verified responders triage on a live map with
+duplicate-collapsing clusters. Full PDPA controls — recorded consent, 90-day auto-purge,
+access logging. See [`api/README.md`](api/README.md).
 
 > **Time-to-bank needs history.** It is computed from our own archive, so it produces nothing
 > until the cron has been running for ~1-2 hours. That is by design: the source's
@@ -72,6 +76,11 @@ python3 -m unittest discover -s tests -v
 # view the map
 cd .. && python3 -m http.server 8000
 # → http://localhost:8000/web/
+
+# SOS API locally (no node required)
+cd workers && python3 -m seraphim.devserver --port 8788 --seed
+# → citizen form: http://localhost:8000/web/sos.html?api=http://127.0.0.1:8788
+# → ops console:  http://localhost:8000/web/ops.html  (paste the printed token)
 ```
 
 ## Layout
@@ -85,7 +94,9 @@ cd .. && python3 -m http.server 8000
 | `workers/seraphim/history.py` | archive replay + least-squares rate of rise |
 | `workers/seraphim/tide.py` | extremes, lunar phase, empirical tidal-range classification |
 | `workers/seraphim/cache.py` | per-source forecast cache — keeps us inside the API quota |
-| `web/` | static map, no build step |
+| `web/` | static map (`index.html`), SOS form (`sos.html`), ops console (`ops.html`) |
+| `api/` | Cloudflare Worker + D1 schema for SOS; conformance suite |
+| `workers/seraphim/devserver.py` | Python dev server for the SOS API — no node needed |
 | `.github/workflows/ingest.yml` | the cron that runs it all |
 | `docs/PLAN.md` | architecture, risk engine, phases, risks |
 
@@ -114,6 +125,8 @@ These are enforced in review; the reasoning is in [`CLAUDE.md`](CLAUDE.md).
 6. Public pages stay statically pre-rendered.
 7. A dead source degrades the map, it never takes it down.
 8. Time-to-bank is withheld unless the trend earns it — weak fits publish nothing.
+9. SOS submissions are never lost to a bad connection; they queue locally and retry.
+10. Personal data is never returned unauthenticated, and every authorised read is logged.
 
 ## Licence
 
