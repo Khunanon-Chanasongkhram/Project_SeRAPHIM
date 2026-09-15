@@ -94,9 +94,13 @@ Two consequences worth stating plainly:
 
 ### Honest limits of free
 This proves the concept; it is not yet emergency-grade infrastructure.
-- **GitHub Actions cron drifts.** Scheduled runs can be delayed 5-20+ min under platform load,
-  so freshness is best-effort. Mitigation: **display data age prominently on every reading** -
-  never let the UI imply data is live when it may be 25 minutes old.
+- **GitHub Actions cron drifts, and by far more than expected.** This was estimated at
+  5-20 minutes. Measured on the live deployment on 2026-09-16 it was **3.8 hours**, about
+  15 missed runs against a 15 minute schedule. Scheduled workflows are best-effort and get
+  deprioritised on low-activity repos, so the cadence is a ceiling, not a promise.
+  The mitigation is what makes this survivable rather than dishonest: **every reading shows
+  its age**, and the degraded banner fires once a snapshot passes 90 minutes. It goes
+  visibly stale instead of quietly wrong.
 - **Scheduled workflows auto-disable after 60 days of repo inactivity.** Our own data commits
   should count as activity, but this is a known silent-failure mode, add a heartbeat check.
 - **No SLA anywhere.** Acceptable while proving it works.

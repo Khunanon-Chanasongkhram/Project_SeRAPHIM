@@ -7,26 +7,44 @@ Purpose: survive a closed terminal or an expired token with zero context loss.
 
 ## Current state
 
-**Phase:** 3 (Calm mode), ✅ **code complete, locally verified. Not yet deployed.**
-Remaining: Phase 5 (terrain/HAND), Phase 7 (global + multi-hazard).
-**Next action:** user creates the private GitHub repo + pushes; then wire Cloudflare R2 secrets.
-**Deploying matters now**: time-to-bank stays empty until the cron has built ~1-2 h of archive.
-Then Phase 3 (calm mode / fishing), 5 (terrain) or 6 (harden + load test).
-**Worker has never been executed**, no node here. First real run is `wrangler dev`.
-**Blockers:** none for building. For *public launch*: ThaiWater terms unconfirmed, TMD needs API key.
-**Needs user:** (1) push to private GitHub repo, (2) Cloudflare account for R2 secrets.
+**All seven phases are built, tested and deployed.** 168 tests.
+Live: https://khunanon-chanasongkhram.github.io/Project_SeRAPHIM/
+
+**Next action:** push. 5 commits are local-only, and pushing also triggers a deploy,
+which the site needs: measured 2026-09-16 it was **3.8 hours stale**, about 15 missed
+cron runs. GitHub's scheduled workflows are best-effort; the UI shows data age and the
+degraded banner fires past 90 minutes, so it goes visibly stale rather than quietly wrong.
+
+**Open items**
+- **UK EA `/id/measures` is flapping (503).** GB has been absent from recent builds.
+  Per-country fail-soft is written and tested but cannot engage until one successful UK
+  build seeds its cache, so the first good build after they recover is the one that arms it.
+- **Terrain covers 220 of 1,121 Thai gauges** (worst-risk first). Top up occasionally:
+  `cd workers && python3 -m seraphim.cli terrain --budget 60`. It rate-limits, so it is a
+  deliberate command and never part of a build.
+- **ThaiWater terms of use still unconfirmed.** The repo is public now, so this matters
+  more than it did. Contact HII before promoting it anywhere.
+- Validation figures firm up as the archive grows; re-read `validation.json` after a few
+  days of cron.
+
+**Hosting:** GitHub Actions builds, GitHub Pages serves. No Cloudflare, no card, no
+account except GitHub. The SOS component was removed before deploy and lives on the
+`sos-component` branch.
 
 ### Phase status
 | Phase | Name | Status |
 |---|---|---|
-| 0 | Foundation | ✅ code complete, not deployed |
-| 1 | Ingest + live map | ✅ code complete, not deployed |
-| 2 | Risk engine | ✅ code complete, not deployed |
-| 3 | Calm mode (tide/fishing) | ✅ code complete, not deployed |
-| 4 | Respond (SOS) | ✅ code complete, not deployed |
-| 5 | Terrain / HAND | ⬜ not started |
-| 6 | Harden / scale | ✅ code complete, not deployed |
-| 7 | Global + multi-hazard | ⬜ not started |
+| 0 | Foundation | ✅ deployed |
+| 1 | Ingest + live map | ✅ deployed |
+| 2 | Risk engine | ✅ deployed |
+| 3 | Calm mode (tide/fishing) | ✅ deployed |
+| 4 | Respond (SOS) | ❌ built, then removed before deploy (branch `sos-component`) |
+| 5 | Terrain | ✅ built, 220/1,121 gauges profiled |
+| 6 | Harden / scale | ✅ deployed |
+| 7 | Global + multi-hazard | ✅ built (UK + GDACS), GB pending an upstream fix |
+
+Beyond the plan: validation/backtesting, per-country data splitting, world radio,
+rain radar, earthquakes, active fires, satellite imagery, TH/EN switch.
 
 ---
 

@@ -75,6 +75,12 @@ field instead of re-deriving judgement:
 | `reporting_rate` | ≤ 60% of stations stale | warn |
 | `snapshot_stale_after_minutes` | 90 min | cron runs every 30 min; 3 misses is a fault |
 
+**Observed, 2026-09-16: the live site was 3.8 hours stale**, roughly 15 missed runs on a
+15 minute schedule. GitHub's scheduled workflows are best-effort and get deprioritised on
+quiet repos. This is why data age is shown on every reading rather than assumed: the
+system is designed to go visibly stale, not quietly wrong. If freshness ever has to be
+guaranteed, move the cron to a small always-on host; nothing else changes.
+
 `status` is `pass`, `warn` or `fail`. **The dangerous failure is the quiet one**, the
 pipeline keeps running, the map keeps rendering, and the data behind it stopped being
 true hours ago. Every check names what is wrong in words someone can act on.
