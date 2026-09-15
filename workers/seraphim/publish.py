@@ -166,6 +166,72 @@ def build_fishing_doc(spots: list[dict], generated_at: datetime) -> dict:
     }
 
 
+def build_provinces(states, areas: list[dict], generated_at: datetime) -> dict | None:
+    """provinces.geojson: the risk picture as areas rather than dots.
+
+    A pin on a gauge tells you about an instrument. A shaded province tells you where
+    the trouble is, which is the question people actually open the map with. Province
+    is as fine as the free boundary data goes; district shading would be better and is
+    the obvious next step if a licensed amphoe layer turns up.
+    """
+    from seraphim.geo import load_provinces, map_provinces
+
+    mapping, report = map_provinces(states)
+    if not mapping:
+        return None
+
+    worst: dict[str, dict] = {}
+    for a in areas:
+        province = a.get("province")
+        if not province:
+            continue
+        cur = worst.get(province)
+        if cur is None or a["level"] > cur["level"]:
+            worst[province] = a
+
+    counts: dict[str, dict] = {}
+    for a in areas:
+        province = a.get("province")
+        if not province:
+            continue
+        c = counts.setdefault(province, {"districts": 0, "stations": 0, "over_bank": 0})
+        c["districts"] += 1
+        c["stations"] += a.get("stations", 0)
+        c["over_bank"] += a.get("over_bank", 0)
+
+    shapes = load_provinces()
+    features = []
+    for f in shapes["features"]:
+        english = f["properties"]["name"]
+        thai = mapping.get(english)
+        a = worst.get(thai) if thai else None
+        c = counts.get(thai, {}) if thai else {}
+        features.append({
+            "type": "Feature",
+            "geometry": f["geometry"],
+            "properties": {
+                "name": english,
+                "name_th": thai,
+                # None, not 1: "no gauges here" and "gauges here, all calm" are
+                # different states and must look different on the map.
+                "level": a["level"] if a else None,
+                "worst_district": a.get("district") if a else None,
+                "worst_ttb_hr": a.get("worst_ttb_hr") if a else None,
+                "districts": c.get("districts", 0),
+                "stations": c.get("stations", 0),
+                "over_bank": c.get("over_bank", 0),
+            },
+        })
+
+    return {
+        "type": "FeatureCollection",
+        "generated_at": generated_at.isoformat(),
+        "attribution": "Province outlines: apisit/thailand.json (MIT)",
+        "join": report,
+        "features": features,
+    }
+
+
 def build_meta(
     states: list[StationState],
     health: list[SourceHealth],
@@ -288,6 +354,7 @@ def write_snapshot(
     tide: dict | None = None,
     areas: dict | None = None,
     fishing: dict | None = None,
+    provinces: dict | None = None,
 ) -> list[Path]:
     """Write the current snapshot. Gzip alongside: it is ~10x smaller and CDN-friendly."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -299,6 +366,8 @@ def write_snapshot(
         items.append(("areas.json", areas))
     if fishing is not None:
         items.append(("fishing.json", fishing))
+    if provinces is not None:
+        items.append(("provinces.geojson", provinces))
     for name, payload in items:
         raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         path = out_dir / name

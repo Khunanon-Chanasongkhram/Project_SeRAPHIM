@@ -2,448 +2,538 @@
 <html lang="th">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<!-- GitHub Pages cannot send custom headers, so the CSP rides in the document.
-     It is defence in depth behind the escaping in each page: if HTML injection
-     ever slips through, this keeps it from becoming a stolen responder token.
-     Note frame-ancestors cannot be set this way; that one only works as a header. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com; connect-src 'self' https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com; worker-src 'self' blob:; base-uri 'self'; form-action 'self'">
-<title>SeRAPHIM · เฝ้าระวังน้ำ / Water Watch</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://server.arcgisonline.com; connect-src 'self' https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://server.arcgisonline.com; worker-src 'self' blob:; base-uri 'self'; form-action 'self'">
+<title>SeRAPHIM</title>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="./config.js"></script>
 <style>
   :root{
-    --bg:#f6f7f9; --fg:#12161c; --muted:#5b6672; --line:#dde3ea; --card:#fff;
-    --over:#c2182b; --high:#e8590c; --mid:#c99a06; --ok:#1c7ed6; --stale:#8b97a3;
+    --bg:#07090c; --panel:rgba(12,16,22,.86); --panel-solid:#0c1016;
+    --line:rgba(255,255,255,.10); --line-strong:rgba(255,255,255,.18);
+    --fg:#e9eef5; --dim:#8c98a8; --faint:#5c6672;
+    --l1:#2f81f7; --l2:#d99e0b; --l3:#e8590c; --l4:#e5484d; --l5:#ff2d55;
+    --ok:#3fb950;
+    --sheet-collapsed:74px;
   }
-  *{box-sizing:border-box}
-  html,body{margin:0;height:100%;font:14px/1.5 system-ui,-apple-system,"Noto Sans Thai",sans-serif;
-    color:var(--fg);background:var(--bg)}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--fg);
+    font:14px/1.45 ui-sans-serif,system-ui,-apple-system,"Noto Sans Thai",sans-serif}
+  .num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
   #map{position:absolute;inset:0}
-  .panel{position:absolute;z-index:2;background:var(--card);border:1px solid var(--line);
-    border-radius:10px;box-shadow:0 2px 12px rgba(16,24,40,.10)}
-  #hud{top:calc(env(safe-area-inset-top,0px) + 10px);left:10px;width:min(330px,calc(100vw - 20px));padding:12px 14px}
-  h1{margin:0;font-size:15px;letter-spacing:.02em}
-  h1 span{color:var(--muted);font-weight:400}
-  .sub{color:var(--muted);font-size:11.5px;margin:2px 0 10px}
-  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
-  .stat{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 8px}
-  .stat b{display:block;font-size:19px;line-height:1.15;font-variant-numeric:tabular-nums}
-  .stat i{font-style:normal;color:var(--muted);font-size:10.5px}
-  .age{display:flex;align-items:center;gap:7px;font-size:12px;padding:7px 9px;border-radius:7px;
-    background:#eef6ff;border:1px solid #cfe3f8}
-  .age.warn{background:#fff6e6;border-color:#ffd8a8}
-  .age.bad{background:#ffeceb;border-color:#ffc9c9}
-  .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none}
-  .age.warn .dot{background:var(--high)} .age.bad .dot{background:var(--over)}
-  .legend{margin-top:10px;border-top:1px solid var(--line);padding-top:9px;
-    display:flex;flex-direction:column;gap:5px;font-size:11.5px;color:var(--muted)}
-  .legend div{display:flex;align-items:center;gap:7px}
-  .sw{width:11px;height:11px;border-radius:50%;border:1.5px solid rgba(0,0,0,.25);flex:none}
-  #degraded{position:absolute;z-index:4;left:10px;right:10px;
-    top:calc(env(safe-area-inset-top,0px) + 10px);margin:0 auto;max-width:640px;
-    padding:10px 13px;font-size:12.5px;background:#fff6e6;border:1px solid #ffd8a8;
-    color:#7a4a00;border-radius:10px;display:none}
-  #degraded.show{display:block}
-  #degraded b{color:#a15c00}
-  #alert{position:absolute;z-index:3;left:10px;right:10px;
-    bottom:calc(env(safe-area-inset-bottom,0px) + 10px);margin:0 auto;max-width:640px;
-    padding:9px 12px;font-size:12px;background:#fff8f8;border:1px solid #ffc9c9;color:#8b1a1a}
-  #alert b{color:var(--over)}
-  .maplibregl-popup-content{font:13px/1.45 system-ui,"Noto Sans Thai",sans-serif;padding:11px 13px;border-radius:9px}
-  .pop-h{font-weight:600;margin-bottom:5px}
-  .pop-r{display:flex;justify-content:space-between;gap:14px;padding:2px 0;border-top:1px solid #f0f2f5}
-  .pop-r span:first-child{color:var(--muted)}
-  .pop-r span:last-child{font-variant-numeric:tabular-nums;font-weight:500}
-  .tag{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;color:#fff;margin-bottom:5px}
-  .modes{display:flex;flex-wrap:wrap;gap:4px;margin:10px 0 0}
-  .modes button{flex:1 1 46%;padding:6px 4px;font:inherit;font-size:11px;cursor:pointer;
-    background:var(--bg);border:1px solid var(--line);border-radius:7px;color:var(--muted);line-height:1.25}
-  .modes button.on{background:var(--fg);border-color:var(--fg);color:#fff;font-weight:600}
-  .modes button:hover:not(.on){border-color:var(--muted)}
-  #tidebar{position:absolute;z-index:2;top:calc(env(safe-area-inset-top,0px) + 10px);right:10px;
-    width:min(232px,calc(100vw - 20px));padding:10px 12px;display:none}
-  #tidebar.show{display:block}
-  #tidebar h2{margin:0 0 2px;font-size:12.5px}
-  #tidebar .sub{margin:0 0 8px}
-  .tide-row{display:flex;justify-content:space-between;gap:10px;padding:3px 0;font-size:12px;
-    border-top:1px solid #f0f2f5}
-  .tide-row b{font-variant-numeric:tabular-nums;font-weight:600}
-  .hi{color:#0b5ed7} .lo{color:#8a6d00}
-  .worst{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
-  .worst h3{margin:0 0 5px;font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.03em}
-  .worst a{display:flex;align-items:center;gap:7px;padding:3px 0;cursor:pointer;
-    font-size:12px;color:inherit;text-decoration:none}
-  .worst a:hover{color:var(--over)}
-  .lv{width:17px;height:17px;border-radius:5px;display:grid;place-items:center;
-    font-size:10px;font-weight:700;color:#fff;flex:none}
-  .why{margin:7px 0 0;padding:7px 9px;background:var(--bg);border-radius:7px;
-    border:1px solid var(--line)}
-  .why b{display:block;font-size:10.5px;color:var(--muted);margin-bottom:3px;
-    letter-spacing:.03em;font-weight:600}
-  .why li{margin:2px 0 2px -12px;font-size:12px;line-height:1.4}
+  .maplibregl-ctrl-attrib{font-size:9px;background:rgba(0,0,0,.5)!important}
+  .maplibregl-ctrl-attrib a{color:var(--faint)!important}
+
+  /* ---------- top bar ---------- */
+  #top{position:absolute;z-index:5;top:0;left:0;right:0;
+    padding:calc(env(safe-area-inset-top,0px) + 8px) 10px 8px;
+    display:flex;align-items:center;gap:8px;
+    background:linear-gradient(180deg,rgba(7,9,12,.92),rgba(7,9,12,0));
+    pointer-events:none}
+  #top > *{pointer-events:auto}
+  .brand{font-size:13px;font-weight:700;letter-spacing:.14em;margin-right:auto;
+    display:flex;align-items:center;gap:7px;text-shadow:0 1px 6px #000}
+  .live{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none;
+    box-shadow:0 0 0 0 rgba(63,185,80,.6);animation:pulse 2.6s infinite}
+  .live.stale{background:var(--l3);animation:none}
+  .live.dead{background:var(--l5);animation:none}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(63,185,80,.55)}70%{box-shadow:0 0 0 9px rgba(63,185,80,0)}100%{box-shadow:0 0 0 0 rgba(63,185,80,0)}}
+  .btn{background:var(--panel);border:1px solid var(--line);color:var(--fg);
+    border-radius:9px;padding:7px 10px;font:inherit;font-size:12px;cursor:pointer;
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);line-height:1}
+  .btn:active{background:rgba(255,255,255,.1)}
+  .btn.on{background:var(--fg);color:var(--panel-solid);border-color:var(--fg);font-weight:700}
+  .seg{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:9px;
+    overflow:hidden;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+  .seg button{background:none;border:0;color:var(--dim);font:inherit;font-size:11px;
+    font-weight:700;padding:7px 9px;cursor:pointer}
+  .seg button.on{background:var(--fg);color:var(--panel-solid)}
+
+  /* ---------- layers drawer ---------- */
+  #layers{position:absolute;z-index:6;top:calc(env(safe-area-inset-top,0px) + 50px);right:10px;
+    width:min(240px,calc(100vw - 20px));background:var(--panel);border:1px solid var(--line);
+    border-radius:13px;padding:11px;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+    display:none;box-shadow:0 12px 40px rgba(0,0,0,.55)}
+  #layers.show{display:block}
+  #layers h4{margin:0 0 6px;font-size:10px;letter-spacing:.12em;color:var(--faint);font-weight:700}
+  #layers h4:not(:first-child){margin-top:12px}
+  .opt{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:8px;cursor:pointer;
+    font-size:12.5px}
+  .opt:active{background:rgba(255,255,255,.07)}
+  .opt.on{background:rgba(47,129,247,.18)}
+  .opt .sw{width:9px;height:9px;border-radius:50%;background:var(--faint);flex:none}
+  .opt.on .sw{background:var(--l1);box-shadow:0 0 8px var(--l1)}
+  .note{font-size:10.5px;color:var(--faint);line-height:1.4;margin-top:9px;
+    padding-top:9px;border-top:1px solid var(--line)}
+
+  /* ---------- bottom sheet ---------- */
+  #sheet{position:absolute;z-index:5;left:0;right:0;bottom:0;
+    background:var(--panel);border-top:1px solid var(--line-strong);
+    border-radius:16px 16px 0 0;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+    max-height:min(62vh,520px);height:var(--sheet-collapsed);
+    transition:height .26s cubic-bezier(.4,0,.2,1);overflow:hidden;
+    box-shadow:0 -10px 40px rgba(0,0,0,.5)}
+  #sheet.open{height:min(62vh,520px)}
+  #grab{padding:7px 0 3px;display:flex;justify-content:center;cursor:pointer}
+  #grab i{display:block;width:34px;height:4px;border-radius:2px;background:var(--line-strong)}
+  #sheetbody{overflow-y:auto;max-height:calc(min(62vh,520px) - 18px);
+    padding:0 12px calc(env(safe-area-inset-bottom,0px) + 14px);-webkit-overflow-scrolling:touch}
+
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;cursor:pointer}
+  .stat{background:rgba(255,255,255,.045);border:1px solid var(--line);border-radius:10px;
+    padding:7px 9px}
+  .stat b{display:block;font-size:20px;line-height:1.1}
+  .stat i{font-style:normal;font-size:9.5px;color:var(--dim);letter-spacing:.03em}
+  .age{margin-top:9px;font-size:11px;color:var(--dim);display:flex;gap:6px;align-items:center}
+
+  .modes{display:flex;gap:5px;margin-top:11px}
+  .modes button{flex:1;font-size:11px;padding:8px 4px;line-height:1.3}
+  h5{margin:14px 0 6px;font-size:10px;letter-spacing:.12em;color:var(--faint);font-weight:700}
+  .legend{display:flex;flex-wrap:wrap;gap:5px}
+  .legend div{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--dim);
+    background:rgba(255,255,255,.04);padding:3px 8px;border-radius:999px}
+  .legend .d{width:8px;height:8px;border-radius:50%;flex:none}
+
+  .worst a{display:flex;align-items:center;gap:9px;padding:8px 6px;border-radius:8px;
+    text-decoration:none;color:inherit;cursor:pointer;border-bottom:1px solid var(--line)}
+  .worst a:active{background:rgba(255,255,255,.06)}
+  .lv{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;flex:none;
+    font-size:11px;font-weight:800;color:#fff}
+  .worst .t{flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap}
+  .worst .ttb{font-size:11.5px;font-weight:700;color:var(--l4)}
+
+  .disc{margin-top:13px;font-size:10.5px;color:var(--faint);line-height:1.5;
+    border-top:1px solid var(--line);padding-top:10px}
+  .disc b{color:var(--l4)}
+  .disc a{color:var(--l1)}
+
+  /* ---------- popup ---------- */
+  .maplibregl-popup-content{background:var(--panel-solid)!important;color:var(--fg);
+    border:1px solid var(--line-strong);border-radius:13px;padding:13px 14px;
+    box-shadow:0 14px 44px rgba(0,0,0,.6);font:13px/1.45 ui-sans-serif,system-ui,"Noto Sans Thai",sans-serif}
+  .maplibregl-popup-tip{border-top-color:var(--panel-solid)!important;
+    border-bottom-color:var(--panel-solid)!important}
+  .maplibregl-popup-close-button{color:var(--dim);font-size:19px;padding:2px 7px}
+  .pt{font-size:9.5px;font-weight:800;letter-spacing:.09em;padding:3px 8px;border-radius:999px;
+    color:#fff;display:inline-block;margin-bottom:7px}
+  .ph{font-weight:700;font-size:14px;margin-bottom:2px}
+  .psub{color:var(--dim);font-size:11px;margin-bottom:8px}
+  .pttb{font-size:13px;font-weight:700;color:var(--l4);margin:7px 0 2px}
+  .pr{display:flex;justify-content:space-between;gap:14px;padding:3px 0;font-size:12px;
+    border-top:1px solid var(--line)}
+  .pr span:first-child{color:var(--dim)}
+  .why{margin-top:9px;background:rgba(255,255,255,.045);border-radius:9px;padding:8px 10px}
+  .why b{display:block;font-size:9.5px;letter-spacing:.1em;color:var(--faint);margin-bottom:4px}
+  .why li{font-size:11.5px;margin:3px 0 3px -14px;line-height:1.4}
   .why ul{margin:0;padding-left:16px}
-  .ttb{font-size:13px;font-weight:600;color:var(--over);margin:5px 0 0}
-  .conf{font-size:10.5px;color:var(--muted);margin-top:4px}
-  .pill{display:inline-block;font-size:10.5px;padding:1px 7px;border-radius:999px;
-    background:var(--bg);border:1px solid var(--line);color:var(--muted)}
-  @media (max-width:520px){
-    #hud{padding:10px 11px} .stat b{font-size:17px}
-    #tidebar{position:static;width:auto;margin:10px 10px 0;display:none}
-    #tidebar.show{display:block}
+  .conf{font-size:10px;color:var(--faint);margin-top:6px}
+
+  #degraded{position:absolute;z-index:7;left:10px;right:10px;
+    top:calc(env(safe-area-inset-top,0px) + 50px);margin:0 auto;max-width:520px;
+    background:rgba(60,20,10,.92);border:1px solid rgba(232,89,12,.5);color:#ffd9c2;
+    border-radius:11px;padding:9px 12px;font-size:11.5px;display:none;
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+  #degraded.show{display:block}
+
+  @media (min-width:760px){
+    :root{--sheet-collapsed:74px}
+    #sheet{left:10px;right:auto;bottom:10px;width:352px;border-radius:14px;
+      border:1px solid var(--line-strong);max-height:calc(100vh - 86px)}
+    #sheet.open{height:calc(100vh - 86px)}
+    #sheetbody{max-height:calc(100vh - 104px)}
   }
+  [hidden]{display:none!important}
 </style>
 </head>
 <body>
 <div id="map"></div>
 
-<div id="hud" class="panel">
-  <h1>SeRAPHIM <span>· เฝ้าระวังน้ำ</span></h1>
-  <div class="sub">ระดับน้ำจากสถานีโทรมาตร · Live river gauges, Thailand
-    <a href="./fish.html" style="color:var(--ok);text-decoration:none"> · 🎣 เวลาตกปลา</a></div>
-  <div class="stats">
-    <div class="stat"><b id="s-total">–</b><i>สถานี / stations</i></div>
-    <div class="stat"><b id="s-over" style="color:var(--over)">–</b><i>ล้นตลิ่ง / over bank</i></div>
-    <div class="stat"><b id="s-stale" style="color:var(--stale)">–</b><i>ข้อมูลเก่า / stale</i></div>
-  </div>
-  <div class="age" id="age"><span class="dot"></span><span id="age-t">กำลังโหลด… / loading…</span></div>
-  <div class="modes">
-    <button data-mode="risk" class="on">ความเสี่ยง<br>Risk</button>
-    <button data-mode="level">ระดับน้ำ<br>Level</button>
-    <button data-mode="rain">ฝน 24 ชม.<br>Rain 24h</button>
-    <button data-mode="discharge">แนวโน้มน้ำท่า<br>Discharge</button>
-  </div>
-  <div class="legend" id="legend"></div>
-  <div class="worst" id="worst"></div>
-</div>
-
-<div id="tidebar" class="panel">
-  <h2 id="tide-name">-</h2>
-  <div class="sub" id="tide-state">-</div>
-  <div id="tide-next"></div>
+<div id="top">
+  <div class="brand"><span class="live" id="live"></span>SeRAPHIM</div>
+  <div class="seg" id="lang"><button data-l="th">ไทย</button><button data-l="en">EN</button></div>
+  <button class="btn" id="layersbtn">◈</button>
 </div>
 
 <div id="degraded"></div>
 
-<div id="alert" class="panel">
-  <b>โปรเจกต์ส่วนตัว ไม่ใช่บริการทางราชการ</b> · เหตุด่วนโทร <b>1784</b> (ปภ.) หรือ <b>191</b>
-  <br><span style="opacity:.85">A personal hobby project, built fast with AI help and never tested
-  in a real flood. Not an official service. Verify before you rely on it.
-  Emergency: call <b>1784</b> / <b>191</b>.</span>
+<div id="layers">
+  <h4 id="h-base"></h4>
+  <div class="opt" data-base="satellite"><span class="sw"></span><span id="o-sat"></span></div>
+  <div class="opt" data-base="dark"><span class="sw"></span><span id="o-dark"></span></div>
+  <div class="opt" data-base="light"><span class="sw"></span><span id="o-light"></span></div>
+  <h4 id="h-over"></h4>
+  <div class="opt" data-layer="provinces"><span class="sw"></span><span id="o-prov"></span></div>
+  <div class="opt" data-layer="stations"><span class="sw"></span><span id="o-stat"></span></div>
+  <div class="opt" data-layer="tide"><span class="sw"></span><span id="o-tide"></span></div>
+  <div class="note" id="camnote"></div>
 </div>
 
-<script src="./config.js"></script>
+<div id="sheet">
+  <div id="grab"><i></i></div>
+  <div id="sheetbody">
+    <div class="stats" id="stats"></div>
+    <div class="age" id="age"></div>
+    <div class="modes" id="modes"></div>
+    <h5 id="h-legend"></h5>
+    <div class="legend" id="legend"></div>
+    <h5 id="h-worst"></h5>
+    <div class="worst" id="worst"></div>
+    <div class="disc" id="disc"></div>
+  </div>
+</div>
+
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script>
-// Snapshot location. Static file on a CDN, there is no API server to fall over.
-// Snapshot location. Set window.SERAPHIM.dataBase in config.js to go live;
-// falls back to relative paths so local development needs no configuration.
-const BASE = (window.SERAPHIM && window.SERAPHIM.dataBase) || "../data/out";
-const DATA = new URLSearchParams(location.search).get("data") || `${BASE}/stations.geojson`;
-const META = DATA.replace(/stations\.geojson$/, "meta.json");
-const TIDE = DATA.replace(/stations\.geojson$/, "tide.json");
-const AREAS = DATA.replace(/stations\.geojson$/, "areas.json");
-// Risk 1-5 -> colour. Used for markers, badges and the worst-districts list alike,
-// so one level always looks the same everywhere in the UI.
-const RISK_COLOUR = {1:"#1c7ed6",2:"#c99a06",3:"#e8590c",4:"#c2182b",5:"#7d0d1b"};
-const RISK_TH = {1:"ปกติ",2:"เฝ้าระวัง",3:"เตือนภัย",4:"อันตราย",5:"วิกฤต"};
-const RISK_EN = {1:"Normal",2:"Watch",3:"Warning",4:"Severe",5:"Critical"};
+const ESCAPES={"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};
+const esc = (v)=>v==null?"":String(v).replace(/[&<>"']/g,(c)=>ESCAPES[c]);
+const $=(id)=>document.getElementById(id);
 
-const map = new maplibregl.Map({
-  container: "map",
-  // CARTO Positron: free, no API key, and light, chosen for daylight legibility on a
-  // phone rather than for looking dramatic.
-  style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-  center: [100.9, 13.6], zoom: 5.1, attributionControl: false
-});
-map.addControl(new maplibregl.AttributionControl({
-  compact: true,
-  customAttribution: "ข้อมูล / Data: ThaiWater (HII) · SeRAPHIM (AGPL-3.0)"
-}));
-map.addControl(new maplibregl.NavigationControl({showCompass:false}), "top-right");
-map.addControl(new maplibregl.GeolocateControl({trackUserLocation:true}), "top-right");
+/* ------------------------------------------------------------------ i18n */
+const I18N={
+  th:{ base:"แผนที่พื้นหลัง", sat:"ภาพดาวเทียม", dark:"มืด", light:"สว่าง",
+    over:"ชั้นข้อมูล", prov:"พื้นที่เสี่ยงรายจังหวัด", stat:"สถานีวัดน้ำ", tide:"จุดน้ำขึ้นน้ำลง",
+    camnote:"ยังไม่มีกล้อง CCTV เพราะยังไม่พบแหล่งข้อมูลสาธารณะที่เปิดให้ใช้",
+    total:"สถานี", over_bank:"ล้นตลิ่ง", soon:"ถึงตลิ่งเร็วสุด",
+    legend:"สัญลักษณ์", worst:"พื้นที่เสี่ยงสูงสุด", none:"ไม่มีพื้นที่ระดับ 3 ขึ้นไป",
+    updated:"อัปเดตเมื่อ", ago:"ที่แล้ว", median:"อายุข้อมูลกลาง",
+    m_risk:"ความเสี่ยง", m_level:"ระดับน้ำ", m_rain:"ฝน 24 ชม.", m_dis:"แนวโน้มน้ำท่า",
+    r1:"ปกติ", r2:"เฝ้าระวัง", r3:"เตือนภัย", r4:"อันตราย", r5:"วิกฤต",
+    prov_l:"จังหวัด", dist:"อำเภอ", level:"ระดับน้ำ", bank:"ระดับตลิ่ง",
+    fb:"ต่ำกว่าตลิ่ง", above:"สูงกว่าตลิ่ง", rain24:"ฝนคาดการณ์ 24 ชม.",
+    rainp:"ฝน 24 ชม.ที่ผ่านมา", disch:"น้ำท่า", trend:"แนวโน้ม 7 วัน",
+    ageL:"อายุข้อมูล", agency:"หน่วยงาน", why:"เหตุผล", conf:"ความเชื่อมั่น",
+    ttb:"คาดถึงระดับตลิ่งใน", est:"(ประมาณการ)", stale:"ไม่ส่งข้อมูล",
+    gauges:"สถานี", overb:"ล้นตลิ่ง", worstd:"อำเภอที่แย่ที่สุด",
+    min:"นาที", hr:"ชม.", day:"วัน", nodata:"ไม่มีข้อมูล",
+    hi:"น้ำขึ้นสูงสุด", lo:"น้ำลงต่ำสุด", tidestate:"สถานะน้ำ",
+    disc:"<b>โปรเจกต์ส่วนตัว ไม่ใช่บริการทางราชการ</b> สร้างเร็ว ๆ ด้วย AI และยังไม่เคยใช้งานจริงในเหตุการณ์น้ำท่วม อย่าใช้ตัดสินใจเรื่องความปลอดภัยเพียงอย่างเดียว เหตุด่วนโทร <b>1784</b> (ปภ.) หรือ <b>191</b>",
+    fish:"🎣 เวลาตกปลา", degraded:"ข้อมูลอาจไม่เป็นปัจจุบัน", offline:"ออฟไลน์ กำลังแสดงข้อมูลล่าสุดที่บันทึกไว้" },
+  en:{ base:"BASEMAP", sat:"Satellite", dark:"Dark", light:"Light",
+    over:"LAYERS", prov:"Province risk", stat:"Gauges", tide:"Tide points",
+    camnote:"No CCTV layer: no public camera feed has been found to build on.",
+    total:"gauges", over_bank:"over bank", soon:"soonest to bank",
+    legend:"LEGEND", worst:"HIGHEST RISK", none:"nothing at level 3 or above",
+    updated:"updated", ago:"ago", median:"median reading age",
+    m_risk:"Risk", m_level:"Level", m_rain:"Rain 24h", m_dis:"Discharge",
+    r1:"Normal", r2:"Watch", r3:"Warning", r4:"Severe", r5:"Critical",
+    prov_l:"Province", dist:"District", level:"Level", bank:"Bank level",
+    fb:"Below bank", above:"Above bank", rain24:"Rain forecast 24h",
+    rainp:"Rain past 24h", disch:"Discharge", trend:"7-day trend",
+    ageL:"Data age", agency:"Agency", why:"WHY", conf:"confidence",
+    ttb:"to bank level in", est:"(estimate)", stale:"not reporting",
+    gauges:"gauges", overb:"over bank", worstd:"worst district",
+    min:"min", hr:"h", day:"d", nodata:"no data",
+    hi:"high", lo:"low", tidestate:"tide",
+    disc:"<b>A personal hobby project, not an official service.</b> Built fast with AI help and never tested in a real flood. Do not make a safety decision on it alone. Emergency: call <b>1784</b> (DDPM) or <b>191</b>.",
+    fish:"🎣 Fishing times", degraded:"Data may be out of date", offline:"Offline, showing last saved data" }
+};
+let LANG = localStorage.getItem("seraphim_lang")
+  || ((navigator.language||"").toLowerCase().startsWith("th") ? "th" : "en");
+const t=(k)=>I18N[LANG][k] ?? k;
+/** Data carries both languages; pick the one in use, fall back to whichever exists. */
+const loc=(o,base)=> LANG==="th" ? (o[base+"_th"] ?? o[base] ?? "") : (o[base] ?? o[base+"_th"] ?? "");
 
-// Escape every value before it reaches innerHTML.
-// `note` and `contact_name` arrive from a PUBLIC, unauthenticated endpoint: without
-// this, a submission containing <img src=x onerror=...> runs in a responder's browser
-// and steals the token that unlocks everyone's personal data. Escaping happens at
-// render, never on input, storing exactly what someone typed matters when the text
-// is a plea for help.
-const ESCAPES = {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};
-const esc = (v) => v == null ? "" : String(v).replace(/[&<>"']/g, (c) => ESCAPES[c]);
+/* ------------------------------------------------------------------ data */
+const BASE=(window.SERAPHIM&&window.SERAPHIM.dataBase)||"../data/out";
+const RISK={1:"#2f81f7",2:"#d99e0b",3:"#e8590c",4:"#e5484d",5:"#ff2d55"};
+let gj=null, meta=null, tide=null, areas=null, provinces=null;
+let map=null, mode="risk", basemap="satellite";
+const shown={provinces:true, stations:true, tide:true};
 
-const fmt = (v, u = "", d = 2) =>
-  (v === null || v === undefined) ? "-" : `${Number(v).toFixed(d)}${u}`;
+const SAT="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+const SATREF="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}";
 
-function ageLabel(min) {
-  if (min == null) return "-";
-  if (min < 90) return `${Math.round(min)} นาที / min`;
-  const h = min / 60;
-  return h < 48 ? `${h.toFixed(1)} ชม. / hr` : `${(h/24).toFixed(1)} วัน / days`;
+function satelliteStyle(){
+  return {version:8, glyphs:"https://basemaps.cartocdn.com/gl/dark-matter-gl-style/{fontstack}/{range}.pbf",
+    sources:{
+      sat:{type:"raster",tiles:[SAT],tileSize:256,maxzoom:19,
+        attribution:"Imagery © Esri, Maxar, Earthstar Geographics"},
+      satref:{type:"raster",tiles:[SATREF],tileSize:256,maxzoom:19}},
+    layers:[{id:"sat",type:"raster",source:"sat"},
+            {id:"satref",type:"raster",source:"satref",paint:{"raster-opacity":.85}}]};
+}
+const STYLES={
+  satellite:satelliteStyle,
+  dark:()=>"https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+  light:()=>"https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+};
+
+function ageText(min){
+  if(min==null||isNaN(min)) return "-";
+  if(min<90) return `${Math.round(min)} ${t("min")}`;
+  const h=min/60;
+  return h<48 ? `${h.toFixed(1)} ${t("hr")}` : `${(h/24).toFixed(1)} ${t("day")}`;
+}
+const fmt=(v,u="",d=2)=>(v==null||v===""||isNaN(v))?"-":`${Number(v).toFixed(d)}${u}`;
+
+async function load(){
+  const j=(n)=>fetch(`${BASE}/${n}`,{cache:"no-cache"}).then(r=>r.json()).catch(()=>null);
+  [gj,meta,tide,areas,provinces]=await Promise.all([
+    j("stations.geojson"), j("meta.json"), j("tide.json"), j("areas.json"), j("provinces.geojson")]);
+  return !!gj;
 }
 
-map.on("load", async () => {
-  let gj, meta = null, tide = null;
-  try {
-    gj = await (await fetch(DATA, {cache:"no-cache"})).json();
-    meta = await (await fetch(META, {cache:"no-cache"})).json().catch(() => null);
-    tide = await (await fetch(TIDE, {cache:"no-cache"})).json().catch(() => null);
-  } catch (e) {
-    document.getElementById("age-t").textContent = "โหลดข้อมูลไม่สำเร็จ / failed to load snapshot";
-    document.getElementById("age").className = "age bad";
-    const el = document.getElementById("degraded");
-    el.classList.add("show");
-    el.innerHTML = `<b>⚠ โหลดข้อมูลไม่ได้ / Could not load data</b><br>` +
-      `ไม่มีข้อมูลที่บันทึกไว้ในเครื่อง · no cached snapshot available<br>` +
-      `เหตุด่วนโทร <b>1784</b> (ปภ.) หรือ <b>191</b>`;
-    return;
+/* ------------------------------------------------------------------ map */
+function addLayers(){
+  if(provinces && !map.getSource("prov")){
+    map.addSource("prov",{type:"geojson",data:provinces});
+    map.addLayer({id:"prov-fill",type:"fill",source:"prov",paint:{
+      "fill-color":["case",["==",["get","level"],null],"#2a2f36",
+        ["==",["get","level"],5],RISK[5],["==",["get","level"],4],RISK[4],
+        ["==",["get","level"],3],RISK[3],["==",["get","level"],2],RISK[2],RISK[1]],
+      "fill-opacity":["case",["==",["get","level"],null],.10,
+        [">=",["get","level"],4],.34,[">=",["get","level"],3],.26,.15]}});
+    map.addLayer({id:"prov-line",type:"line",source:"prov",paint:{
+      "line-color":["case",[">=",["coalesce",["get","level"],0],4],RISK[5],"rgba(255,255,255,.28)"],
+      "line-width":["case",[">=",["coalesce",["get","level"],0],4],1.6,.6]}});
   }
-
-  map.addSource("st", {type:"geojson", data: gj});
-
-  // Three ways to read the same stations: where the water is now, what rain is coming,
-  // and what the discharge model expects. Colour always carries a second signal
-  // (radius, stroke) so it is never the only cue.
-  const MODES = {
-    risk: {
-      colour: ["case",
-        ["==", ["get","risk_level"], null], "#b6bfc9",
-        ["==", ["get","risk_level"], 5], RISK_COLOUR[5],
-        ["==", ["get","risk_level"], 4], RISK_COLOUR[4],
-        ["==", ["get","risk_level"], 3], RISK_COLOUR[3],
-        ["==", ["get","risk_level"], 2], RISK_COLOUR[2],
-        RISK_COLOUR[1]],
-      big: [">=", ["coalesce",["get","risk_level"], 0], 4],
-      legend: [[RISK_COLOUR[5],"5 วิกฤต · Critical"],[RISK_COLOUR[4],"4 อันตราย · Severe"],
-               [RISK_COLOUR[3],"3 เตือนภัย · Warning"],[RISK_COLOUR[2],"2 เฝ้าระวัง · Watch"],
-               [RISK_COLOUR[1],"1 ปกติ · Normal"]]
-    },
-    level: {
-      colour: ["case",
-        ["get","stale"], "#8b97a3",
-        ["==", ["get","freeboard_m"], null], "#b6bfc9",
-        ["<=", ["get","freeboard_m"], 0],   "#c2182b",
-        ["<",  ["get","freeboard_m"], 0.5], "#e8590c",
-        ["<",  ["get","freeboard_m"], 1.5], "#c99a06",
-        "#1c7ed6"],
-      big: ["<=", ["coalesce",["get","freeboard_m"], 99], 0],
-      legend: [["#c2182b","ล้นตลิ่ง · over bank"],["#e8590c","&lt; 0.5 ม. freeboard"],
-               ["#c99a06","0.5–1.5 ม."],["#1c7ed6","&gt; 1.5 ม. · ample"],
-               ["#8b97a3","ไม่ส่งข้อมูล · not reporting"]]
-    },
-    rain: {
-      colour: ["case",
-        ["==", ["get","rain_next_24h_mm"], null], "#b6bfc9",
-        [">=", ["get","rain_next_24h_mm"], 90], "#5b21b6",
-        [">=", ["get","rain_next_24h_mm"], 50], "#c2182b",
-        [">=", ["get","rain_next_24h_mm"], 20], "#e8590c",
-        [">=", ["get","rain_next_24h_mm"], 5],  "#c99a06",
-        "#93c5c9"],
-      big: [">=", ["coalesce",["get","rain_next_24h_mm"], 0], 50],
-      legend: [["#5b21b6","≥ 90 มม. · extreme"],["#c2182b","50–90 มม."],
-               ["#e8590c","20–50 มม."],["#c99a06","5–20 มม."],["#93c5c9","&lt; 5 มม."]]
-    },
-    discharge: {
-      colour: ["case",
-        ["==", ["get","discharge_rise_ratio"], null], "#b6bfc9",
-        [">=", ["get","discharge_rise_ratio"], 4], "#c2182b",
-        [">=", ["get","discharge_rise_ratio"], 2], "#e8590c",
-        [">=", ["get","discharge_rise_ratio"], 1.2], "#c99a06",
-        "#1c7ed6"],
-      big: [">=", ["coalesce",["get","discharge_rise_ratio"], 0], 2],
-      legend: [["#c2182b","≥ 4× ของวันนี้ · ≥4× today"],["#e8590c","2–4×"],
-               ["#c99a06","1.2–2×"],["#1c7ed6","ทรงตัว · steady"],
-               ["#b6bfc9","ไม่มีแม่น้ำในแบบจำลอง · no modelled river"]]
-    }
-  };
-
-  map.addLayer({
-    id:"st-c", type:"circle", source:"st",
-    paint:{
-      "circle-color": MODES.level.colour,
-      "circle-radius":["interpolate",["linear"],["zoom"],
-        4, ["case", MODES.level.big, 4.2, 2.6],
-        9, ["case", MODES.level.big, 9, 5.5],
-        13,["case", MODES.level.big, 15, 10]],
-      "circle-stroke-width":["case",["get","stale"],1.4,1],
-      "circle-stroke-color":["case",["get","stale"],"#5b6672","#fff"],
-      "circle-opacity":["case",["get","stale"],.55,.92]
-    }
-  });
-
-  // --- tide points -------------------------------------------------------
-  if (tide?.points?.length) {
-    map.addSource("tide", {type:"geojson", data:{
-      type:"FeatureCollection",
-      features: tide.points.map(p => ({
-        type:"Feature",
-        geometry:{type:"Point", coordinates:[p.lon, p.lat]},
-        properties:{...p, next: JSON.stringify(p.next || [])}
-      }))
-    }});
-    map.addLayer({
-      id:"tide-c", type:"circle", source:"tide",
-      paint:{
-        "circle-color":"#0b5ed7",
-        "circle-radius":["interpolate",["linear"],["zoom"],4,4.5,9,8,13,12],
-        "circle-stroke-width":2.2,
-        "circle-stroke-color":"#fff",
-        "circle-opacity":.95
-      }
-    });
+  if(!map.getSource("st")){
+    map.addSource("st",{type:"geojson",data:gj});
+    // A soft halo under a hard core: reads as a signal on a photo basemap, where a
+    // flat dot disappears against terrain.
+    map.addLayer({id:"st-glow",type:"circle",source:"st",paint:{
+      "circle-color":modeColor(),"circle-blur":1,
+      "circle-radius":["interpolate",["linear"],["zoom"],4,["case",modeBig(),9,3],
+        9,["case",modeBig(),20,7],13,["case",modeBig(),32,13]],
+      "circle-opacity":["case",["get","stale"],.18,.45]}});
+    map.addLayer({id:"st-core",type:"circle",source:"st",paint:{
+      "circle-color":modeColor(),
+      "circle-radius":["interpolate",["linear"],["zoom"],4,["case",modeBig(),3.6,2.1],
+        9,["case",modeBig(),7.5,4.4],13,["case",modeBig(),12,8]],
+      "circle-stroke-width":["case",["get","stale"],1,.9],
+      "circle-stroke-color":["case",["get","stale"],"rgba(255,255,255,.35)","rgba(255,255,255,.85)"],
+      "circle-opacity":["case",["get","stale"],.5,.96]}});
+    map.on("click","st-core",e=>stationPopup(e));
+    map.on("mouseenter","st-core",()=>map.getCanvas().style.cursor="pointer");
+    map.on("mouseleave","st-core",()=>map.getCanvas().style.cursor="");
+  }
+  if(tide?.points?.length && !map.getSource("tide")){
+    map.addSource("tide",{type:"geojson",data:{type:"FeatureCollection",
+      features:tide.points.map(p=>({type:"Feature",geometry:{type:"Point",coordinates:[p.lon,p.lat]},
+        properties:{...p,next:JSON.stringify(p.next||[])}}))}});
+    map.addLayer({id:"tide-c",type:"circle",source:"tide",paint:{
+      "circle-color":"#22d3ee","circle-radius":["interpolate",["linear"],["zoom"],4,3.4,9,6,13,9],
+      "circle-stroke-width":1.4,"circle-stroke-color":"rgba(255,255,255,.9)","circle-opacity":.95}});
+    map.on("click","tide-c",e=>tidePopup(e));
     map.on("mouseenter","tide-c",()=>map.getCanvas().style.cursor="pointer");
     map.on("mouseleave","tide-c",()=>map.getCanvas().style.cursor="");
-    map.on("click","tide-c", e => showTide(e.features[0].properties));
   }
+  applyVisibility();
+  pulse();
+}
 
-  function showTide(p) {
-    const bar = document.getElementById("tidebar");
-    bar.classList.add("show");
-    document.getElementById("tide-name").textContent = `${esc(p.name_th)}`;
-    const regimeTh = {large:"น้ำขึ้นลงมาก", average:"ปานกลาง", small:"น้อย", unknown:"-"}[p.range_regime] || "-";
-    const dirTh = {rising:"กำลังขึ้น", falling:"กำลังลง", slack:"น้ำนิ่ง", unknown:"-"}[p.state] || "-";
-    document.getElementById("tide-state").innerHTML =
-      `${esc(p.name)} · ${dirTh} / ${esc(p.state)}` +
-      `<br><span class="pill">ช่วงน้ำวันนี้ ${p.range_today_m ?? "-"} ม. · ${regimeTh} (p${p.range_percentile})</span>`;
-    let next = [];
-    try { next = JSON.parse(p.next || "[]"); } catch {}
-    document.getElementById("tide-next").innerHTML = next.slice(0,5).map(e => {
-      const d = new Date(e.at);
-      const t = d.toLocaleString("th-TH",{timeZone:"Asia/Bangkok",day:"2-digit",month:"short",
-        hour:"2-digit",minute:"2-digit"});
-      const cls = e.kind === "high" ? "hi" : "lo";
-      const lbl = e.kind === "high" ? "น้ำขึ้นสูงสุด / high" : "น้ำลงต่ำสุด / low";
-      return `<div class="tide-row"><span class="${cls}">${lbl}</span><b>${t} · ${e.height_m>=0?"+":""}${e.height_m} ม.</b></div>`;
-    }).join("") || `<div class="tide-row"><span>ไม่มีข้อมูล / no data</span></div>`;
-  }
+function modeColor(){
+  if(mode==="risk") return ["case",["==",["get","risk_level"],null],"#6b7280",
+    ["==",["get","risk_level"],5],RISK[5],["==",["get","risk_level"],4],RISK[4],
+    ["==",["get","risk_level"],3],RISK[3],["==",["get","risk_level"],2],RISK[2],RISK[1]];
+  if(mode==="level") return ["case",["get","stale"],"#6b7280",
+    ["==",["get","freeboard_m"],null],"#6b7280",["<=",["get","freeboard_m"],0],RISK[5],
+    ["<",["get","freeboard_m"],.5],RISK[3],["<",["get","freeboard_m"],1.5],RISK[2],RISK[1]];
+  if(mode==="rain") return ["case",["==",["get","rain_next_24h_mm"],null],"#6b7280",
+    [">=",["get","rain_next_24h_mm"],90],"#a855f7",[">=",["get","rain_next_24h_mm"],50],RISK[5],
+    [">=",["get","rain_next_24h_mm"],20],RISK[3],[">=",["get","rain_next_24h_mm"],5],RISK[2],"#0ea5e9"];
+  return ["case",["==",["get","discharge_rise_ratio"],null],"#6b7280",
+    [">=",["get","discharge_rise_ratio"],4],RISK[5],[">=",["get","discharge_rise_ratio"],2],RISK[3],
+    [">=",["get","discharge_rise_ratio"],1.2],RISK[2],RISK[1]];
+}
+function modeBig(){
+  if(mode==="risk") return [">=",["coalesce",["get","risk_level"],0],4];
+  if(mode==="level") return ["<=",["coalesce",["get","freeboard_m"],99],0];
+  if(mode==="rain") return [">=",["coalesce",["get","rain_next_24h_mm"],0],50];
+  return [">=",["coalesce",["get","discharge_rise_ratio"],0],2];
+}
+function repaint(){
+  if(!map.getLayer("st-core")) return;
+  for(const id of ["st-glow","st-core"]) map.setPaintProperty(id,"circle-color",modeColor());
+  map.setPaintProperty("st-glow","circle-radius",["interpolate",["linear"],["zoom"],
+    4,["case",modeBig(),9,3],9,["case",modeBig(),20,7],13,["case",modeBig(),32,13]]);
+  map.setPaintProperty("st-core","circle-radius",["interpolate",["linear"],["zoom"],
+    4,["case",modeBig(),3.6,2.1],9,["case",modeBig(),7.5,4.4],13,["case",modeBig(),12,8]]);
+}
+/** Slow breathing on the glow. Draws the eye to the worst places without motion sickness. */
+function pulse(){
+  let k=0;
+  setInterval(()=>{
+    if(!map.getLayer("st-glow")||!shown.stations) return;
+    k+=0.045;
+    const o=.34+Math.sin(k)*0.16;
+    map.setPaintProperty("st-glow","circle-opacity",["case",["get","stale"],.15,o]);
+  },70);
+}
+function applyVisibility(){
+  const set=(id,on)=>{ if(map.getLayer(id)) map.setLayoutProperty(id,"visibility",on?"visible":"none"); };
+  set("prov-fill",shown.provinces); set("prov-line",shown.provinces);
+  set("st-glow",shown.stations); set("st-core",shown.stations);
+  set("tide-c",shown.tide);
+}
 
-  // --- mode switching ----------------------------------------------------
-  function setMode(name) {
-    const m = MODES[name];
-    map.setPaintProperty("st-c","circle-color", m.colour);
-    map.setPaintProperty("st-c","circle-radius",["interpolate",["linear"],["zoom"],
-      4, ["case", m.big, 4.2, 2.6],
-      9, ["case", m.big, 9, 5.5],
-      13,["case", m.big, 15, 10]]);
-    document.getElementById("legend").innerHTML = m.legend
-      .map(([c,t]) => `<div><span class="sw" style="background:${c}"></span> ${t}</div>`).join("")
-      + `<div><span class="sw" style="background:#0b5ed7;border:2px solid #fff;box-shadow:0 0 0 1px #0b5ed7"></span> จุดน้ำขึ้นน้ำลง · tide point</div>`;
-    document.querySelectorAll(".modes button").forEach(b =>
-      b.classList.toggle("on", b.dataset.mode === name));
-  }
-  document.querySelectorAll(".modes button").forEach(b =>
-    b.addEventListener("click", () => setMode(b.dataset.mode)));
-  setMode("level");
+function stationPopup(e){
+  const p=e.features[0].properties;
+  const n=k=>(p[k]==null||p[k]==="")?null:Number(p[k]);
+  const fb=n("freeboard_m"), lv=n("risk_level"), ttb=n("time_to_bank_hr");
+  const over=fb!==null&&fb<=0, stale=p.stale===true||p.stale==="true";
+  let reasons=p.reasons;
+  if(typeof reasons==="string"){ try{reasons=JSON.parse(reasons);}catch{reasons=[];} }
+  reasons=Array.isArray(reasons)?reasons:[];
+  const tag=lv?`<div class="pt" style="background:${RISK[lv]}">${lv} ${esc(t("r"+lv))}</div>`:"";
+  const why=reasons.length?`<div class="why"><b>${esc(t("why"))}</b><ul>`+
+    reasons.map(r=>`<li>${esc(LANG==="th"?r.th:r.en)}</li>`).join("")+`</ul></div>`:"";
+  new maplibregl.Popup({maxWidth:"300px",closeButton:true}).setLngLat(e.lngLat).setHTML(`
+    ${tag}
+    <div class="ph">${esc(p.name)||"-"}</div>
+    <div class="psub">${esc(p.district)||""} ${esc(p.province)||""}${stale?" · "+esc(t("stale")):""}</div>
+    ${ttb!==null?`<div class="pttb">⚠ ${esc(t("ttb"))} ~${ttb} ${esc(t("hr"))} ${esc(t("est"))}</div>`:""}
+    <div class="pr"><span>${esc(t("level"))}</span><span class="num">${fmt(n("level_msl")," m")}</span></div>
+    <div class="pr"><span>${esc(t("bank"))}</span><span class="num">${fmt(n("bank_msl")," m")}</span></div>
+    <div class="pr"><span>${esc(over?t("above"):t("fb"))}</span><span class="num" style="color:${over?RISK[5]:"inherit"}">${fb===null?"-":fmt(Math.abs(fb)," m")}</span></div>
+    <div class="pr"><span>${esc(t("rain24"))}</span><span class="num">${fmt(n("rain_next_24h_mm")," mm",1)}</span></div>
+    <div class="pr"><span>${esc(t("trend"))}</span><span class="num">${n("discharge_rise_ratio")===null?"-":n("discharge_rise_ratio")+"x"}</span></div>
+    <div class="pr"><span>${esc(t("ageL"))}</span><span class="num">${esc(ageText(n("data_age_min")))}</span></div>
+    ${why}
+    ${p.risk_confidence?`<div class="conf">${esc(t("conf"))}: ${esc(p.risk_confidence)}</div>`:""}`)
+    .addTo(map);
+}
 
-  map.on("mouseenter","st-c",()=>map.getCanvas().style.cursor="pointer");
-  map.on("mouseleave","st-c",()=>map.getCanvas().style.cursor="");
-  map.on("click","st-c", e => {
-    const p = e.features[0].properties;
-    const n = k => (p[k] === null || p[k] === undefined || p[k] === "") ? null : Number(p[k]);
-    const fb = n("freeboard_m");
-    const over = fb !== null && fb <= 0;
-    const stale = p.stale === true || p.stale === "true";
-    const rise = n("discharge_rise_ratio");
-    const lv = n("risk_level");
-    const tag = lv
-      ? `<div class="tag" style="background:${RISK_COLOUR[lv]}">${lv} ${RISK_TH[lv]} · ${RISK_EN[lv]}</div>`
-      : (over ? `<div class="tag" style="background:var(--over)">ล้นตลิ่ง · OVER BANK</div>` : "");
-    let reasons = p.reasons;
-    if (typeof reasons === "string") { try { reasons = JSON.parse(reasons); } catch { reasons = []; } }
-    reasons = Array.isArray(reasons) ? reasons : [];
-    const ttb = n("time_to_bank_hr");
-    // The "why" block is not decoration: a score with no reasoning is either ignored
-    // or panics people, and neither is a safe outcome.
-    const why = reasons.length ? `<div class="why"><b>เหตุผล · WHY</b><ul>` +
-        reasons.map(r => `<li>${esc(r.th)}<br><span style="color:var(--muted)">${esc(r.en)}</span></li>`).join("") +
-        `</ul></div>` : "";
-    const ttbHtml = ttb !== null
-      ? `<div class="ttb">⚠ ถึงระดับตลิ่งใน ~${ttb} ชม. · ~${ttb} h to bank level</div>` : "";
-    const conf = p.risk_confidence
-      ? `<div class="conf">ความเชื่อมั่น / confidence: ${esc(p.risk_confidence)}` +
-        (stale ? " · ข้อมูลเก่า / stale" : "") + `</div>` : "";
-    new maplibregl.Popup({maxWidth:"320px"})
-      .setLngLat(e.lngLat)
-      .setHTML(`
-        ${tag}
-        <div class="pop-h">${esc(p.name) || "-"}</div>
-        ${ttbHtml}
-        <div class="pop-r"><span>จังหวัด / province</span><span>${esc(p.province) || "-"}</span></div>
-        <div class="pop-r"><span>ระดับน้ำ / level</span><span>${fmt(n("level_msl")," m MSL")}</span></div>
-        <div class="pop-r"><span>ระดับตลิ่ง / bank</span><span>${fmt(n("bank_msl")," m MSL")}</span></div>
-        <div class="pop-r"><span>${over?"สูงกว่าตลิ่ง / above bank":"ต่ำกว่าตลิ่ง / freeboard"}</span>
-          <span style="color:${over?"var(--over)":"inherit"}">${fb===null?"-":fmt(Math.abs(fb)," m")}</span></div>
-        <div class="pop-r"><span>ฝน 24 ชม.ที่ผ่านมา / rain past 24h</span><span>${fmt(n("rain_past_24h_mm")," mm",1)}</span></div>
-        <div class="pop-r"><span>ฝนคาดการณ์ 24 ชม. / rain next 24h</span><span>${fmt(n("rain_next_24h_mm")," mm",1)}</span></div>
-        <div class="pop-r"><span>ฝนคาดการณ์ 72 ชม. / next 72h</span><span>${fmt(n("rain_next_72h_mm")," mm",1)}</span></div>
-        <div class="pop-r"><span>น้ำท่า / discharge</span><span>${fmt(n("discharge_now_cms")," m³/s",1)}</span></div>
-        <div class="pop-r"><span>แนวโน้ม 7 วัน / 7-day trend</span><span>${rise===null?"-":rise+"×"}</span></div>
-        <div class="pop-r"><span>อายุข้อมูล / data age</span><span>${ageLabel(n("data_age_min"))}</span></div>
-        <div class="pop-r"><span>หน่วยงาน / agency</span><span>${esc(p.agency) || "-"}</span></div>
-        ${why}${conf}
-      `).addTo(map);
+function tidePopup(e){
+  const p=e.features[0].properties;
+  let next=[]; try{ next=JSON.parse(p.next||"[]"); }catch{}
+  const rows=next.slice(0,4).map(x=>{
+    const d=new Date(x.at).toLocaleString(LANG==="th"?"th-TH":"en-GB",
+      {timeZone:"Asia/Bangkok",day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"});
+    return `<div class="pr"><span>${esc(x.kind==="high"?t("hi"):t("lo"))}</span>
+      <span class="num">${esc(d)} · ${x.height_m>=0?"+":""}${x.height_m} m</span></div>`;
+  }).join("");
+  new maplibregl.Popup({maxWidth:"290px"}).setLngLat(e.lngLat).setHTML(`
+    <div class="ph">${esc(loc(p,"name"))}</div>
+    <div class="psub">${esc(t("tidestate"))}: ${esc(p.state)} · ${p.rate_m_per_hr} m/h · ${p.range_today_m} m</div>
+    ${rows||`<div class="pr"><span>${esc(t("nodata"))}</span></div>`}`).addTo(map);
+}
+
+/* ------------------------------------------------------------------ chrome */
+function renderChrome(){
+  document.documentElement.lang=LANG;
+  $("h-base").textContent=t("base"); $("h-over").textContent=t("over");
+  $("o-sat").textContent=t("sat"); $("o-dark").textContent=t("dark"); $("o-light").textContent=t("light");
+  $("o-prov").textContent=t("prov"); $("o-stat").textContent=t("stat"); $("o-tide").textContent=t("tide");
+  $("camnote").textContent=t("camnote");
+  $("h-legend").textContent=t("legend"); $("h-worst").textContent=t("worst");
+  document.querySelectorAll("#lang button").forEach(b=>b.classList.toggle("on",b.dataset.l===LANG));
+  document.querySelectorAll("[data-base]").forEach(el=>el.classList.toggle("on",el.dataset.base===basemap));
+  document.querySelectorAll("[data-layer]").forEach(el=>el.classList.toggle("on",shown[el.dataset.layer]));
+
+  const c=meta?.counts??{}, r=meta?.risk??{};
+  $("stats").innerHTML=`
+    <div class="stat"><b class="num">${c.stations??"-"}</b><i>${esc(t("total"))}</i></div>
+    <div class="stat"><b class="num" style="color:${RISK[5]}">${c.at_or_over_bank??"-"}</b><i>${esc(t("over_bank"))}</i></div>
+    <div class="stat"><b class="num" style="color:${RISK[4]}">${r.soonest_to_bank_hr!=null?r.soonest_to_bank_hr+t("hr"):"-"}</b><i>${esc(t("soon"))}</i></div>`;
+
+  $("modes").innerHTML=[["risk","m_risk"],["level","m_level"],["rain","m_rain"],["discharge","m_dis"]]
+    .map(([k,l])=>`<button class="btn${mode===k?" on":""}" data-mode="${k}">${esc(t(l))}</button>`).join("");
+  document.querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{
+    mode=b.dataset.mode; repaint(); renderChrome(); });
+
+  const L=mode==="risk"
+    ? [[RISK[5],"5 "+t("r5")],[RISK[4],"4 "+t("r4")],[RISK[3],"3 "+t("r3")],[RISK[2],"2 "+t("r2")],[RISK[1],"1 "+t("r1")]]
+    : mode==="level" ? [[RISK[5],"≤0 m"],[RISK[3],"<0.5 m"],[RISK[2],"0.5-1.5 m"],[RISK[1],">1.5 m"]]
+    : mode==="rain" ? [["#a855f7","≥90 mm"],[RISK[5],"50-90"],[RISK[3],"20-50"],[RISK[2],"5-20"],["#0ea5e9","<5"]]
+    : [[RISK[5],"≥4x"],[RISK[3],"2-4x"],[RISK[2],"1.2-2x"],[RISK[1],"-"]];
+  $("legend").innerHTML=L.map(([c2,l])=>`<div><span class="d" style="background:${c2}"></span>${esc(l)}</div>`).join("");
+
+  const top=(areas?.areas||[]).filter(a=>a.level>=3).slice(0,8);
+  $("worst").innerHTML=top.length?top.map((a,i)=>
+    `<a data-i="${i}"><span class="lv" style="background:${RISK[a.level]}">${a.level}</span>
+     <span class="t">${esc(a.district)||"-"}, ${esc(a.province)||"-"}</span>
+     ${a.worst_ttb_hr!=null?`<span class="ttb num">${a.worst_ttb_hr}${esc(t("hr"))}</span>`:""}</a>`).join("")
+    : `<div style="font-size:12px;color:var(--faint);padding:6px 0">${esc(t("none"))}</div>`;
+  document.querySelectorAll("#worst a").forEach(el=>el.onclick=()=>{
+    const a=top[+el.dataset.i];
+    const f=(gj?.features||[]).find(x=>x.properties.province===a.province
+      && x.properties.district===a.district && x.properties.risk_level===a.level);
+    if(f){ map.flyTo({center:f.geometry.coordinates,zoom:11}); $("sheet").classList.remove("open"); }
   });
 
-  const c = meta?.counts ?? {};
-  document.getElementById("s-total").textContent = c.stations ?? gj.features.length;
-  document.getElementById("s-over").textContent  = c.at_or_over_bank ?? "–";
-  document.getElementById("s-stale").textContent = c.stale ?? "–";
+  $("disc").innerHTML=t("disc")+` · <a href="./fish.html">${esc(t("fish"))}</a>`;
+  renderAge();
+}
 
-  // Data age is displayed, never hidden: Actions cron drifts, so "live" would be a lie.
-  const gen = meta?.generated_at ? new Date(meta.generated_at) : null;
-  const mins = gen ? (Date.now() - gen.getTime()) / 60000 : null;
-  const el = document.getElementById("age");
-  const med = meta?.data_age_minutes?.median;
-  el.className = "age" + (mins == null || mins > 180 ? " bad" : mins > 75 ? " warn" : "");
-  document.getElementById("age-t").textContent = gen
-    ? `อัปเดตเมื่อ ${ageLabel(mins)} ที่แล้ว · median reading age ${ageLabel(med)}`
-    : "ไม่ทราบเวลาข้อมูล / snapshot time unknown";
+function renderAge(){
+  const gen=meta?.generated_at?new Date(meta.generated_at):null;
+  const mins=gen?(Date.now()-gen.getTime())/60000:null;
+  const med=meta?.data_age_minutes?.median;
+  const dot=$("live");
+  dot.className="live"+(mins==null||mins>180?" dead":mins>75?" stale":"");
+  $("age").textContent = gen
+    ? `${t("updated")} ${ageText(mins)} ${t("ago")} · ${t("median")} ${ageText(med)}`
+    : t("nodata");
 
-  // Worst districts, a gauge is an instrument, a district is where somebody lives.
-  if (areas?.areas?.length) {
-    const top = areas.areas.filter(a => a.level >= 3).slice(0, 6);
-    document.getElementById("worst").innerHTML = top.length
-      ? `<h3>พื้นที่เสี่ยงสูงสุด · HIGHEST RISK DISTRICTS</h3>` + top.map((a, i) =>
-          `<a data-i="${i}"><span class="lv" style="background:${RISK_COLOUR[a.level]}">${a.level}</span>` +
-          `<span>${esc(a.district) || "-"}, ${esc(a.province) || "-"}` +
-          (a.worst_ttb_hr !== null && a.worst_ttb_hr !== undefined
-            ? ` <span style="color:var(--over)">~${a.worst_ttb_hr} ชม.</span>` : "") +
-          `</span></a>`).join("")
-      : `<h3>พื้นที่เสี่ยงสูงสุด · HIGHEST RISK DISTRICTS</h3>
-         <div style="font-size:12px;color:var(--muted)">ไม่มีพื้นที่ระดับ 3 ขึ้นไป · none at level 3+</div>`;
-    document.querySelectorAll("#worst a").forEach(el => el.addEventListener("click", () => {
-      const a = top[+el.dataset.i];
-      const f = gj.features.find(x => x.properties.province === a.province
-        && x.properties.district === a.district && x.properties.risk_level === a.level);
-      if (f) map.flyTo({center: f.geometry.coordinates, zoom: 11});
-    }));
-  }
-
-  // Open the upper-Gulf tide point by default: it is the one that drives Bangkok's
-  // backwater flooding, and it makes the tide layer discoverable.
-  const seed = tide?.points?.find(p => p.id === "chaophraya_mouth") || tide?.points?.[0];
-  if (seed) showTide({...seed, next: JSON.stringify(seed.next || [])});
-
-  // Degraded mode. The dangerous failure is the quiet one: the map still renders and
-  // the numbers behind it stopped being true hours ago. Say so, loudly.
-  const limit = meta?.health?.snapshot_stale_after_minutes ?? 90;
-  const unhealthy = meta?.health?.status && meta.health.status !== "pass";
-  if (!navigator.onLine || (mins !== null && mins > limit) || unhealthy) {
-    const el = document.getElementById("degraded");
-    el.classList.add("show");
+  const limit=meta?.health?.snapshot_stale_after_minutes??90;
+  const bad=!navigator.onLine||(mins!=null&&mins>limit)||(meta?.health?.status&&meta.health.status!=="pass");
+  const el=$("degraded");
+  el.classList.toggle("show",!!bad);
+  if(bad){
     const why = !navigator.onLine
-      ? "ออฟไลน์ · กำลังแสดงข้อมูลล่าสุดที่บันทึกไว้ / Offline · showing last saved data"
-      : (mins !== null && mins > limit)
-        ? `ข้อมูลเก่ากว่า ${Math.round(limit)} นาที / Snapshot is older than ${Math.round(limit)} min`
-        : "ระบบเก็บข้อมูลมีปัญหาบางส่วน / Pipeline reporting degraded";
-    const failed = (meta?.health?.checks || [])
-      .filter(c => c.status !== "pass").map(c => esc(c.detail)).join(" · ");
-    el.innerHTML = `<b>⚠ ข้อมูลอาจไม่เป็นปัจจุบัน / Data may be out of date</b><br>${esc(why)}` +
-      (failed ? `<br><span style="opacity:.85">${failed}</span>` : "") +
-      `<br>อย่าใช้ตัดสินใจเรื่องความปลอดภัยเพียงอย่างเดียว · โทร 1784 / 191`;
+      ? t("offline")
+      : (meta?.health?.checks||[]).filter(c=>c.status!=="pass")
+          .map(c=>c.detail).join(" · ");
+    el.innerHTML=`<b>⚠ ${esc(t("degraded"))}</b>` + (why?`<br>${esc(why)}`:"");
   }
-});
+}
 
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});
+/* ------------------------------------------------------------------ boot */
+function setBasemap(name){
+  basemap=name;
+  const s=STYLES[name]();
+  map.setStyle(s);
+  map.once("styledata",()=>{ addLayers(); });
+  renderChrome();
+}
+
+(async function(){
+  if(!(await load())){
+    $("degraded").classList.add("show");
+    $("degraded").innerHTML=`<b>⚠ ${esc(t("degraded"))}</b>`;
+    return;
+  }
+  map=new maplibregl.Map({container:"map",style:satelliteStyle(),
+    center:[100.9,13.4],zoom:5.0,attributionControl:false,
+    maxZoom:16,minZoom:3});
+  map.addControl(new maplibregl.AttributionControl({compact:true,
+    customAttribution:"ThaiWater (HII) · Open-Meteo · SeRAPHIM AGPL-3.0"}));
+  map.addControl(new maplibregl.NavigationControl({showCompass:false}),"bottom-right");
+  map.addControl(new maplibregl.GeolocateControl({trackUserLocation:true}),"bottom-right");
+  map.on("load",()=>{ addLayers(); renderChrome(); });
+
+  $("grab").onclick=()=>$("sheet").classList.toggle("open");
+  $("stats").onclick=()=>$("sheet").classList.toggle("open");
+  $("layersbtn").onclick=e=>{ e.stopPropagation(); $("layers").classList.toggle("show"); };
+  document.addEventListener("click",e=>{
+    if(!$("layers").contains(e.target)&&e.target!==$("layersbtn")) $("layers").classList.remove("show");
+  });
+  document.querySelectorAll("#lang button").forEach(b=>b.onclick=()=>{
+    LANG=b.dataset.l; localStorage.setItem("seraphim_lang",LANG); renderChrome();
+  });
+  document.querySelectorAll("[data-base]").forEach(el=>el.onclick=()=>setBasemap(el.dataset.base));
+  document.querySelectorAll("[data-layer]").forEach(el=>el.onclick=()=>{
+    shown[el.dataset.layer]=!shown[el.dataset.layer]; applyVisibility(); renderChrome();
+  });
+  window.addEventListener("online",renderAge);
+  window.addEventListener("offline",renderAge);
+
+  // Poll for a newer snapshot and swap the data in place, so a phone left open on a
+  // windowsill keeps up without anyone reloading it.
+  setInterval(async ()=>{
+    const m=await fetch(`${BASE}/meta.json`,{cache:"no-cache"}).then(r=>r.json()).catch(()=>null);
+    if(m && m.generated_at !== meta?.generated_at){
+      await load();
+      if(map.getSource("st")) map.getSource("st").setData(gj);
+      if(map.getSource("prov")&&provinces) map.getSource("prov").setData(provinces);
+      renderChrome();
+    } else { renderAge(); }
+  },60000);
+
+  if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(()=>{});
+})();
 </script>
 </body>
 </html>

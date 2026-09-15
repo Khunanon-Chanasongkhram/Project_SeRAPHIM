@@ -66,7 +66,11 @@ question, since none of this has been tested where it counts.
 ## What it does
 
 **Watch.** 1,121 live river gauges, rainfall, discharge forecasts, and tide prediction at
-23 points along both coasts, on one map.
+23 points along both coasts, on one map. Satellite imagery by default, Thai and English,
+and it refreshes itself every 15 minutes without a reload.
+
+**Where, not just what.** All 77 provinces are shaded by the worst gauge in them, so you
+can see where the trouble is before you start tapping dots.
 
 **Predict.** A risk score from 1 to 5 for every district in all 77 provinces, with time
 to bank where the trend is solid enough to show one. It also checks whether a high tide
@@ -124,6 +128,7 @@ nothing to install.
 | `docs/DATA_SOURCES.md` | every API, tested or not, with the date I checked |
 | `workers/seraphim/` | the Python that fetches, scores and publishes |
 | `web/` | the map and the fishing page |
+| `scripts/check_js.py` | scans inline JS and translations, since there is no Node here |
 
 ## Where the data comes from
 

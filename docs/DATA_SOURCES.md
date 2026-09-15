@@ -121,6 +121,42 @@ costs no API quota and works offline.
   **12.4 h** apart (half a lunar day), and at full moon **moonrise lands within 0.4 h of
   sunset**.
 
+## Tier 2c — Basemaps and boundaries (verified 2026-09-15)
+
+| Source | URL | Licence / terms | Status |
+|---|---|---|---|
+| **Esri World Imagery** | `server.arcgisonline.com/.../World_Imagery/MapServer/tile/{z}/{y}/{x}` | attribution required: "Imagery © Esri, Maxar, Earthstar Geographics" | ✅ tested, 256px JPEG, no key |
+| **Esri Boundaries and Places** | `.../Reference/World_Boundaries_and_Places/...` | same | ✅ tested, PNG label overlay |
+| **CARTO dark-matter / positron** | `basemaps.cartocdn.com` | © OpenStreetMap contributors, © CARTO | ✅ in use |
+| **Thai province outlines** | `apisit/thailand.json` (vendored) | MIT on the repo | ✅ 77 polygons, 167 KB |
+
+⚠️ The province outline repo is MIT, but **it does not document where its original
+shapefile came from**. For drawing approximate province shading that is acceptable; it
+would not be if the boundaries were ever used for anything official. Worth replacing with
+a sourced dataset if this becomes more than a hobby project.
+
+The outlines carry English province names while the gauge data carries Thai ones. Rather
+than hand-typing 77 name pairs, the mapping is **derived from the data**: each gauge knows
+its own Thai province and its coordinates, so whichever polygon contains the most gauges
+claiming a province is that province. 77/77 resolve, 5 by majority vote across a border,
+12 gauges fall outside every polygon (coastal, or simplification artifacts). The build
+prints those counts, so a bad join is visible rather than silent.
+
+## Tier 4 — CCTV / live cameras ❌ NOT AVAILABLE
+
+Asked for, and genuinely looked for. Result: **no public camera feed has been found.**
+
+- ThaiWater: `public/cctv`, `public/camera`, `public/cctv_load`, `public/waterlevel_cctv`,
+  `public/station_cctv` all return 404. `shared/cctv` returns **403**, so something exists
+  behind authentication but is not public.
+- GISTDA's disaster portal is a JavaScript app whose API calls are not visible to a plain
+  fetch, and the endpoint paths guessed so far all 404.
+
+Provincial and municipal cameras do exist in Thailand, but scattered across sites with no
+common API, mostly without any stated terms of use. Scraping them for a public map is both
+fragile and legally unclear, so there is no camera layer. The layers panel says so plainly
+rather than leaving a gap the user has to interpret.
+
 ## Tier 3 — Terrain (Phase 5)
 - **FABDEM** (Copernicus GLO-30 with buildings/trees removed) — best free DEM for flood work; non-commercial licence, check
 - **Copernicus DEM GLO-30** — open, 30 m

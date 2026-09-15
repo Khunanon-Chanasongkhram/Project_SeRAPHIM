@@ -18,6 +18,7 @@ from seraphim.publish import (
     build_areas,
     prune_archive,
     build_fishing_doc,
+    build_provinces,
     build_geojson,
     build_meta,
     build_tide,
@@ -189,8 +190,15 @@ def build(
     meta = build_meta(states, health, generated_at, tide_points=len(tide_points), risks=risks)
     tide = build_tide(tide_points, generated_at) if tide_points else None
     areas_doc = build_areas(areas, generated_at)
+    provinces = build_provinces(states, areas, generated_at)
+    if provinces:
+        j = provinces["join"]
+        print(f"[provinces] {j['mapped']}/{j['polygons']} shapes joined"
+              + (f", {len(j['weak_joins'])} weak" if j["weak_joins"] else "")
+              + f", {j['gauges_outside_any_province']} gauges outside any shape")
 
-    written = write_snapshot(out_root / "out", geojson, meta, tide, areas_doc, fishing_doc)
+    written = write_snapshot(out_root / "out", geojson, meta, tide, areas_doc,
+                             fishing_doc, provinces)
     if archive and states:
         written.append(write_archive(out_root / "archive", geojson, generated_at))
     if archive_keep_hours > 0:

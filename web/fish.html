@@ -44,7 +44,11 @@
   .card h2{font-size:14px;margin:0 0 2px}
   .card .cap{color:var(--text-secondary);font-size:11.5px;margin:0 0 12px}
 
-  select,button{font:inherit;color:var(--text-primary);background:var(--bg);
+  .seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;flex:none}
+  .seg button{background:none;border:0;color:var(--text-secondary);font:inherit;font-size:11px;
+    font-weight:700;padding:6px 9px;cursor:pointer;border-radius:0}
+  .seg button.on{background:var(--text-primary);color:var(--bg)}
+  select,button{font:inherit;color:var(--text-primary);background:var(--surface);
     border:1px solid var(--line);border-radius:9px;padding:9px 11px}
   select{width:100%}
   .days{display:flex;gap:5px;margin-top:10px}
@@ -87,18 +91,21 @@
 
   .note{background:var(--bg);border:1px solid var(--line);border-radius:9px;
     padding:9px 11px;font-size:12px;color:var(--text-secondary);margin-top:10px}
-  .warn{background:#fff8f8;border:1px solid #ffc9c9;color:#8b1a1a;border-radius:9px;
+  .warn{background:rgba(120,26,26,.35);border:1px solid rgba(229,72,77,.45);color:#ffc9c9;border-radius:9px;
     padding:9px 11px;font-size:12px;margin-top:12px}
   [hidden]{display:none!important}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>เวลาตกปลา <span style="font-weight:400;color:var(--text-secondary);font-size:15px">· Fishing times</span></h1>
-  <p class="sub">น้ำขึ้นน้ำลง ดวงจันทร์ และสภาพอากาศ · <a class="back" href="./index.html">→ แผนที่น้ำท่วม / flood map</a></p>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:2px">
+    <h1 id="h1" style="margin:0;flex:1"></h1>
+    <div class="seg" id="lang"><button data-l="th">ไทย</button><button data-l="en">EN</button></div>
+  </div>
+  <p class="sub" id="sub"></p>
 
   <div class="card">
-    <label for="spot" style="font-size:12.5px;color:var(--text-secondary)">เลือกจุด · Choose a spot</label>
+    <label for="spot" style="font-size:12.5px;color:var(--text-secondary)"></label>
     <select id="spot" style="margin-top:6px"></select>
     <div class="days" id="days"></div>
   </div>
@@ -136,13 +143,36 @@
 
 <script src="./config.js"></script>
 <script>
+const I18N={
+  th:{title:"เวลาตกปลา", sub:"น้ำขึ้นน้ำลง ดวงจันทร์ และสภาพอากาศ",
+      back:"→ แผนที่น้ำท่วม", pick:"เลือกจุด", hourly:"คะแนนรายชั่วโมง",
+      cap:"0-100 · สูงกว่า = น่าไปกว่า", table:"ดูเป็นตาราง",
+      tide:"ระดับน้ำทะเล", tidecap:"ปลากินอาหารตอนน้ำเดิน ไม่ใช่ตอนน้ำนิ่ง",
+      time:"เวลา", score:"คะแนน", factors:"ปัจจัย", peak:"คะแนนสูงสุด เวลา",
+      method:"วิธีคิด", caveat:"ข้อจำกัด", notide:"ไม่มีข้อมูลน้ำขึ้นน้ำลงที่จุดนี้",
+      warn:"<b>โปรเจกต์ส่วนตัว</b> คะแนนนี้เป็นเพียงการประมาณ ไม่ใช่คำรับรอง ตรวจสภาพอากาศและความปลอดภัยก่อนออกเรือเสมอ เหตุฉุกเฉินทางน้ำ โทร <b>1196</b> หรือ <b>191</b>",
+      fail:"โหลดข้อมูลไม่ได้", n:"น."},
+  en:{title:"Fishing times", sub:"Tide, moon and weather",
+      back:"→ flood map", pick:"Choose a spot", hourly:"Hourly bite score",
+      cap:"0-100 · higher is better", table:"View as table",
+      tide:"Tide", tidecap:"Fish feed on moving water, not slack",
+      time:"Time", score:"Score", factors:"Factors", peak:"peak at",
+      method:"Method", caveat:"Caveat", notide:"no tide data at this spot",
+      warn:"<b>A personal hobby project.</b> These scores are folklore plus arithmetic, not a promise of fish. Always check conditions before going out. Water emergency: call <b>1196</b> or <b>191</b>.",
+      fail:"Could not load data", n:""}
+};
+let LANG = localStorage.getItem("seraphim_lang")
+  || ((navigator.language||"").toLowerCase().startsWith("th") ? "th" : "en");
+const t=(k)=>I18N[LANG][k] ?? k;
+const loc=(o,base)=> LANG==="th" ? (o[base+"_th"] ?? o[base] ?? "") : (o[base] ?? o[base+"_th"] ?? "");
+
 const ESCAPES={"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};
 const esc = (v)=>v==null?"":String(v).replace(/[&<>"']/g,(c)=>ESCAPES[c]);
 const $=(id)=>document.getElementById(id);
 const BASE=(window.SERAPHIM&&window.SERAPHIM.dataBase)||"../data/out";
 const DATA=new URLSearchParams(location.search).get("data")||`${BASE}/fishing.json`;
 const TIDE_URL=DATA.replace(/fishing\.json$/,"tide.json");
-const ICT=(iso)=>new Date(iso).toLocaleTimeString("th-TH",
+const ICT=(iso)=>new Date(iso).toLocaleTimeString(LANG==="th"?"th-TH":"en-GB",
   {timeZone:"Asia/Bangkok",hour:"2-digit",minute:"2-digit"});
 let doc=null,spot=null,dayIndex=0;
 
@@ -157,19 +187,38 @@ Promise.all([
   for(const p of (tide?.points||[])) doc.tideByPoint[p.id]=p;
   $("spot").innerHTML=d.spots.map((s,i)=>
     `<option value="${i}">${esc(s.name_th)} · ${esc(s.name)}</option>`).join("");
-  $("method").innerHTML=`<b>วิธีคิด · Method.</b> ${esc(d.method)}<br><br><b>ข้อจำกัด · Caveat.</b> ${esc(d.caveat)}`;
+  paintChrome();
   $("spot").addEventListener("change",()=>{spot=doc.spots[+$("spot").value];dayIndex=0;render();});
+  document.querySelectorAll("#lang button").forEach(b=>b.onclick=()=>{
+    LANG=b.dataset.l; localStorage.setItem("seraphim_lang",LANG); paintChrome(); render();
+  });
   spot=d.spots[0];render();
-}).catch(()=>{
-  $("summary").innerHTML=`<b>โหลดข้อมูลไม่ได้ / could not load data</b>`;
-});
+}).catch(()=>{ $("summary").innerHTML=`<b>${esc(t("fail"))}</b>`; });
+
+function paintChrome(){
+  document.documentElement.lang=LANG;
+  $("h1").textContent=t("title");
+  $("sub").innerHTML=`${esc(t("sub"))} · <a class="back" href="./index.html">${esc(t("back"))}</a>`;
+  document.querySelector('label[for="spot"]').textContent=t("pick");
+  document.querySelectorAll("#lang button").forEach(b=>b.classList.toggle("on",b.dataset.l===LANG));
+  const cards=document.querySelectorAll(".card h2");
+  if(cards[1]) cards[1].textContent=t("hourly");
+  if(cards[2]) cards[2].textContent=t("tide");
+  $("chartcap").textContent=t("cap");
+  document.querySelector("#tidecard .cap").textContent=t("tidecap");
+  document.querySelector("details summary").textContent=t("table");
+  const th=document.querySelectorAll("#tbl thead th");
+  th[0].textContent=t("time"); th[1].textContent=t("score"); th[2].textContent=t("factors");
+  document.querySelector(".warn").innerHTML=t("warn");
+  if(doc) $("method").innerHTML=`<b>${esc(t("method"))}.</b> ${esc(doc.method)}<br><br><b>${esc(t("caveat"))}.</b> ${esc(doc.caveat)}`;
+}
 
 function render(){
   const days=spot.days;
   $("days").innerHTML=days.map((d,i)=>{
     const dt=new Date(d.date+"T00:00:00");
     return `<button data-i="${i}" class="${i===dayIndex?"on":""}">
-      ${dt.toLocaleDateString("th-TH",{weekday:"short",day:"numeric",month:"short"})}</button>`;
+      ${dt.toLocaleDateString(LANG==="th"?"th-TH":"en-GB",{weekday:"short",day:"numeric",month:"short"})}</button>`;
   }).join("");
   document.querySelectorAll("#days button").forEach(b=>
     b.addEventListener("click",()=>{dayIndex=+b.dataset.i;render();}));
@@ -179,9 +228,9 @@ function render(){
   // is the supporting detail.
   const top=d.best[0];
   $("summary").innerHTML=`
-    <h2>${esc(spot.name_th)}</h2>
-    <p class="cap">${esc(spot.name)} · ${esc(d.profile)}${d.tide_modelled?"":" · ไม่มีข้อมูลน้ำขึ้นน้ำลง / no tide data here"}</p>
-    <div class="hero"><b>${top?top.score:"-"}</b><span>คะแนนสูงสุด เวลา ${top?esc(ICT(top.at)):"-"} น. · peak at ${top?esc(ICT(top.at)):"-"}</span></div>
+    <h2>${esc(loc(spot,"name"))}</h2>
+    <p class="cap">${esc(spot.profile)}${d.tide_modelled?"":" · "+esc(t("notide"))}</p>
+    <div class="hero"><b>${top?top.score:"-"}</b><span>${esc(t("peak"))} ${top?esc(ICT(top.at)):"-"} ${esc(t("n"))}</span></div>
     <div class="best">
       ${d.best.map(b=>`<div>${esc(ICT(b.at))} <b>${b.score}</b></div>`).join("")}
       <div>🌙 ${Math.round(d.moon_illumination*100)}% ${esc(d.moon_regime)}</div>
@@ -238,7 +287,7 @@ function drawChart(d){
       tip.style.display="block";
       tip.innerHTML=`<b>${esc(ICT(h.at))} น. · ${h.score}/100</b>`+
         (h.factors.length?h.factors.map(f=>
-          `<div class="f"><span>${esc(f.en)}</span><i>${f.points>0?"+":""}${f.points}</i></div>`).join("")
+          `<div class="f"><span>${esc(LANG==="th"?f.th:f.en)}</span><i>${f.points>0?"+":""}${f.points}</i></div>`).join("")
           :`<div class="f"><span>no notable factors</span></div>`);
       move(e);
     });
@@ -255,7 +304,7 @@ function drawChart(d){
 function drawTable(d){
   $("tbl").querySelector("tbody").innerHTML=d.hours.map(h=>
     `<tr><td>${esc(ICT(h.at))}</td><td class="n">${h.score}</td>`+
-    `<td>${esc(h.factors.map(f=>`${f.en} (${f.points>0?"+":""}${f.points})`).join("; "))||"-"}</td></tr>`
+    `<td>${esc(h.factors.map(f=>`${LANG==="th"?f.th:f.en} (${f.points>0?"+":""}${f.points})`).join("; "))||"-"}</td></tr>`
   ).join("");
 }
 

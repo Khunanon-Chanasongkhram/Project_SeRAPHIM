@@ -30,6 +30,49 @@ Then Phase 3 (calm mode / fishing), 5 (terrain) or 6 (harden + load test).
 
 ---
 
+## 2026-09-15 - Session 12: UI rebuild (satellite, i18n, mobile, province risk)
+
+He deployed, looked at it on a phone, and said the UI was too big to see the map. Also
+wanted a TH/EN switch, satellite imagery, a gods-eye-view look, real-time data, cameras,
+and areas shaded by flood risk rather than only dots.
+
+**Probed before promising anything**
+- ✅ **Esri World Imagery** raster tiles, no key, plus a separate labels overlay (satellite
+  alone has no place names).
+- ✅ **Thai province outlines**, 77 polygons, 167 KB, MIT repo.
+- ❌ **CCTV: nothing public.** Every ThaiWater camera path 404s except `shared/cctv` which
+  403s, so it exists behind auth. GISTDA's portal is a JS app whose API is not visible to
+  a fetch. Told him plainly rather than half-building something; the layers panel says why.
+
+**Province risk without hand-typing 77 names.** The outlines are in English, our gauges are
+in Thai, so 0 names matched. Instead of a typed table, the mapping is derived from the data:
+every gauge knows its Thai province and its coordinates, so the polygon containing the most
+gauges claiming a province IS that province. 77/77 resolved in 13 ms, 5 by majority vote
+across a border, all correct. Self-checking in a way a typed table is not, and the build
+prints the counts.
+
+**UI rebuilt.** Map fills the screen; everything else is a collapsible bottom sheet (a side
+panel on desktop) and a layers drawer. Dark console look, satellite default, glow-plus-core
+markers that stay readable on photography, slow pulse on the worst places. Full TH/EN
+switch on both pages, remembered in localStorage, defaulting from browser language. Polls
+for a new snapshot every 60 s and swaps the data in place without a reload.
+
+**No JS engine on this machine, which is a real risk.** No Node, no pip, so the browser
+would have been the first thing to execute 20 KB of hand-written inline script, and a stray
+brace ships as a blank page. Wrote `scripts/check_js.py`: a scanner that tokenises strings,
+template literals, comments and regex literals well enough to catch unbalanced brackets and
+unterminated literals, plus an i18n check that both languages define the same keys and that
+no `t()` call is undefined. **Verified the checker against four deliberately broken files**;
+it caught 3, missed an unterminated template containing a substitution, so I fixed that gap
+and it now catches all 4. Wired into CI. It also caught a loose regex in its own i18n check
+that flagged `.get("data")` as a missing translation key.
+
+**Bugs found and fixed in the new UI:** a stray `')` inside a `join()` separator that would
+have rendered literal junk in the degraded banner, and a fragile `className.replace()` that
+rebuilt a CSS class from a string.
+
+---
+
 ## 2026-09-15 - Session 11: SOS component removed before deploy
 
 **His call, and a good one.** Asked to remove SOS before deploying.

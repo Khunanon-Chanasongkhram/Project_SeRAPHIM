@@ -61,6 +61,11 @@ jobs:
         working-directory: workers
         run: python -m unittest discover -s tests -q
 
+      # There is no Node here, so without this the browser is the first thing that ever
+      # executes the inline scripts. A stray brace ships as a blank page.
+      - name: Check inline JavaScript and translations
+        run: python3 scripts/check_js.py web/*.html web/*.js
+
       - name: Build snapshot
         working-directory: workers
         run: python -m seraphim.cli build --out ../data --archive-keep-hours 48
