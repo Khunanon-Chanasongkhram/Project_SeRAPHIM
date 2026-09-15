@@ -1,4 +1,4 @@
-"""SourceAdapter — the seam that makes global scaling a config change, not a rewrite.
+"""SourceAdapter, the seam that makes global scaling a config change, not a rewrite.
 
 Every data source implements this interface. The rest of the system only ever sees
 canonical models, so adding Vietnam or the Philippines means writing one adapter, not
@@ -39,7 +39,7 @@ class SourceAdapter(ABC):
     def fetch(self) -> tuple[list[Station], list[Observation], SourceHealth]:
         """Retrieve current data.
 
-        Must not raise for ordinary upstream problems — return a failed SourceHealth
+        Must not raise for ordinary upstream problems, return a failed SourceHealth
         instead. One dead source must never take down the whole publish cycle, because
         a partial map during a flood beats no map.
         """
@@ -57,7 +57,7 @@ class ForecastAdapter(ABC):
     attribution: str
     #: How long this source's output stays useful. Set per adapter because rainfall
     #: models, a daily discharge product and a harmonic tide prediction go stale at
-    #: very different rates — and refetching the slow ones at the fast one's cadence
+    #: very different rates, and refetching the slow ones at the fast one's cadence
     #: is what burns an API allowance for nothing.
     refresh_hours: float = 6.0
 
@@ -77,7 +77,7 @@ class ForecastAdapter(ABC):
 #
 # Upstream fields arrive as null, "", "-", or numeric strings, interchangeably and
 # without warning. A null that silently becomes 0.0 turns "no reading" into "river at
-# zero" — which reads as safe. These helpers refuse to guess.
+# zero", which reads as safe. These helpers refuse to guess.
 # ---------------------------------------------------------------------------
 
 _NULLISH = {"", "-", "null", "none", "n/a", "na", "nan"}
@@ -112,7 +112,7 @@ def text(value: object) -> str | None:
 def ident(value: object) -> str | None:
     """Parse an identifier that may arrive as int or str.
 
-    Sources are inconsistent about this — ThaiWater sends station ids as ints while
+    Sources are inconsistent about this, ThaiWater sends station ids as ints while
     sending admin codes as strings. Ids are stringified rather than kept numeric so
     that a namespaced key like "thaiwater:528052" is stable regardless of source type.
     """
@@ -142,7 +142,7 @@ def parse_local_naive(value: object, tz_offset_hours: float) -> datetime | None:
     """Parse a naive local timestamp such as '2026-09-15 14:00' into aware UTC.
 
     Sources hand out local wall-clock time with no offset. Treating that as UTC shifts
-    every reading by the offset — 7 hours for Thailand — which would quietly corrupt
+    every reading by the offset, 7 hours for Thailand, which would quietly corrupt
     every rate-of-rise and staleness calculation downstream.
     """
     s = text(value)

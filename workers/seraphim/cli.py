@@ -8,11 +8,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from seraphim import cache
+
+#: Forecast sampling grid, in degrees. About 22 km, close to GloFAS's own resolution.
+FORECAST_GRID_DEG = 0.2
 from seraphim.adapters import forecast_registry, registry
 from seraphim.adapters.marine import TideAdapter, summarise
 from seraphim.models import Forecast, SourceHealth, StationState
 from seraphim.history import fit_trend, load_history, merge_current
-from seraphim.adapters.hazards import fetch_earthquakes, fetch_fires
+from seraphim.adapters.hazards import fetch_earthquakes, fetch_events, fetch_fires
 from seraphim.adapters.spots import all_spots, fetch_weather
 from seraphim.fishing import build_fishing
 from seraphim.publish import (
@@ -20,6 +23,7 @@ from seraphim.publish import (
     prune_archive,
     build_fishing_doc,
     build_provinces,
+    split_by_country,
     build_geojson,
     build_meta,
     build_tide,
@@ -38,7 +42,19 @@ def _forecasts(
     scale: float,
 ) -> tuple[dict[str, dict], datetime]:
     """Per-station forward-looking fields, from cache where still fresh."""
-    points = [(s.id, s.lat, s.lon) for s in stations]
+    # Fetch on a grid, not per gauge. With two countries the naive approach needs
+    # ~22,000 Open-Meteo location-calls a day against a 10,000 limit. Rainfall and a
+    # 5 km discharge model do not vary meaningfully inside a 22 km cell, so gauges
+    # sharing a cell share a forecast. That is ~1,000 calls instead of ~4,400, and the
+    # accuracy lost is smaller than the model's own resolution.
+    cells: dict[tuple[int, int], list[str]] = {}
+    for st in stations:
+        key = (round(st.lat / FORECAST_GRID_DEG), round(st.lon / FORECAST_GRID_DEG))
+        cells.setdefault(key, []).append(st.id)
+    points = [(f"cell:{a}:{b}", a * FORECAST_GRID_DEG, b * FORECAST_GRID_DEG)
+              for (a, b) in cells]
+    print(f"[forecast] {len(stations)} gauges collapse to {len(points)} grid cells "
+          f"at {FORECAST_GRID_DEG} deg")
     merged: dict[str, dict] = {}
     oldest = generated_at
 
@@ -63,8 +79,15 @@ def _forecasts(
             print(f"[{name}] {len(data)} points enriched", flush=True)
 
         oldest = min(oldest, fetched)
-        for sid, fields in data.items():
-            merged.setdefault(sid, {}).update(fields)
+        # Spread each cell's forecast back over the gauges that share it.
+        for cell_id, fields in data.items():
+            try:
+                _, a, b = cell_id.split(":")
+                members = cells.get((int(a), int(b)), [])
+            except ValueError:
+                members = []
+            for sid in members:
+                merged.setdefault(sid, {}).update(fields)
 
     return merged, oldest
 
@@ -206,6 +229,22 @@ def build(
             else:
                 print(f"[quakes] FAILED: {qh.error}", file=sys.stderr)
 
+        hit = cache.load(cache_root, "events", 3.0 * refresh_scale)
+        if hit:
+            extra["events.geojson"] = hit["data"]
+            print("[events] cache hit")
+        else:
+            events, eh = fetch_events()
+            health.append(eh)
+            if events:
+                extra["events.geojson"] = events
+                cache.save(cache_root, "events", events)
+                import collections as _c
+                by = _c.Counter(f["properties"]["kind"] for f in events["features"])
+                print(f"[events] {eh.stations} worldwide: {dict(by)}")
+            else:
+                print(f"[events] FAILED: {eh.error}", file=sys.stderr)
+
         hit = cache.load(cache_root, "fires", 3.0 * refresh_scale)
         if hit:
             extra["fires.geojson"] = hit["data"]
@@ -231,19 +270,31 @@ def build(
         print(f"[validation] {format_report(validation)}")
         print(f"[validation] took {_time.perf_counter() - t0:.1f}s")
 
+    # Per-country files so a visitor downloads only the country they are looking at.
+    country_files, country_index = split_by_country(states, risks, areas)
+    country_index["generated_at"] = generated_at.isoformat()
+    extra.update(country_files)
+    extra["index.json"] = country_index
+    print("[countries] " + ", ".join(
+        f"{c['code']} {c['stations']}" for c in country_index["countries"]))
+
     geojson = build_geojson(states, risks)
     meta = build_meta(states, health, generated_at, tide_points=len(tide_points),
                       risks=risks, validation=extra.get("validation.json"))
     tide = build_tide(tide_points, generated_at) if tide_points else None
-    areas_doc = build_areas(areas, generated_at)
-    provinces = build_provinces(states, areas, generated_at)
+    areas_doc = build_areas(areas, generated_at) if len(
+        {a.get("country") for a in areas}) <= 1 else None
+    th_states = [s for s in states
+                 if s.station.admin and s.station.admin.country == "TH"]
+    provinces = build_provinces(th_states, areas, generated_at)
     if provinces:
         j = provinces["join"]
         print(f"[provinces] {j['mapped']}/{j['polygons']} shapes joined"
               + (f", {len(j['weak_joins'])} weak" if j["weak_joins"] else "")
               + f", {j['gauges_outside_any_province']} gauges outside any shape")
 
-    written = write_snapshot(out_root / "out", geojson, meta, tide, areas_doc,
+    # geojson=None: the combined file feeds the archive below, not the website.
+    written = write_snapshot(out_root / "out", None, meta, tide, areas_doc,
                              fishing_doc, provinces, extra)
     if archive and states:
         written.append(write_archive(out_root / "archive", geojson, generated_at))

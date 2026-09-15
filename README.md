@@ -2,9 +2,9 @@
 
 System for early Real-time Assessment & Predictive Hazard Incident Monitoring.
 
-A flood watching map for Thailand. It reads 1,121 public river gauges, mixes in rain and
-tide forecasts, and tries to answer one question: how long until this river comes over
-its bank?
+A flood watching map. It reads **4,448 public river gauges across Thailand and the UK**,
+mixes in rain and tide forecasts, and tries to answer one question: how long until this
+river comes over its bank?
 
 It watches. It does not collect anything about you, and it cannot call anyone for help.
 
@@ -65,7 +65,7 @@ question, since none of this has been tested where it counts.
 
 ## What it does
 
-**Watch.** 1,121 live river gauges, rainfall, discharge forecasts, and tide prediction at
+**Watch.** 1,121 Thai and 3,327 British live river gauges, rainfall, discharge forecasts, and tide prediction at
 23 points along both coasts, on one map. Satellite imagery by default with a one tap flip
 to a street map, Thai and English, and it refreshes itself every 15 minutes without a
 reload.
@@ -171,6 +171,21 @@ nothing to install.
 Everything in `docs/DATA_SOURCES.md` says whether I actually tested it and when. I did
 not take any of it from documentation alone, because a wrong water level is worse than no
 water level.
+
+## Two countries, and what the second one taught me
+
+Thailand publishes a bank level for every gauge. The UK does not. It publishes a typical
+operating range, which is a different claim, and its levels come in four different datums
+in the same feed.
+
+So UK stations get a weaker signal that says so: above or below typical range, capped
+below the levels that mean "the river is out", and **no time to bank at all**, because
+you cannot forecast reaching a threshold that nobody published. The map says this in the
+popup rather than quietly showing a lower number.
+
+That was the real test of the adapter design from day one, and the interesting part is
+that it held: the risk engine already treated a missing bank level as missing rather than
+zero, so nothing had to be unpicked.
 
 ## Credit where it is due
 

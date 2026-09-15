@@ -16,7 +16,7 @@ import csv
 import io
 import os
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from seraphim.adapters.base import USER_AGENT, fetch_json, num
 from seraphim.models import SourceHealth
@@ -69,6 +69,62 @@ def fetch_earthquakes() -> tuple[dict | None, SourceHealth]:
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "attribution": "USGS Earthquake Hazards Program",
         "window": "past 24 hours, all magnitudes",
+        "features": features,
+    }, health)
+
+
+#: GDACS: curated global disaster events with an alert level. Unlike the gauge network
+#: this needs no sampling and no threshold of our own, because somebody has already
+#: decided an event is worth reporting.
+GDACS_URL = ("https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH"
+             "?fromDate={since}&alertlevel=Green;Orange;Red")
+GDACS_TYPES = {"FL": "flood", "TC": "cyclone", "EQ": "earthquake", "DR": "drought",
+               "VO": "volcano", "WF": "wildfire", "TS": "tsunami"}
+GDACS_DAYS = 30
+
+
+def fetch_events() -> tuple[dict | None, SourceHealth]:
+    """Current global disaster events, whatever their kind."""
+    health = SourceHealth(source="gdacs", ok=False)
+    since = (datetime.now(timezone.utc) - timedelta(days=GDACS_DAYS)).date().isoformat()
+    try:
+        payload = fetch_json(GDACS_URL.format(since=since), timeout=60)
+    except Exception as exc:  # noqa: BLE001
+        health.error = str(exc)
+        return None, health
+
+    features = []
+    for f in payload.get("features", []):
+        p = f.get("properties") or {}
+        geom = f.get("geometry") or {}
+        coords = geom.get("coordinates") or []
+        if len(coords) < 2:
+            continue
+        kind = p.get("eventtype")
+        features.append({
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [coords[0], coords[1]]},
+            "properties": {
+                "kind": GDACS_TYPES.get(kind, kind),
+                "code": kind,
+                "alert": (p.get("alertlevel") or "").lower(),
+                "name": p.get("eventname") or p.get("name"),
+                "country": p.get("country"),
+                "from": p.get("fromdate"),
+                "to": p.get("todate"),
+                "severity": (p.get("severitydata") or {}).get("severitytext"),
+                "url": (p.get("url") or {}).get("report"),
+            },
+        })
+    order = {"red": 0, "orange": 1, "green": 2}
+    features.sort(key=lambda f: order.get(f["properties"]["alert"], 3))
+    health.ok = True
+    health.stations = len(features)
+    return ({
+        "type": "FeatureCollection",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "attribution": "GDACS (Global Disaster Alert and Coordination System)",
+        "window": f"events active in the past {GDACS_DAYS} days",
         "features": features,
     }, health)
 

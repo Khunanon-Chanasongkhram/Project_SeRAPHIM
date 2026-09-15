@@ -38,9 +38,21 @@ class Station:
     lon: float
 
     name_en: str | None = None
-    #: Overtopping threshold — water above this leaves the channel. The single most
+    #: Overtopping threshold, water above this leaves the channel. The single most
     #: important number in the system after the level itself.
     bank_msl: float | None = None
+    #: What the level numbers actually mean. "MSL" is metres above mean sea level and is
+    #: comparable between stations. "local" is a station-relative datum, comparable only
+    #: with that station's own thresholds. Mixing the two silently puts gauges tens of
+    #: metres out, which is why it is recorded rather than assumed.
+    datum: str = "MSL"
+    #: Top and bottom of the station's normal operating range, in the SAME datum as its
+    #: observations. NOT a bank level: above it means "unusually high for here", not
+    #: "out of the channel". Many networks publish this and no overtopping threshold.
+    typical_high: float | None = None
+    typical_low: float | None = None
+    #: Highest level ever recorded here. Context, not a threshold.
+    record_high: float | None = None
     #: Source-declared critical level, where one exists. Kept separate from bank_msl
     #: because sources do not always agree with themselves.
     critical_msl: float | None = None
@@ -168,6 +180,19 @@ class StationState:
         if self.station.bank_msl is None or self.observation.level_msl is None:
             return None
         return round(self.station.bank_msl - self.observation.level_msl, 3)
+
+    @property
+    def above_typical_m(self) -> float | None:
+        """Metres above the station's normal operating range, where one is published.
+
+        This is the weaker cousin of freeboard, for networks that publish a typical
+        range and no overtopping threshold. Above it means "unusually high here", not
+        "out of the channel", and the two must never be shown as the same thing.
+        """
+        high = self.station.typical_high
+        if high is None or self.observation.level_msl is None:
+            return None
+        return round(self.observation.level_msl - high, 3)
 
     @property
     def data_age_minutes(self) -> float:

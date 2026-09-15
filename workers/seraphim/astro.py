@@ -4,7 +4,7 @@ Needed for the calm-mode fishing planner: fish feed at low light and around luna
 transits, so "when is the moon overhead" is as load-bearing here as tide height.
 
 Positions use standard low-precision series (Meeus): roughly 0.01° for the sun and
-0.3° for the moon, which puts rise and set within a couple of minutes — far tighter
+0.3° for the moon, which puts rise and set within a couple of minutes, far tighter
 than the ±1 hour solunar windows built on top of them.
 
 Rise and set are found **numerically**, by scanning altitude across the day and
@@ -114,7 +114,7 @@ class RiseSet:
 
     rise: datetime | None
     set: datetime | None
-    transit: datetime | None       # highest point — the solunar "major" period
+    transit: datetime | None       # highest point, the solunar "major" period
     antitransit: datetime | None   # lowest point, below the horizon; also a major period
     always_up: bool = False
     always_down: bool = False
@@ -186,6 +186,6 @@ def moon_events(lat: float, lon: float, day: date, tz_offset_hours: float = 7.0)
 
 
 def civil_twilight(lat: float, lon: float, day: date, tz_offset_hours: float = 7.0) -> RiseSet:
-    """Civil dawn and dusk (sun 6° below the horizon) — the low-light feeding window."""
+    """Civil dawn and dusk (sun 6° below the horizon), the low-light feeding window."""
     start = datetime(day.year, day.month, day.day, tzinfo=timezone.utc) - timedelta(hours=tz_offset_hours)
     return find_events(lambda t: sun_altitude(lat, lon, t), start, 24.0, -6.0)

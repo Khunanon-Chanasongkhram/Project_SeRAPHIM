@@ -67,7 +67,7 @@ These make global scaling real from day one, same code path works for any countr
 | **Open-Meteo Flood** | `flood-api.open-meteo.com/v1/flood` | GloFAS river discharge forecast, daily, global | ✅ **in production** |
 | **Open-Meteo Forecast** | `api.open-meteo.com/v1/forecast` | precipitation forecast, hourly | ✅ **in production** |
 | **Open-Meteo Marine** | `marine-api.open-meteo.com/v1/marine` | `sea_level_height_msl` = **tide curve**, wave height | ✅ **in production** |
-| **GDACS** | `gdacs.org/gdacsapi/api/events/geteventlist/SEARCH` | global multi-hazard events w/ alert level | ✅ tested |
+| **GDACS** | `gdacs.org/gdacsapi/api/events/geteventlist/SEARCH` | global multi-hazard events with alert level | ✅ **in production**, 100 events |
 | **USGS** | `earthquake.usgs.gov/.../summary/*.geojson` | earthquakes | ✅ tested |
 
 ### Open-Meteo operational notes (verified 2026-09-15)

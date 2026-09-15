@@ -3,7 +3,7 @@
 Rate of rise is the input that turns a level into a prediction, and it needs real
 timestamped history. The source's own `waterlevel_msl_previous` field looked like a
 shortcut, but measuring it against our archive on 2026-09-15 showed reporting intervals
-scattered across 10, 20, 30 and 60 minutes with no documented rule — so a rate derived
+scattered across 10, 20, 30 and 60 minutes with no documented rule, so a rate derived
 from it would be wrong by up to 6x on an unknown subset of stations. We use our own
 archive instead, where every reading carries its own timestamp.
 
@@ -89,7 +89,7 @@ def load_history(
     """Per-station [(observed_at, level_msl)], de-duplicated and time-sorted.
 
     Snapshots are taken more often than stations report, so the same reading appears in
-    several files. Keying on observed_at collapses those duplicates — without which a
+    several files. Keying on observed_at collapses those duplicates, without which a
     station would look like it had many readings at one level and the regression would
     report a confident rate of zero.
     """
@@ -99,7 +99,7 @@ def load_history(
     for path in _files_in_window(archive_root, since, now):
         try:
             payload = json.loads(gzip.open(path, "rb").read())
-        except Exception:  # noqa: BLE001 — a corrupt archive file must not stop the build
+        except Exception:  # noqa: BLE001, a corrupt archive file must not stop the build
             continue
         for feature in payload.get("features", []):
             p = feature.get("properties") or {}
@@ -157,7 +157,7 @@ def merge_current(
     """Fold the reading we just fetched into the archived series.
 
     The archive is written after the snapshot is built, so without this the trend would
-    always lag one cycle behind — and at the moment a river starts rising, one cycle is
+    always lag one cycle behind, and at the moment a river starts rising, one cycle is
     exactly the one that matters.
     """
     merged = {sid: dict(pts) for sid, pts in history.items()}

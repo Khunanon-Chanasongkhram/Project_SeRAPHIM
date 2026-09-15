@@ -1,4 +1,4 @@
-"""ThaiWater / HII — Thailand's national hydroinformatics telemetry network.
+"""ThaiWater / HII, Thailand's national hydroinformatics telemetry network.
 
 ~1,121 live gauges, keyless. Verified 2026-09-15, see docs/DATA_SOURCES.md.
 
@@ -7,7 +7,7 @@ Quirks this adapter absorbs so nothing downstream has to know about them:
   * timestamps are naive Bangkok local wall-clock ("2026-09-15 14:00"), UTC+7
   * bank levels live nested under `station`, the reading sits at the top level
   * `waterlevel_m` and `waterlevel_msl` are different datums; `waterlevel_m` is usually null
-  * the source publishes its own freeboard as `diff_wl_bank` — we cross-check against it
+  * the source publishes its own freeboard as `diff_wl_bank`, we cross-check against it
 
 ATTRIBUTION / LICENCE: terms of use are not yet confirmed with HII. Required before any
 public launch. See docs/DATA_SOURCES.md.
@@ -39,20 +39,20 @@ TH_UTC_OFFSET_HOURS = 7.0
 #: direction string (`diff_wl_bank_text`). The direction is the part worth checking: a
 #: sign error would invert "safe" and "overtopped", which is the worst failure this
 #: system could have. Verified 2026-09-15: 1121/1121 signs agreed.
-OVERFLOW_TEXT_PREFIX = "\u0e25\u0e49\u0e19"  # "ล้น…" — overflowing
-BELOW_TEXT_PREFIX = "\u0e15\u0e48\u0e33\u0e01\u0e27\u0e48\u0e32"  # "ต่ำกว่า…" — below
+OVERFLOW_TEXT_PREFIX = "\u0e25\u0e49\u0e19"  # "ล้น…", overflowing
+BELOW_TEXT_PREFIX = "\u0e15\u0e48\u0e33\u0e01\u0e27\u0e48\u0e32"  # "ต่ำกว่า…", below
 
 
 class ThaiWaterAdapter(SourceAdapter):
     id = "thaiwater"
-    attribution = "Hydro-Informatics Institute (HII) / ThaiWater — thaiwater.net"
+    attribution = "Hydro-Informatics Institute (HII) / ThaiWater, thaiwater.net"
     country = "TH"
 
     def fetch(self) -> tuple[list[Station], list[Observation], SourceHealth]:
         health = SourceHealth(source=self.id, ok=False)
         try:
             payload = fetch_json(WATERLEVEL_URL)
-        except Exception as exc:  # noqa: BLE001 — a dead source must not stop the cycle
+        except Exception as exc:  # noqa: BLE001, a dead source must not stop the cycle
             health.error = str(exc)
             return [], [], health
 
@@ -83,7 +83,7 @@ class ThaiWaterAdapter(SourceAdapter):
                 continue
 
             # `station.id` is the stable gauge identifier. `row.id` is per-reading and
-            # changes every cycle — using it would create a new station every 30 minutes.
+            # changes every cycle, using it would create a new station every 30 minutes.
             external_id = ident(st_raw.get("id"))
             if external_id is None or external_id in seen:
                 continue
@@ -95,7 +95,7 @@ class ThaiWaterAdapter(SourceAdapter):
                 skipped_no_time += 1
                 continue
 
-            # `min_bank` is the lower of the two banks — the level at which water first
+            # `min_bank` is the lower of the two banks, the level at which water first
             # leaves the channel. That is the threshold that matters for flooding.
             bank_msl = num(st_raw.get("min_bank"))
             if bank_msl is None:
@@ -150,7 +150,7 @@ class ThaiWaterAdapter(SourceAdapter):
         if crosscheck_failures:
             health.warnings.append(
                 f"{crosscheck_failures} stations: our freeboard SIGN disagrees with the "
-                f"source's own direction text — datum mismatch, treat output as suspect"
+                f"source's own direction text, datum mismatch, treat output as suspect"
             )
 
         health.ok = bool(stations)

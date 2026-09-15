@@ -1,10 +1,10 @@
-"""Open-Meteo Marine — tide prediction at curated coastal points.
+"""Open-Meteo Marine, tide prediction at curated coastal points.
 
 Why curated rather than per-station: the marine model only resolves sea cells, so an
 inland gauge returns an empty series (verified at Ayutthaya, 2026-09-15). All 23 points
 below were individually probed and returned usable curves.
 
-They are chosen for two jobs at once — the river mouths that drive backwater flooding
+They are chosen for two jobs at once, the river mouths that drive backwater flooding
 in the Chao Phraya delta, and the fishing coasts of both seas.
 
 Licence: CC-BY 4.0, non-commercial. Attribution carried into every snapshot.
@@ -20,7 +20,7 @@ from seraphim.tide import daily_ranges, find_extremes, range_regime
 
 URL = "https://marine-api.open-meteo.com/v1/marine"
 
-#: (id, Thai name, English name, lat, lon) — every entry verified against the live API.
+#: (id, Thai name, English name, lat, lon), every entry verified against the live API.
 #: Ranges observed on 2026-09-15 show the real regional physics: the upper Gulf river
 #: mouths swing ~2.3 m (which is why Bangkok floods on a high tide), the southern Gulf
 #: only ~0.5 m, and the Andaman coast 1.7-2.6 m.
@@ -59,7 +59,7 @@ FORECAST_DAYS = 7
 class TideAdapter:
     id = "openmeteo_marine"
     attribution = "Open-Meteo Marine (CC-BY 4.0)"
-    #: Tide is a harmonic prediction — a 7-day curve is as valid tomorrow as today.
+    #: Tide is a harmonic prediction, a 7-day curve is as valid tomorrow as today.
     refresh_hours = 24.0
 
     def fetch(self) -> tuple[list[TideSeries], SourceHealth]:
@@ -81,7 +81,7 @@ class TideAdapter:
         results = payload if isinstance(payload, list) else [payload]
         if len(results) != len(POINTS):
             health.error = (
-                f"expected {len(POINTS)} results, got {len(results)} — refusing to "
+                f"expected {len(POINTS)} results, got {len(results)}, refusing to "
                 "guess which curve belongs to which coast"
             )
             return [], health
@@ -134,7 +134,7 @@ def summarise(s: TideSeries, now: datetime) -> dict:
     """Compact per-point summary for the snapshot.
 
     The full hourly curve is kept (it is small and the fishing planner needs its shape),
-    but timestamps are not repeated per sample — only the start time and a step.
+    but timestamps are not repeated per sample, only the start time and a step.
     """
     from seraphim.tide import tide_state
 

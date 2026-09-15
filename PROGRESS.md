@@ -30,6 +30,51 @@ Then Phase 3 (calm mode / fishing), 5 (terrain) or 6 (harden + load test).
 
 ---
 
+## 2026-09-15 - Session 15: Phase 7. A second country, and what it exposed.
+
+**Added the UK Environment Agency: 3,327 gauges, keyless, two bulk calls.** Total now
+4,448 across two countries, built in 13s. This was the test of the SourceAdapter seam
+from Phase 0, and it held: nothing had to be unpicked.
+
+**The assumption it exposed.** Thailand publishes a bank level. **The UK does not**, it
+publishes `typicalRangeHigh`, the top of a normal operating range. Treating those as the
+same would have had the map announcing thousands of British rivers had burst their banks
+whenever they ran high. UK stations now get a separate weaker signal, are capped at
+level 3, and get **no time-to-bank**, because you cannot forecast reaching a threshold
+nobody published. Verified on live data: 0 UK stations at level 4+, 0 with a TTB.
+
+**Four datums in one feed.** 1,596 mASD, 1,318 m, 1,097 mAOD, 88 mBDAT, plus stray mm,
+deg_C and m3/s that are not levels. Mixing mASD with mAOD puts gauges tens of metres out
+with nothing surfacing. Added `Station.datum`; UK levels are `local` and only ever
+compared with thresholds from the same station.
+
+**Two quota/payload problems the second country created, both fixed**
+1. **Forecasts would have needed ~22,000 Open-Meteo calls/day against a 10,000 limit.**
+   Fixed by fetching on a 0.2 degree grid instead of per gauge: 4,448 gauges collapse to
+   1,029 cells, about 5,100 calls/day. Rainfall and a 5 km discharge model do not vary
+   meaningfully inside a 22 km cell.
+2. **A map visit jumped from 183 KB to 437 KB**, because every visitor was downloading
+   every country. Fixed by splitting station and area files per country with an
+   `index.json`: Thai visit 242 KB, UK 276 KB, and **adding a third country now costs
+   existing readers nothing**.
+
+**Also:** GDACS global events layer (100 live events), a TH/GB/World view switcher, and
+country is now part of the area rollup key so a Thai amphoe cannot merge with a British
+catchment.
+
+**Two process notes.**
+- A `str.replace` silently did nothing again, same root cause as last session: em dashes
+  still in the Python sources while I had only cleaned the .md files. This time the
+  assertion I added caught it immediately. Then cleaned all 79 from the Python sources so
+  it cannot recur.
+- One of my new tests was wrong, not the code: I asserted three gauges 100 m apart land
+  in one grid cell, but they straddled a cell boundary. Rewrote it to assert the property
+  that actually matters, the aggregate reduction.
+
+149 tests.
+
+---
+
 ## 2026-09-15 - Session 14: validation. The predictions are now measured.
 
 He chose validation over terrain. Right call: nothing in the project checked whether its

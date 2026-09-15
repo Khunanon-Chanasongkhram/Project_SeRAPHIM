@@ -1,4 +1,4 @@
-"""The risk engine — turning readings into a decision, with its reasoning attached.
+"""The risk engine, turning readings into a decision, with its reasoning attached.
 
 Most water dashboards show a level and a colour. This module exists to answer the
 question people actually have: *will my area flood, when, and why.*
@@ -53,6 +53,10 @@ TIDE_COINCIDENCE_HOURS = 3.0
 
 #: Ceiling for any level reached by forecast rather than observation.
 MAX_FORECAST_LEVEL = 4
+#: Ceiling for a station whose network publishes no overtopping threshold. Levels 4 and
+#: 5 claim the river is at or over its bank, and that claim cannot be made from a
+#: typical operating range.
+NO_BANK_MAX_LEVEL = 3
 
 LEVEL_NAMES = {
     1: ("ปกติ", "Normal"),
@@ -112,7 +116,7 @@ def nearest_tide_point(lat: float, lon: float, tide_points: list[dict]) -> tuple
 def time_to_bank(freeboard_m: float | None, trend: Trend | None) -> float | None:
     """Hours until the water reaches bank level at the current rate.
 
-    The headline number — and the one most able to mislead, so it is withheld unless
+    The headline number, and the one most able to mislead, so it is withheld unless
     the trend is actually trustworthy.
     """
     if freeboard_m is None or freeboard_m <= 0 or trend is None:
@@ -200,6 +204,31 @@ def assess(
             elif fb <= FREEBOARD_WATCH_M:
                 level = max(level, 2)
 
+    # --- networks that publish a typical range and no bank level ---
+    # The UK is the first of these. Exceeding a normal operating range is real
+    # information, but it is not overtopping, so it is capped well below the levels
+    # that mean "the river is out".
+    if fb is None:
+        above = state.above_typical_m
+        if above is not None:
+            if above > 0:
+                level = max(level, 3 if rising else 2)
+                reasons.append(Reason(
+                    "above_typical",
+                    f"สูงกว่าช่วงปกติของสถานีนี้ {above:.2f} ม. (ไม่ใช่ล้นตลิ่ง)",
+                    f"{above:.2f} m above this station's typical range "
+                    f"(not a bank level, which this network does not publish)"))
+            else:
+                reasons.append(Reason(
+                    "within_typical",
+                    f"อยู่ในช่วงปกติ (ต่ำกว่าระดับสูงสุดปกติ {abs(above):.2f} ม.)",
+                    f"within its typical range, {abs(above):.2f} m below the usual high"))
+        elif state.station.typical_high is None and state.station.bank_msl is None:
+            reasons.append(Reason(
+                "no_threshold",
+                "ไม่มีค่าระดับอ้างอิงสำหรับสถานีนี้",
+                "no threshold published for this station, so only the trend is shown"))
+
     if fb is not None and fb > 0:
         reasons.append(
             Reason(
@@ -259,7 +288,7 @@ def assess(
         reasons.append(tide_reason)
         # Only compounds an already-elevated situation; a high tide alone floods nothing.
         if level >= 3 or (fb is not None and fb <= FREEBOARD_WATCH_M):
-            # Capped below 5 deliberately. Level 5 means "water is over the bank now" —
+            # Capped below 5 deliberately. Level 5 means "water is over the bank now" -
             # an observed fact. A forecast, however well founded, must not wear the same
             # badge as a river that is already out, or a responder scanning the map
             # cannot tell what is happening from what might. Only `over_bank` reaches 5.
@@ -280,13 +309,17 @@ def assess(
         reasons.append(
             Reason("stale",
                    f"ไม่ได้รับข้อมูลมา {state.data_age_minutes / 60:.1f} ชม.",
-                   f"No reading for {state.data_age_minutes / 60:.1f} h — score uses last known value")
+                   f"No reading for {state.data_age_minutes / 60:.1f} h, score uses last known value")
         )
     elif trend_conf == "none":
         reasons.append(
             Reason("no_trend", "ยังไม่มีข้อมูลย้อนหลังพอจะคำนวณแนวโน้ม",
                    "Not enough history yet to compute a trend")
         )
+
+    # A station with no overtopping threshold cannot be said to have overtopped.
+    if fb is None:
+        level = min(level, NO_BANK_MAX_LEVEL)
 
     return Risk(
         station_id=state.station.id,
@@ -300,7 +333,7 @@ def assess(
 
 
 def rollup(states: list[StationState], risks: dict[str, Risk]) -> list[dict]:
-    """Aggregate to district level — the unit people actually live in.
+    """Aggregate to district level, the unit people actually live in.
 
     Takes the worst station in each district rather than an average: one overtopping
     river is not cancelled out by three calm ones nearby.
@@ -313,10 +346,15 @@ def rollup(states: list[StationState], risks: dict[str, Risk]) -> list[dict]:
         risk = risks.get(s.station.id)
         if risk is None:
             continue
-        key = (admin.province_code or admin.province, admin.district_code or admin.district)
+        # Country is part of the key: a Thai amphoe and a British catchment are not the
+        # same kind of place and must never collapse into one row.
+        key = (admin.country,
+               admin.province_code or admin.province,
+               admin.district_code or admin.district)
         b = buckets.setdefault(
             key,
             {
+                "country": admin.country,
                 "province": admin.province,
                 "province_code": admin.province_code,
                 "district": admin.district,

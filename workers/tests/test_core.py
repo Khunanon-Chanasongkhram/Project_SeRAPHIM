@@ -1,4 +1,4 @@
-"""Core safety tests. stdlib unittest — the project has no third-party dependencies.
+"""Core safety tests. stdlib unittest, the project has no third-party dependencies.
 
 Run: python3 -m unittest discover -s tests -v
 """
@@ -18,7 +18,7 @@ from seraphim.models import Admin, Observation, Station, StationState  # noqa: E
 
 
 class TestNullDiscipline(unittest.TestCase):
-    """A missing reading must never become 0.0 — that reads as 'river at zero', i.e. safe."""
+    """A missing reading must never become 0.0, that reads as 'river at zero', i.e. safe."""
 
     def test_nullish_stays_none(self):
         for v in (None, "", "  ", "-", "null", "NaN", "n/a", float("nan"), [], {}):

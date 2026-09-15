@@ -17,7 +17,11 @@ Phase 6. Measured with `python3 -m tests.loadtest` from `workers/`, 2026-09-15.
 
 ### Read path: GitHub Pages bandwidth
 
-At roughly 190 KB gzipped per first visit:
+Station and area data is split per country, so a visitor downloads the one they are
+looking at. Adding a country costs existing readers nothing, which is the only way this
+scales past two. Per first visit: **Thailand 242 KB, UK 276 KB gzipped**.
+
+Figures below use the Thai visit:
 
 | Scenario | Map opens | Bandwidth | vs 100 GB/month |
 |---|---|---|---|

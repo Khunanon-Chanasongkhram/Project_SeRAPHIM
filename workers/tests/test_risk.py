@@ -2,7 +2,7 @@
 
 The headline number (time-to-bank) cannot be validated against live data until the cron
 has been running for hours, so it is validated here against synthetic rivers with known
-answers — including a full replay through a real on-disk archive.
+answers, including a full replay through a real on-disk archive.
 """
 
 from __future__ import annotations
@@ -252,7 +252,7 @@ class TestHistoryReplay(unittest.TestCase):
             self.assertAlmostEqual(fit_trend(hist["t:1"]).rate_m_per_hr, 0.1, places=2)
 
     def test_merge_current_appends_the_freshest_reading(self):
-        """Without this the trend always lags one cycle — and at the moment a river
+        """Without this the trend always lags one cycle, and at the moment a river
         starts rising, that is exactly the cycle that matters."""
         s = state(level=1.5, bank=3.0)
         merged = merge_current({s.station.id: [(NOW - timedelta(hours=2), 1.0)]}, [s])

@@ -218,7 +218,7 @@ log, CSV & sit-rep export.
 | ~~**4** Respond~~ | **BUILT THEN REMOVED 2026-09-15**, before deploy. Preserved on the `sos-component` branch. | see note below |
 | **5** Terrain | DEM ingest, HAND, inundation mapping, 3D | "your street floods at 2.1 m at this gauge" |
 | **6** ✅ Harden | load test the spike, degraded mode, SMS fallback, observability, security review | survives a simulated national flood event |
-| **7** Global + multi-hazard | country adapter pattern, GDACS/USGS, i18n | second country live with no core rewrite |
+| **7** ✅ Global + multi-hazard | country adapter pattern, GDACS/USGS, i18n | second country live with no core rewrite |
 
 **Global scaling is already half-solved**, Open-Meteo Flood/Marine/Forecast and GDACS are
 global and keyless. Any country gets baseline coverage immediately; national gauge networks

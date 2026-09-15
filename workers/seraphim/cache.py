@@ -5,7 +5,7 @@ cadence would spend ~100,000 Open-Meteo calls a day to receive identical numbers
 against a 10,000/day free allowance.
 
 Each source is cached separately under its own key, because they go stale at genuinely
-different rates — rainfall models refresh ~6-hourly, GloFAS is a daily product, and
+different rates, rainfall models refresh ~6-hourly, GloFAS is a daily product, and
 tide is a harmonic prediction that barely moves. Caching them together would force the
 slowest-changing source to be refetched at the fastest source's cadence.
 

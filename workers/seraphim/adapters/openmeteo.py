@@ -1,8 +1,8 @@
-"""Open-Meteo — global, keyless forecast backbone.
+"""Open-Meteo, global, keyless forecast backbone.
 
 Two adapters share one batching implementation:
-  * RainAdapter      — hourly precipitation, past 24 h and next 72 h
-  * DischargeAdapter — GloFAS river discharge, 7-day outlook
+  * RainAdapter     , hourly precipitation, past 24 h and next 72 h
+  * DischargeAdapter, GloFAS river discharge, 7-day outlook
 
 These are the reason global scaling is already half-solved: they work at any
 coordinate on Earth, so a country with no national gauge network still gets a
@@ -38,7 +38,7 @@ def _batched(
     """Fetch many coordinates in as few requests as possible.
 
     Open-Meteo accepts comma-separated coordinates and returns results **in request
-    order**, which is the only thing tying a response back to a station id — so the
+    order**, which is the only thing tying a response back to a station id, so the
     ordering assumption is asserted rather than trusted.
     """
     out: dict[str, dict] = {}
@@ -66,7 +66,7 @@ def _batched(
         if len(results) != len(chunk):
             health.warnings.append(
                 f"batch {start // BATCH_SIZE}: expected {len(chunk)} results, got {len(results)}"
-                " — skipped rather than risk misaligning forecasts with stations"
+                ", skipped rather than risk misaligning forecasts with stations"
             )
             continue
         for (sid, _, _), result in zip(chunk, results):
@@ -134,7 +134,7 @@ class RainAdapter(ForecastAdapter):
 
 
 class DischargeAdapter(ForecastAdapter):
-    """GloFAS river discharge — the medium-range signal gauges cannot give us.
+    """GloFAS river discharge, the medium-range signal gauges cannot give us.
 
     Coverage is a ~5 km global model, so it is meaningful on real rivers and empty on
     small canals and gates. Missing values are left as None rather than zero.

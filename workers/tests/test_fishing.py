@@ -3,7 +3,7 @@
 The astronomy is validated two ways, because there is no single authority to hand:
   * SOLAR against captured Open-Meteo sunrise/sunset (an independent implementation),
     stored as fixtures so the test runs offline
-  * LUNAR against physical invariants — the moon's transit must drift ~50 min a day,
+  * LUNAR against physical invariants, the moon's transit must drift ~50 min a day,
     transit and antitransit must sit half a lunar day apart, and a full moon must rise
     near sunset. No ephemeris needed; the sky is the oracle.
 """

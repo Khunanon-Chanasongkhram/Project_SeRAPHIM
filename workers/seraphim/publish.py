@@ -3,7 +3,7 @@
 The whole read path is static files on a CDN, so this module *is* the API. Its output
 contract is what the web client depends on; change it deliberately.
 
-Nothing here is committed to git — roughly 600 KB per snapshot, 48 times a day, would
+Nothing here is committed to git, roughly 600 KB per snapshot, 48 times a day, would
 add ~10 GB/year to the repo. Output goes to Cloudflare (R2/Pages); `data/` is ignored.
 """
 
@@ -34,7 +34,7 @@ MAX_SNAPSHOT_AGE_MINUTES = 90.0    # cron is every 30 min; 3 misses is a real fa
 def build_geojson(states: list[StationState], risks: dict | None = None) -> dict:
     """One feature per station, carrying its latest reading and derived freeboard.
 
-    GeoJSON because MapLibre consumes it directly with no tile server — which is the
+    GeoJSON because MapLibre consumes it directly with no tile server, which is the
     point of a static architecture. PMTiles replaces this if station counts ever make
     the payload too large for a single fetch.
     """
@@ -57,7 +57,7 @@ def build_geojson(states: list[StationState], risks: dict | None = None) -> dict
                     "province": st.admin.province if st.admin else None,
                     "district": st.admin.district if st.admin else None,
                     "subdistrict": st.admin.subdistrict if st.admin else None,
-                    # Levels — all metres above MSL.
+                    # Levels, all metres above MSL.
                     "level_msl": ob.level_msl,
                     "bank_msl": st.bank_msl,
                     "freeboard_m": s.freeboard_m,
@@ -86,7 +86,7 @@ def build_geojson(states: list[StationState], risks: dict | None = None) -> dict
                     "time_to_bank_hr": rk.time_to_bank_hr if rk else None,
                     "rate_m_per_hr": rk.rate_m_per_hr if rk else None,
                     "risk_confidence": rk.confidence if rk else None,
-                    # Reasons ride along with the score — but only where the score
+                    # Reasons ride along with the score, but only where the score
                     # asks something of the reader. At level 1 they are boilerplate
                     # ("2.4 m below bank"), and on a failing flood-network connection
                     # every kilobyte is a real cost to someone.
@@ -104,7 +104,7 @@ def build_geojson(states: list[StationState], risks: dict | None = None) -> dict
 
 
 def build_tide(summaries: list[dict], generated_at: datetime) -> dict:
-    """tide.json — coastal predictions.
+    """tide.json, coastal predictions.
 
     Published separately from stations because it has a different shape, a different
     refresh cadence, and two different consumers (coastal flood risk, and the fishing
@@ -124,7 +124,7 @@ def build_tide(summaries: list[dict], generated_at: datetime) -> dict:
 
 
 def build_areas(areas: list[dict], generated_at: datetime) -> dict:
-    """areas.json — district-level rollup, ordered worst-first.
+    """areas.json, district-level rollup, ordered worst-first.
 
     A gauge is an instrument; a district is where somebody lives. This is the file an
     official or a resident actually reads.
@@ -141,7 +141,7 @@ def build_areas(areas: list[dict], generated_at: datetime) -> dict:
 
 
 def build_fishing_doc(spots: list[dict], generated_at: datetime) -> dict:
-    """fishing.json — calm mode.
+    """fishing.json, calm mode.
 
     The same tide, weather and lunar data that drives flood risk, answering the
     question people actually have on the other 350 days of the year.
@@ -159,11 +159,50 @@ def build_fishing_doc(spots: list[dict], generated_at: datetime) -> dict:
         ),
         "caveat": (
             "Fishing conditions are folklore-rich and evidence-poor. Treat this as a "
-            "starting point, not a promise. Reservoir drawdown is NOT modelled — it needs "
+            "starting point, not a promise. Reservoir drawdown is NOT modelled, it needs "
             "a dam dataset we do not have."
         ),
         "spots": spots,
     }
+
+
+def split_by_country(states, risks, areas: list[dict]) -> tuple[dict, dict]:
+    """One station file per country, plus a small index.
+
+    Adding a second country quadrupled the payload every visitor downloads, which is
+    the wrong way round: a reader in Bangkok should not pay for British gauges they
+    will never look at. Splitting keeps each country's cost flat as more are added,
+    which is the only way this scales past two.
+    """
+    by_country: dict[str, list] = {}
+    for st in states:
+        cc = (st.station.admin.country if st.station.admin else None) or "XX"
+        by_country.setdefault(cc, []).append(st)
+
+    files: dict[str, dict] = {}
+    index = {"countries": [], "generated_at": None}
+    for cc, group in sorted(by_country.items()):
+        gj = build_geojson(group, risks)
+        files[f"stations-{cc.lower()}.geojson"] = gj
+        rows = [a for a in areas if a.get("country") == cc]
+        if rows:
+            files[f"areas-{cc.lower()}.json"] = {
+                "schema_version": SCHEMA_VERSION, "country": cc, "areas": rows}
+        lats = [s.station.lat for s in group]
+        lons = [s.station.lon for s in group]
+        index["countries"].append({
+            "code": cc,
+            "stations": len(group),
+            "with_bank_level": sum(1 for s in group if s.station.bank_msl is not None),
+            "at_or_over_bank": sum(1 for s in group
+                                   if s.freeboard_m is not None and s.freeboard_m <= 0),
+            "areas": len(rows),
+            "bbox": [round(min(lons), 3), round(min(lats), 3),
+                     round(max(lons), 3), round(max(lats), 3)],
+            "stations_file": f"stations-{cc.lower()}.geojson",
+            "areas_file": f"areas-{cc.lower()}.json" if rows else None,
+        })
+    return files, index
 
 
 def build_provinces(states, areas: list[dict], generated_at: datetime) -> dict | None:
@@ -385,7 +424,13 @@ def write_snapshot(
     """Write the current snapshot. Gzip alongside: it is ~10x smaller and CDN-friendly."""
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
-    items = [("stations.geojson", geojson), ("meta.json", meta)]
+    # The combined file is still built, because the archive and the backtest need one
+    # timeline per station regardless of country, but it is no longer published: it
+    # would double what a visitor downloads for no benefit once the per-country files
+    # exist.
+    items = [("meta.json", meta)]
+    if geojson is not None:
+        items.insert(0, ("stations.geojson", geojson))
     if tide is not None:
         items.append(("tide.json", tide))
     if areas is not None:
@@ -420,7 +465,7 @@ def prune_archive(root: Path, now: datetime, keep_hours: float) -> int:
     removed = 0
     for path in root.rglob("*.json.gz"):
         try:
-            # Path is YYYY/MM/DD/HHMM.json.gz — parse rather than trust mtime, which
+            # Path is YYYY/MM/DD/HHMM.json.gz, parse rather than trust mtime, which
             # a cache restore resets.
             stamp = datetime.strptime(
                 f"{path.parent.parent.parent.name}{path.parent.parent.name}"

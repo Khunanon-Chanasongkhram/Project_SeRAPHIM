@@ -1,4 +1,4 @@
-"""Fishing spots — where calm mode is computed.
+"""Fishing spots, where calm mode is computed.
 
 Precomputed server-side rather than calculated in the browser, so the solunar and
 scoring rules live in exactly one implementation. Users pick the nearest spot; the
@@ -7,7 +7,7 @@ whole plan is already in the static snapshot.
 Coastal spots reuse the 23 verified tide points, so the sea profile gets real tidal
 rates. Inland spots are major Thai reservoirs and river reaches.
 
-NOTE on reservoirs: ThaiWater's `storage_percent` is NOT reservoir storage — verified
+NOTE on reservoirs: ThaiWater's `storage_percent` is NOT reservoir storage, verified
 2026-09-15 across 794 stations, it is the fraction of CHANNEL depth filled, bed to bank
 (115% means 15% above bank). So reservoir drawdown, which genuinely changes where fish
 hold, is NOT modelled here. It needs a real dam dataset from RID or EGAT.
@@ -74,7 +74,7 @@ def fetch_weather(spots: list[dict]) -> tuple[dict[str, dict], SourceHealth]:
 
     results = payload if isinstance(payload, list) else [payload]
     if len(results) != len(spots):
-        health.error = (f"expected {len(spots)} results, got {len(results)} — refusing to "
+        health.error = (f"expected {len(spots)} results, got {len(results)}, refusing to "
                         "pair weather with the wrong water")
         return {}, health
 

@@ -1,4 +1,4 @@
-"""Calm mode — solunar windows and bite scoring.
+"""Calm mode, solunar windows and bite scoring.
 
 Strategically this is not a side feature. A flood app opened twice in a lifetime is an
 app nobody has installed when it matters. The tide and weather data already fetched for
@@ -12,7 +12,7 @@ the factors that produced it and the user can disagree with any of them.
 
 What the rules encode:
   * fish feed on MOVING water, so the rate of tidal change matters far more than the
-    height — peak flow near mid-tide beats slack water at the top
+    height, peak flow near mid-tide beats slack water at the top
   * low light concentrates feeding: dawn and dusk outrank midday
   * solunar theory (Knight, 1926) puts major periods at lunar transit and antitransit,
     minor periods at moonrise and moonset
@@ -44,7 +44,7 @@ W_MOON = 10
 W_WEATHER = 10
 
 #: Tidal rate (m/hr) treated as "full marks" for water movement. Above this, more
-#: movement stops helping — and in strong flow it starts to hinder.
+#: movement stops helping, and in strong flow it starts to hinder.
 STRONG_TIDE_RATE = 0.35
 #: Wind that makes small-boat fishing unpleasant or unsafe.
 WIND_UNPLEASANT_KMH = 25.0
@@ -88,7 +88,7 @@ PROFILES = {
 
 #: Applied to ANY water without tide data, whatever its profile says. Without this a
 #: non-tidal river silently forfeits the tide factor's 21 points and ranks below every
-#: coastal spot for a reason that has nothing to do with fishing — the scale would be
+#: coastal spot for a reason that has nothing to do with fishing, the scale would be
 #: measuring "is it near the sea", not "is it worth going".
 TIDELESS = {"tide": 0.0, "solunar": 1.3, "light": 1.4, "moon": 1.1, "weather": 1.2}
 
@@ -107,7 +107,7 @@ def solunar_windows(lat: float, lon: float, day: date,
 
     Majors sit at lunar transit (moon overhead) and antitransit (moon underfoot);
     minors at moonrise and moonset. Antitransit counts even though the moon is below
-    the horizon — the claim is about lunar position, not visibility.
+    the horizon, the claim is about lunar position, not visibility.
     """
     ev = moon_events(lat, lon, day, tz_offset)
     out: list[SolunarWindow] = []
@@ -229,9 +229,9 @@ def score_hour(
         penalty = -20 if wind_kmh >= WIND_ROUGH_KMH else -8
         factors.append(Factor("wind", penalty,
                               f"ลมแรง {wind_kmh:.0f} กม./ชม."
-                              + (" — ทะเลมีคลื่น ระวังความปลอดภัย" if wind_kmh >= WIND_ROUGH_KMH else ""),
+                              + (", ทะเลมีคลื่น ระวังความปลอดภัย" if wind_kmh >= WIND_ROUGH_KMH else ""),
                               f"Wind {wind_kmh:.0f} km/h"
-                              + (" — rough water, take care" if wind_kmh >= WIND_ROUGH_KMH else "")))
+                              + (", rough water, take care" if wind_kmh >= WIND_ROUGH_KMH else "")))
         total += penalty
 
     factors.sort(key=lambda f: -f.points)
@@ -241,7 +241,7 @@ def score_hour(
 def clarity_advice(rain_24h_mm: float | None, discharge_ratio: float | None) -> dict | None:
     """Turbidity is tactics, not score.
 
-    Muddy water does not mean "do not go" — it means fish hunt by vibration and scent
+    Muddy water does not mean "do not go", it means fish hunt by vibration and scent
     rather than sight. Scoring it down would be wrong; saying so is useful.
     """
     muddy = (rain_24h_mm is not None and rain_24h_mm >= 40) or \
@@ -249,14 +249,14 @@ def clarity_advice(rain_24h_mm: float | None, discharge_ratio: float | None) -> 
     if muddy:
         return {
             "state": "turbid",
-            "th": "น้ำขุ่นจากฝน/น้ำหลาก — ใช้เหยื่อมีกลิ่นแรงหรือสร้างแรงสั่นสะเทือน หาจุดน้ำนิ่งริมตลิ่ง",
-            "en": "Turbid from rain or high flow — use scent or vibration, fish the slower edges",
+            "th": "น้ำขุ่นจากฝน/น้ำหลาก, ใช้เหยื่อมีกลิ่นแรงหรือสร้างแรงสั่นสะเทือน หาจุดน้ำนิ่งริมตลิ่ง",
+            "en": "Turbid from rain or high flow, use scent or vibration, fish the slower edges",
         }
     if rain_24h_mm is not None and rain_24h_mm < 5:
         return {
             "state": "clear",
-            "th": "น้ำใส — ใช้สายเบา เหยื่อธรรมชาติ เข้าใกล้อย่างระมัดระวัง",
-            "en": "Clear water — lighter line, natural presentation, approach quietly",
+            "th": "น้ำใส, ใช้สายเบา เหยื่อธรรมชาติ เข้าใกล้อย่างระมัดระวัง",
+            "en": "Clear water, lighter line, natural presentation, approach quietly",
         }
     return None
 

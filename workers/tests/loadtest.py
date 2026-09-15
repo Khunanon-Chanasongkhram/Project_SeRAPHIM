@@ -36,11 +36,11 @@ SCENARIOS = {
 def measure(out_dir: Path, web_dir: Path) -> dict:
     """What one visitor actually downloads."""
     files: dict[str, dict] = {}
-    for name in ("stations.geojson", "meta.json", "tide.json", "areas.json", "fishing.json"):
-        p = out_dir / name
-        if p.exists():
-            raw = p.read_bytes()
-            files[name] = {"raw": len(raw), "gz": len(gzip.compress(raw, 9))}
+    for p in sorted(out_dir.glob("*")):
+        if p.suffix == ".gz" or not p.is_file():
+            continue
+        raw = p.read_bytes()
+        files[p.name] = {"raw": len(raw), "gz": len(gzip.compress(raw, 9))}
 
     shell = 0
     for p in sorted(web_dir.glob("*.html")):
@@ -48,15 +48,27 @@ def measure(out_dir: Path, web_dir: Path) -> dict:
     for p in sorted(web_dir.glob("*.js")):
         shell += len(gzip.compress(p.read_bytes(), 9))
 
-    # The map is the common entry point. The fishing page is a separate visit and
-    # pulls its own, larger file, so it is counted on its own.
-    map_visit = shell + sum(
-        files[n]["gz"] for n in ("stations.geojson", "meta.json", "tide.json", "areas.json")
-        if n in files
-    )
-    fish_visit = shell + files.get("fishing.json", {}).get("gz", 0) + \
-        files.get("tide.json", {}).get("gz", 0)
-    return {"files": files, "shell_gz": shell,
+    # A visitor loads ONE country, not all of them. Station and area files are split
+    # per country precisely so that adding a country costs existing readers nothing,
+    # so the visit is costed against the largest single country.
+    def gz(name):
+        return files.get(name, {}).get("gz", 0)
+
+    # Costed per country, because a visitor loads one. Thailand additionally pulls
+    # province shapes and tide points, which only exist for Thailand.
+    common = shell + gz("meta.json") + gz("index.json") + gz("validation.json")
+    visits = {}
+    for name in files:
+        if not name.startswith("stations-"):
+            continue
+        cc = name[len("stations-"):-len(".geojson")]
+        total = common + gz(name) + gz(f"areas-{cc}.json")
+        if cc == "th":
+            total += gz("provinces.geojson") + gz("tide.json")
+        visits[cc.upper()] = total
+    map_visit = max(visits.values()) if visits else common
+    fish_visit = shell + gz("fishing.json") + gz("tide.json")
+    return {"files": files, "shell_gz": shell, "visits": visits,
             "map_visit_gz": map_visit, "fish_visit_gz": fish_visit}
 
 
@@ -76,14 +88,15 @@ def main() -> int:
         print(f"  {name:<20}{f['raw']:>10,} B raw ->{f['gz']:>9,} B gz  ({ratio:.1f}x)")
     print(f"  {'app shell (gz)':<20}{m['shell_gz']:>31,} B")
     print()
-    print(f"  map visit   {m['map_visit_gz']:>9,} B gzipped")
+    for cc, total in sorted(m["visits"].items()):
+        print(f"  visit, {cc:<3}   {total:>9,} B gzipped")
     print(f"  fishing     {m['fish_visit_gz']:>9,} B gzipped")
 
     print(f"\nAgainst GitHub Pages' {PAGES_BANDWIDTH_GB} GB/month soft limit")
     print(f"  {'scenario':<20}{'map opens':>12}{'bandwidth':>13}{'verdict':>22}")
     for name, s in SCENARIOS.items():
         opens = int(s["affected"] * s["map_open_rate"])
-        gb = opens * m["map_visit_gz"] / 1e9
+        gb = opens * m["visits"].get("TH", m["map_visit_gz"]) / 1e9
         if gb < PAGES_BANDWIDTH_GB * 0.6:
             verdict = "comfortable"
         elif gb < PAGES_BANDWIDTH_GB:
