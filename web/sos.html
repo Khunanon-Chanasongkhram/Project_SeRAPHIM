@@ -150,6 +150,7 @@
   <span class="net" id="net">ออนไลน์</span>
 </div></div>
 
+<script src="./config.js"></script>
 <script>
 // API base. Same origin in dev; the Cloudflare Worker URL in production.
 // F4: the API origin must NEVER come from an untrusted link. A URL like
@@ -158,7 +159,9 @@
 // during a flood, when links spread fast through LINE and Facebook groups.
 // The override is honoured only for localhost, as a developer convenience.
 function resolveApi() {
-  const fallback = localStorage.getItem("seraphim_api") || "http://127.0.0.1:8788";
+  const configured = (window.SERAPHIM && window.SERAPHIM.apiBase) || null;
+  const fallback = configured
+    || localStorage.getItem("seraphim_api") || "http://127.0.0.1:8788";
   const asked = new URLSearchParams(location.search).get("api");
   if (!asked) return fallback;
   try {

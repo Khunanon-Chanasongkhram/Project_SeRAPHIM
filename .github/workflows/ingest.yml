@@ -35,16 +35,27 @@ jobs:
       # No pip install: the project is stdlib-only by design. Nothing to cache,
       # no supply chain, and the job starts in seconds — which is what keeps us
       # inside the free minute budget.
-      # Forecasts are cached between runs so the 30-minute cron does not refetch
-      # data that only changes every 6-24 hours. A unique key always writes a fresh
-      # entry; restore-keys pulls the most recent one back.
-      - name: Restore forecast cache
+      # Two things must survive between runs, because GitHub runners are ephemeral
+      # and data/ is gitignored:
+      #
+      #   data/cache   - forecasts, which only change every 6-24 hours
+      #   data/archive - the gauge history the risk engine fits trends to. WITHOUT
+      #                  THIS, every run starts with an empty archive, no trend ever
+      #                  spans the 45-minute minimum, and time-to-bank — the headline
+      #                  number of the whole project — never appears in production.
+      #
+      # A unique key always writes a fresh entry; restore-keys pulls the most recent
+      # one back. The archive is pruned to a bounded window so the cache cannot grow
+      # without limit.
+      - name: Restore working state
         uses: actions/cache@v4
         with:
-          path: data/cache
-          key: forecast-${{ github.run_id }}
+          path: |
+            data/cache
+            data/archive
+          key: seraphim-state-${{ github.run_id }}
           restore-keys: |
-            forecast-
+            seraphim-state-
 
       - name: Tests
         working-directory: workers
@@ -52,7 +63,7 @@ jobs:
 
       - name: Build snapshot
         working-directory: workers
-        run: python -m seraphim.cli build --out ../data
+        run: python -m seraphim.cli build --out ../data --archive-keep-hours 48
 
       - name: Summary
         run: |
@@ -93,10 +104,22 @@ jobs:
           BUCKET: ${{ secrets.CF_R2_BUCKET }}
         run: |
           ENDPOINT="https://${CF_ACCOUNT_ID}.r2.cloudflarestorage.com"
-          # Short max-age: clients must be able to see a fresh snapshot quickly,
-          # but stale-while-revalidate keeps the map up if a build fails.
+          # Short max-age so a fresh snapshot is visible quickly, with
+          # stale-while-revalidate keeping the map up if a build fails.
+          CACHE="public, max-age=60, stale-while-revalidate=1800"
+
+          # Explicit content types. Without these .geojson uploads as
+          # application/octet-stream, which blocks Cloudflare's in-transit
+          # compression and turns a 130 KB payload into 1.2 MB on the wire.
           aws s3 cp data/out/ "s3://${BUCKET}/latest/" --recursive \
-            --endpoint-url "$ENDPOINT" \
-            --cache-control "public, max-age=60, stale-while-revalidate=1800"
+            --endpoint-url "$ENDPOINT" --cache-control "$CACHE" \
+            --exclude "*" --include "*.json" --content-type "application/json; charset=utf-8"
+          aws s3 cp data/out/ "s3://${BUCKET}/latest/" --recursive \
+            --endpoint-url "$ENDPOINT" --cache-control "$CACHE" \
+            --exclude "*" --include "*.geojson" --content-type "application/geo+json; charset=utf-8"
+
+          # The archive is fetched rarely and only by the risk engine, so it stays
+          # gzipped on disk rather than relying on in-transit compression.
           aws s3 cp data/archive/ "s3://${BUCKET}/archive/" --recursive \
-            --endpoint-url "$ENDPOINT" --cache-control "public, max-age=31536000, immutable"
+            --endpoint-url "$ENDPOINT" --cache-control "public, max-age=31536000, immutable" \
+            --exclude "*" --include "*.json.gz" --content-type "application/gzip"

@@ -126,11 +126,13 @@
 </div>
 <div class="tip" id="tip"></div>
 
+<script src="./config.js"></script>
 <script>
 const ESCAPES={"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};
 const esc = (v)=>v==null?"":String(v).replace(/[&<>"']/g,(c)=>ESCAPES[c]);
 const $=(id)=>document.getElementById(id);
-const DATA=new URLSearchParams(location.search).get("data")||"../data/out/fishing.json";
+const BASE=(window.SERAPHIM&&window.SERAPHIM.dataBase)||"../data/out";
+const DATA=new URLSearchParams(location.search).get("data")||`${BASE}/fishing.json`;
 const TIDE_URL=DATA.replace(/fishing\.json$/,"tide.json");
 const ICT=(iso)=>new Date(iso).toLocaleTimeString("th-TH",
   {timeZone:"Asia/Bangkok",hour:"2-digit",minute:"2-digit"});

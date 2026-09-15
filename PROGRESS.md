@@ -30,6 +30,47 @@ Then Phase 3 (calm mode / fishing), 5 (terrain) or 6 (harden + load test).
 
 ---
 
+## 2026-09-15 — Session 9: deployment path (found and fixed a production-breaking gap)
+
+**Done — 167 tests passing. `docs/DEPLOY.md` written.**
+
+**The gap that mattered.** GitHub runners are ephemeral and `data/` is gitignored, so
+every ingest run would have started with an **empty archive**. The risk engine fits
+trends over our own archived history, so no trend would ever span the 45-minute minimum
+and **time-to-bank — the headline feature of the whole project — would never have
+appeared in production at all.** It works locally only because the archive accumulates
+on this machine. Fixed by extending the `actions/cache` entry to cover `data/archive`
+alongside `data/cache`, plus `--archive-keep-hours 48` and a `prune_archive()` that
+bounds the cache (it parses the filename rather than trusting mtime, which a cache
+restore resets — tested, because a bug there deletes history).
+
+**Three smaller wiring gaps, all closed**
+- Every page hardcoded `../data/out` and `http://127.0.0.1:8788`; in production they
+  would 404. Added `web/config.js` — one file, two values — with the relative paths kept
+  as the local-dev fallback so `python3 -m http.server` still works unchanged.
+- The CSP `connect-src` did not allow R2, so fetches would have been blocked **with no
+  visible error**. Added `*.r2.dev`; `config.js` marked `no-cache` so changing an
+  endpoint is not defeated by a stale cache.
+- The R2 upload guessed content types: `.geojson` uploads as `application/octet-stream`,
+  which blocks Cloudflare's in-transit compression and turns a 130 KB payload into
+  1.2 MB on the wire. Now set explicitly.
+
+**Removed the biggest obstacle for this machine:** no Node here, so the Worker is
+deployed from CI via `deploy-api.yml` (manual trigger, with an optional schema apply).
+Nothing needs installing locally.
+
+**`scripts/make_token.py`** mints responder tokens — shows the raw token once, stores
+only its SHA-256, prints the INSERT and the revoke statement. Verified round-trip
+against the real auth path: the minted token authenticates, the raw value is nowhere in
+the database, a wrong token is rejected, and the Worker hashes identically.
+
+**Flagged honestly in the guide:** time-to-bank stays empty for the first ~1-2 h by
+design; the Actions minute budget only holds while each run finishes under 60 s (rounded
+up, 1,440 runs/month against 2,000) with `*/45` as the fallback; R2.dev is
+development-grade; a national-scale event still needs the $5/month Workers plan.
+
+---
+
 ## 2026-09-15 — Session 8: Phase 3 built (calm mode — solunar & fishing)
 
 **Done — 162 tests passing.**

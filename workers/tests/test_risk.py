@@ -321,3 +321,70 @@ class TestLevelFiveMeansObserved(unittest.TestCase):
         self.assertEqual(without.level, 5)
         self.assertGreaterEqual(with_tide.level, without.level,
                                 "compounding must never reduce a risk level")
+
+
+class TestArchivePruning(unittest.TestCase):
+    """Pruning deletes files, so it is tested harder than code that only reads.
+
+    It exists because CI restores the archive from a cache between runs: unbounded,
+    it would grow by ~48 files a day forever; too aggressive, and the risk engine
+    loses the history that time-to-bank depends on.
+    """
+
+    def _write(self, root, stamps):
+        for ts in stamps:
+            p = root / f"{ts:%Y/%m/%d}" / f"{ts:%H%M}.json.gz"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(gzip.compress(b'{"features":[]}'))
+
+    def test_keeps_recent_drops_old(self):
+        from seraphim.publish import prune_archive
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            recent = [NOW - timedelta(hours=h) for h in (0, 1, 5, 20)]
+            old = [NOW - timedelta(hours=h) for h in (60, 100, 400)]
+            self._write(root, recent + old)
+            removed = prune_archive(root, NOW, keep_hours=48)
+            self.assertEqual(removed, len(old))
+            left = list(root.rglob("*.json.gz"))
+            self.assertEqual(len(left), len(recent))
+
+    def test_zero_keeps_everything(self):
+        from seraphim.publish import prune_archive
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            self._write(root, [NOW - timedelta(hours=h) for h in (0, 500)])
+            self.assertEqual(prune_archive(root, NOW, keep_hours=0), 0)
+            self.assertEqual(len(list(root.rglob("*.json.gz"))), 2)
+
+    def test_uses_the_filename_not_mtime(self):
+        """A cache restore resets mtime, so trusting it would delete the whole
+        archive on the first run after a restore."""
+        from seraphim.publish import prune_archive
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            old = NOW - timedelta(hours=200)
+            self._write(root, [old])
+            # Touch it so mtime looks brand new, as a cache restore would.
+            for p in root.rglob("*.json.gz"):
+                p.touch()
+            self.assertEqual(prune_archive(root, NOW, keep_hours=48), 1)
+
+    def test_missing_directory_is_not_an_error(self):
+        from seraphim.publish import prune_archive
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(prune_archive(Path(d) / "absent", NOW, 48), 0)
+
+    def test_history_still_loads_after_pruning(self):
+        from seraphim.publish import prune_archive
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            stamps = [NOW - timedelta(minutes=30 * i) for i in range(12)]
+            for ts in stamps:
+                p = root / f"{ts:%Y/%m/%d}" / f"{ts:%H%M}.json.gz"
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_bytes(gzip.compress(json.dumps({"features": [{"properties": {
+                    "id": "t:1", "level_msl": 1.0, "observed_at": ts.isoformat()}}]}).encode()))
+            prune_archive(root, NOW, keep_hours=48)
+            hist = load_history(root, NOW, window_hours=8)
+            self.assertGreaterEqual(len(hist.get("t:1", [])), 12)

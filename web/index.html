@@ -124,11 +124,14 @@
   Not an official emergency channel — call <b>1784</b> / <b>191</b>.
 </div>
 
+<script src="./config.js"></script>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script>
 // Snapshot location. Static file on a CDN — there is no API server to fall over.
-const DATA = new URLSearchParams(location.search).get("data")
-  || window.SERAPHIM_DATA_URL || "../data/out/stations.geojson";
+// Snapshot location. Set window.SERAPHIM.dataBase in config.js to go live;
+// falls back to relative paths so local development needs no configuration.
+const BASE = (window.SERAPHIM && window.SERAPHIM.dataBase) || "../data/out";
+const DATA = new URLSearchParams(location.search).get("data") || `${BASE}/stations.geojson`;
 const META = DATA.replace(/stations\.geojson$/, "meta.json");
 const TIDE = DATA.replace(/stations\.geojson$/, "tide.json");
 const AREAS = DATA.replace(/stations\.geojson$/, "areas.json");

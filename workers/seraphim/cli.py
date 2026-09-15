@@ -16,6 +16,7 @@ from seraphim.adapters.spots import all_spots, fetch_weather
 from seraphim.fishing import build_fishing
 from seraphim.publish import (
     build_areas,
+    prune_archive,
     build_fishing_doc,
     build_geojson,
     build_meta,
@@ -94,6 +95,7 @@ def build(
     out_root: Path,
     sources: list[str] | None = None,
     archive: bool = True,
+    archive_keep_hours: float = 0.0,
     forecasts: bool = True,
     refresh_scale: float = 1.0,
 ) -> int:
@@ -191,6 +193,10 @@ def build(
     written = write_snapshot(out_root / "out", geojson, meta, tide, areas_doc, fishing_doc)
     if archive and states:
         written.append(write_archive(out_root / "archive", geojson, generated_at))
+    if archive_keep_hours > 0:
+        dropped = prune_archive(out_root / "archive", generated_at, archive_keep_hours)
+        if dropped:
+            print(f"[archive] pruned {dropped} files older than {archive_keep_hours:g} h")
     for p in written:
         print(f"wrote {p} ({p.stat().st_size:,} bytes)")
 
@@ -222,6 +228,9 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--out", type=Path, default=Path("../data"), help="output root (default: ../data)")
     b.add_argument("--source", action="append", dest="sources", help="limit to adapter id (repeatable)")
     b.add_argument("--no-archive", action="store_true", help="skip the time-partitioned archive")
+    b.add_argument(
+        "--archive-keep-hours", type=float, default=0.0, metavar="HOURS",
+        help="delete archive snapshots older than this (0 = keep everything)")
     b.add_argument("--no-forecast", action="store_true", help="water levels only, no upstream forecast calls")
     b.add_argument(
         "--refresh-scale",
@@ -245,6 +254,7 @@ def main(argv: list[str] | None = None) -> int:
         args.out.resolve(),
         args.sources,
         archive=not args.no_archive,
+        archive_keep_hours=args.archive_keep_hours,
         forecasts=not args.no_forecast,
         refresh_scale=args.refresh_scale,
     )

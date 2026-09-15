@@ -64,6 +64,12 @@ accepting SOS submissions (Phase 4).
 
 Full detail in [`docs/PLAN.md`](docs/PLAN.md).
 
+## Deploying
+
+See **[`docs/DEPLOY.md`](docs/DEPLOY.md)**. Everything runs on free tiers, and no Node,
+npm or wrangler is needed locally — the Worker deploys from CI. One file,
+`web/config.js`, points the site at your services.
+
 ## Quickstart
 
 No dependencies — Python 3.11+ standard library only. No `pip install`, no `npm`.
@@ -106,6 +112,7 @@ cd workers && python3 -m seraphim.devserver --port 8788 --seed
 | `api/` | Cloudflare Worker + D1 schema for SOS; conformance suite |
 | `workers/seraphim/devserver.py` | Python dev server for the SOS API — no node needed |
 | `.github/workflows/ingest.yml` | the cron that runs it all |
+| **`docs/DEPLOY.md`** | **step-by-step deployment — start here to go live** |
 | `docs/PLAN.md` | architecture, risk engine, phases, risks |
 | `docs/SECURITY.md` | security review — 6 findings, all fixed |
 | `docs/OPERATIONS.md` | capacity, health thresholds, degraded mode |

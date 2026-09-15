@@ -12,7 +12,7 @@ from __future__ import annotations
 import gzip
 import json
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from seraphim.models import SourceHealth, StationState
@@ -307,6 +307,37 @@ def write_snapshot(
         gz.write_bytes(gzip.compress(raw, 9))
         written.extend([path, gz])
     return written
+
+
+def prune_archive(root: Path, now: datetime, keep_hours: float) -> int:
+    """Delete archive files older than the window the risk engine actually reads.
+
+    The archive is restored into CI from a cache between runs, so without a bound it
+    would grow by ~48 files a day forever. The risk engine only fits trends over the
+    last few hours; durable history lives in R2, not here.
+    """
+    if keep_hours <= 0 or not root.is_dir():
+        return 0
+    cutoff = now - timedelta(hours=keep_hours)
+    removed = 0
+    for path in root.rglob("*.json.gz"):
+        try:
+            # Path is YYYY/MM/DD/HHMM.json.gz — parse rather than trust mtime, which
+            # a cache restore resets.
+            stamp = datetime.strptime(
+                f"{path.parent.parent.parent.name}{path.parent.parent.name}"
+                f"{path.parent.name}{path.stem.split('.')[0]}",
+                "%Y%m%d%H%M",
+            ).replace(tzinfo=timezone.utc)
+        except (ValueError, IndexError):
+            continue
+        if stamp < cutoff:
+            path.unlink(missing_ok=True)
+            removed += 1
+    for d in sorted(root.rglob("*"), reverse=True):
+        if d.is_dir() and not any(d.iterdir()):
+            d.rmdir()
+    return removed
 
 
 def archive_path(root: Path, generated_at: datetime) -> Path:

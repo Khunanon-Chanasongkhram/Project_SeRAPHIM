@@ -1,0 +1,59 @@
+name: deploy-api
+
+# Deploys the SOS Worker and applies the D1 schema from CI, so no Node, npm or
+# wrangler install is needed on your own machine.
+#
+# Run it by hand from the Actions tab (Run workflow), or let it fire when the API
+# changes. It is deliberately NOT automatic on every push to main: deploying the one
+# always-on piece of an emergency system should be a decision, not a side effect.
+on:
+  workflow_dispatch:
+    inputs:
+      apply_schema:
+        description: "Also apply schema.sql to D1 (safe to repeat; it is CREATE IF NOT EXISTS)"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths: ["api/src/**", "api/wrangler.toml"]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Refuse to deploy with the placeholder salt
+        run: |
+          if grep -q "PUT-YOUR-D1-DATABASE-ID-HERE" api/wrangler.toml; then
+            echo "::error::api/wrangler.toml still has the placeholder database_id."
+            exit 1
+          fi
+
+      - name: Apply D1 schema
+        if: ${{ inputs.apply_schema }}
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          workingDirectory: api
+          command: d1 execute seraphim-sos --file=./schema.sql --remote -y
+
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          workingDirectory: api
+          command: deploy
+
+      - name: Next step
+        run: |
+          echo "### Worker deployed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Set \`apiBase\` in \`web/config.js\` to the workers.dev URL above," >> $GITHUB_STEP_SUMMARY
+          echo "then commit and push so Pages picks it up." >> $GITHUB_STEP_SUMMARY
