@@ -68,6 +68,11 @@ jobs:
 
       - name: Build snapshot
         working-directory: workers
+        # FIRMS_MAP_KEY is optional. With it, an active-fire layer is published; without
+        # it the layer is simply absent and the UI says why. The key is used here in CI
+        # and never reaches a browser.
+        env:
+          FIRMS_MAP_KEY: ${{ secrets.FIRMS_MAP_KEY }}
         run: python -m seraphim.cli build --out ../data --archive-keep-hours 48
 
       # The site and its data ship together, from the same origin. That removes CORS

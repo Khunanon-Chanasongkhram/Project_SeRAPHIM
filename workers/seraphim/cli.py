@@ -12,6 +12,7 @@ from seraphim.adapters import forecast_registry, registry
 from seraphim.adapters.marine import TideAdapter, summarise
 from seraphim.models import Forecast, SourceHealth, StationState
 from seraphim.history import fit_trend, load_history, merge_current
+from seraphim.adapters.hazards import fetch_earthquakes, fetch_fires
 from seraphim.adapters.spots import all_spots, fetch_weather
 from seraphim.fishing import build_fishing
 from seraphim.publish import (
@@ -186,6 +187,39 @@ def build(
         peak = max((d["peak_score"] for p in plans for d in p["days"]), default=0)
         print(f"[fishing] {len(plans)} spots x {len(plans[0]['days'])} days | best score {peak}")
 
+    # --- global hazard layers, cached like the forecasts ---
+    extra: dict = {}
+    if forecasts:
+        cache_root = out_root / "cache"
+        hit = cache.load(cache_root, "quakes", 0.5 * refresh_scale)
+        if hit:
+            extra["quakes.geojson"] = hit["data"]
+            print("[quakes] cache hit")
+        else:
+            quakes, qh = fetch_earthquakes()
+            health.append(qh)
+            if quakes:
+                extra["quakes.geojson"] = quakes
+                cache.save(cache_root, "quakes", quakes)
+                print(f"[quakes] {qh.stations} in the past 24 h")
+            else:
+                print(f"[quakes] FAILED: {qh.error}", file=sys.stderr)
+
+        hit = cache.load(cache_root, "fires", 3.0 * refresh_scale)
+        if hit:
+            extra["fires.geojson"] = hit["data"]
+            print("[fires] cache hit")
+        else:
+            fires, fh = fetch_fires()
+            health.append(fh)
+            if fires:
+                extra["fires.geojson"] = fires
+                cache.save(cache_root, "fires", fires)
+                print(f"[fires] {fh.stations} detections")
+            else:
+                # Not an error: the layer is optional and needs a free NASA key.
+                print(f"[fires] skipped: {fh.error}")
+
     geojson = build_geojson(states, risks)
     meta = build_meta(states, health, generated_at, tide_points=len(tide_points), risks=risks)
     tide = build_tide(tide_points, generated_at) if tide_points else None
@@ -198,7 +232,7 @@ def build(
               + f", {j['gauges_outside_any_province']} gauges outside any shape")
 
     written = write_snapshot(out_root / "out", geojson, meta, tide, areas_doc,
-                             fishing_doc, provinces)
+                             fishing_doc, provinces, extra)
     if archive and states:
         written.append(write_archive(out_root / "archive", geojson, generated_at))
     if archive_keep_hours > 0:

@@ -70,6 +70,18 @@ Come back in two hours and there should be numbers.
 
 ---
 
+## Optional: the active fire layer
+
+Everything else works with no accounts. Active fires needs a free NASA key.
+
+1. Get one at `firms.modaps.eosdis.nasa.gov/api/map_key/` (email, instant).
+2. Repo → **Settings** → **Secrets and variables** → **Actions** → **New repository
+   secret**, name `FIRMS_MAP_KEY`.
+3. Re-run **ingest**.
+
+The key is used in the build and published as a static `fires.geojson`, so it never
+reaches a browser. Without it the layer is absent and the layers panel says why.
+
 ## Things worth knowing
 
 **GitHub Pages has a soft bandwidth limit of 100 GB a month.** Fine for normal use and

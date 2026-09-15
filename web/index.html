@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://server.arcgisonline.com; connect-src 'self' https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://server.arcgisonline.com; worker-src 'self' blob:; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://server.arcgisonline.com https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://tilecache.rainviewer.com; connect-src 'self' https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://server.arcgisonline.com https://api.rainviewer.com https://*.api.radio-browser.info https://gibs.earthdata.nasa.gov; media-src https: blob:; worker-src 'self' blob:; base-uri 'self'; form-action 'self'">
 <title>SeRAPHIM</title>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <script src="./config.js"></script>
@@ -129,6 +129,47 @@
   .why ul{margin:0;padding-left:16px}
   .conf{font-size:10px;color:var(--faint);margin-top:6px}
 
+  /* quick basemap flip, always visible so it is not buried in a drawer */
+  #flip{position:absolute;z-index:5;right:10px;bottom:calc(var(--sheet-collapsed) + 14px);
+    width:52px;height:52px;border-radius:13px;border:1px solid var(--line-strong);
+    background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    cursor:pointer;display:grid;place-items:center;font-size:19px;
+    box-shadow:0 6px 22px rgba(0,0,0,.5);color:var(--fg)}
+  #flip small{position:absolute;bottom:4px;font-size:7.5px;letter-spacing:.06em;color:var(--dim)}
+
+  .chk{display:flex;align-items:center;gap:9px;padding:8px;border-radius:9px;cursor:pointer;
+    font-size:12.5px;user-select:none}
+  .chk:active{background:rgba(255,255,255,.07)}
+  .chk .box{width:16px;height:16px;border-radius:5px;border:1.5px solid var(--line-strong);
+    flex:none;display:grid;place-items:center;font-size:11px;color:transparent;transition:.12s}
+  .chk.on .box{background:var(--l1);border-color:var(--l1);color:#fff}
+  .chk .dotc{width:8px;height:8px;border-radius:50%;flex:none;margin-left:auto}
+  .chk.off{opacity:.45}
+  .chk small{display:block;color:var(--faint);font-size:10px}
+
+  /* radio tuner */
+  #radio{position:absolute;z-index:6;left:10px;right:10px;
+    bottom:calc(var(--sheet-collapsed) + 14px);margin:0 auto;max-width:520px;
+    background:var(--panel);border:1px solid var(--line-strong);border-radius:14px;
+    padding:11px 13px;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+    display:none;box-shadow:0 10px 36px rgba(0,0,0,.6)}
+  #radio.show{display:block}
+  .rhead{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+  .rname{flex:1;min-width:0;font-size:12.5px;font-weight:600;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap}
+  .rmeta{font-size:10px;color:var(--faint)}
+  .rplay{width:36px;height:36px;border-radius:50%;border:1px solid var(--line-strong);
+    background:rgba(255,255,255,.06);color:var(--fg);font-size:14px;cursor:pointer;flex:none}
+  .rplay.playing{background:var(--l1);border-color:var(--l1)}
+  /* the dial: stations laid out by distance from the map centre, swept like a tuner */
+  .dial{position:relative;height:46px;border-radius:9px;overflow:hidden;cursor:ew-resize;
+    background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.02));
+    border:1px solid var(--line);touch-action:none}
+  .dial canvas{display:block;width:100%;height:46px}
+  .needle{position:absolute;top:0;bottom:0;width:2px;background:var(--l4);
+    box-shadow:0 0 10px var(--l4);pointer-events:none}
+  .rtip{font-size:10px;color:var(--faint);margin-top:6px;text-align:center}
+
   #degraded{position:absolute;z-index:7;left:10px;right:10px;
     top:calc(env(safe-area-inset-top,0px) + 50px);margin:0 auto;max-width:520px;
     background:rgba(60,20,10,.92);border:1px solid rgba(232,89,12,.5);color:#ffd9c2;
@@ -162,11 +203,26 @@
   <div class="opt" data-base="satellite"><span class="sw"></span><span id="o-sat"></span></div>
   <div class="opt" data-base="dark"><span class="sw"></span><span id="o-dark"></span></div>
   <div class="opt" data-base="light"><span class="sw"></span><span id="o-light"></span></div>
+  <div class="opt" data-base="osm"><span class="sw"></span><span id="o-osm"></span></div>
   <h4 id="h-over"></h4>
-  <div class="opt" data-layer="provinces"><span class="sw"></span><span id="o-prov"></span></div>
-  <div class="opt" data-layer="stations"><span class="sw"></span><span id="o-stat"></span></div>
-  <div class="opt" data-layer="tide"><span class="sw"></span><span id="o-tide"></span></div>
+  <div id="layerlist"></div>
   <div class="note" id="camnote"></div>
+  <div class="note" id="credit"></div>
+</div>
+
+<button id="flip" title="basemap">🛰<small id="fliplbl"></small></button>
+
+<div id="radio">
+  <div class="rhead">
+    <button class="rplay" id="rplay">▶</button>
+    <div style="flex:1;min-width:0">
+      <div class="rname" id="rname">-</div>
+      <div class="rmeta" id="rmeta"></div>
+    </div>
+    <button class="btn" id="rclose">✕</button>
+  </div>
+  <div class="dial" id="dial"><canvas id="dialc"></canvas><div class="needle" id="needle"></div></div>
+  <div class="rtip" id="rtip"></div>
 </div>
 
 <div id="sheet">
@@ -208,7 +264,14 @@ const I18N={
     min:"นาที", hr:"ชม.", day:"วัน", nodata:"ไม่มีข้อมูล",
     hi:"น้ำขึ้นสูงสุด", lo:"น้ำลงต่ำสุด", tidestate:"สถานะน้ำ",
     disc:"<b>โปรเจกต์ส่วนตัว ไม่ใช่บริการทางราชการ</b> สร้างเร็ว ๆ ด้วย AI และยังไม่เคยใช้งานจริงในเหตุการณ์น้ำท่วม อย่าใช้ตัดสินใจเรื่องความปลอดภัยเพียงอย่างเดียว เหตุด่วนโทร <b>1784</b> (ปภ.) หรือ <b>191</b>",
-    fish:"🎣 เวลาตกปลา", degraded:"ข้อมูลอาจไม่เป็นปัจจุบัน", offline:"ออฟไลน์ กำลังแสดงข้อมูลล่าสุดที่บันทึกไว้" },
+    fish:"🎣 เวลาตกปลา", degraded:"ข้อมูลอาจไม่เป็นปัจจุบัน", offline:"ออฟไลน์ กำลังแสดงข้อมูลล่าสุดที่บันทึกไว้",
+    osm:"แผนที่ถนน (OSM)", radar:"เรดาร์ฝน", quakes:"แผ่นดินไหว 24 ชม.", fires:"จุดความร้อน",
+    radio:"วิทยุทั่วโลก", radar_s:"ภาพเรดาร์ทุก 10 นาที", quakes_s:"ทั่วโลก จาก USGS",
+    fires_s:"ต้องใช้คีย์ NASA FIRMS", radio_s:"สถานีที่มีพิกัด",
+    tune:"ลากเพื่อหมุนหาคลื่น · แตะหมุดวิทยุบนแผนที่",
+    mag:"ขนาด", depth:"ความลึก", when:"เมื่อ", frp:"ความแรง", conf:"ความเชื่อมั่น",
+    nofires:"ไม่มีชั้นจุดความร้อน เพราะยังไม่ได้ตั้งค่าคีย์ NASA FIRMS",
+    credit:"แรงบันดาลใจชั้นข้อมูลจาก gods-eye-view (MIT)", sat_s:"ดาวเทียม", map_s:"แผนที่" },
   en:{ base:"BASEMAP", sat:"Satellite", dark:"Dark", light:"Light",
     over:"LAYERS", prov:"Province risk", stat:"Gauges", tide:"Tide points",
     camnote:"No CCTV layer: no public camera feed has been found to build on.",
@@ -226,7 +289,14 @@ const I18N={
     min:"min", hr:"h", day:"d", nodata:"no data",
     hi:"high", lo:"low", tidestate:"tide",
     disc:"<b>A personal hobby project, not an official service.</b> Built fast with AI help and never tested in a real flood. Do not make a safety decision on it alone. Emergency: call <b>1784</b> (DDPM) or <b>191</b>.",
-    fish:"🎣 Fishing times", degraded:"Data may be out of date", offline:"Offline, showing last saved data" }
+    fish:"🎣 Fishing times", degraded:"Data may be out of date", offline:"Offline, showing last saved data",
+    osm:"Street map (OSM)", radar:"Rain radar", quakes:"Earthquakes 24h", fires:"Active fires",
+    radio:"World radio", radar_s:"radar frames every 10 min", quakes_s:"global, from USGS",
+    fires_s:"needs a NASA FIRMS key", radio_s:"geolocated stations",
+    tune:"drag to tune · or tap a radio pin on the map",
+    mag:"magnitude", depth:"depth", when:"when", frp:"power", conf:"confidence",
+    nofires:"No active-fire layer: a free NASA FIRMS key is not configured.",
+    credit:"Layer set inspired by gods-eye-view (MIT)", sat_s:"SAT", map_s:"MAP" }
 };
 let LANG = localStorage.getItem("seraphim_lang")
   || ((navigator.language||"").toLowerCase().startsWith("th") ? "th" : "en");
@@ -237,10 +307,14 @@ const loc=(o,base)=> LANG==="th" ? (o[base+"_th"] ?? o[base] ?? "") : (o[base] ?
 /* ------------------------------------------------------------------ data */
 const BASE=(window.SERAPHIM&&window.SERAPHIM.dataBase)||"../data/out";
 const RISK={1:"#2f81f7",2:"#d99e0b",3:"#e8590c",4:"#e5484d",5:"#ff2d55"};
-let gj=null, meta=null, tide=null, areas=null, provinces=null;
+let gj=null, meta=null, tide=null, areas=null, provinces=null, quakes=null, fires=null;
+let radarFrames=[], radarIdx=0, radarTimer=null;
+let radioAll=[], radioNear=[], radioIdx=0, audio=null;
 let map=null, mode="risk", basemap="satellite";
-const shown={provinces:true, stations:true, tide:true};
+const shown={provinces:true, stations:true, tide:true,
+             radar:false, quakes:false, fires:false, radio:false};
 
+const OSM="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const SAT="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 const SATREF="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}";
 
@@ -253,11 +327,28 @@ function satelliteStyle(){
     layers:[{id:"sat",type:"raster",source:"sat"},
             {id:"satref",type:"raster",source:"satref",paint:{"raster-opacity":.85}}]};
 }
+function osmStyle(){
+  return {version:8, glyphs:"https://basemaps.cartocdn.com/gl/positron-gl-style/{fontstack}/{range}.pbf",
+    sources:{osm:{type:"raster",tiles:[OSM],tileSize:256,maxzoom:19,
+      attribution:"© OpenStreetMap contributors"}},
+    layers:[{id:"osm",type:"raster",source:"osm"}]};
+}
 const STYLES={
   satellite:satelliteStyle,
+  osm:osmStyle,
   dark:()=>"https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
   light:()=>"https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
 };
+/** Layers the user can tick. `optional` ones vanish when their data is absent. */
+const LAYERS=[
+  {id:"provinces", label:"prov",   sub:null,        colour:"#e5484d"},
+  {id:"stations",  label:"stat",   sub:null,        colour:"#2f81f7"},
+  {id:"tide",      label:"tide",   sub:null,        colour:"#22d3ee"},
+  {id:"radar",     label:"radar",  sub:"radar_s",   colour:"#38bdf8"},
+  {id:"quakes",    label:"quakes", sub:"quakes_s",  colour:"#f59e0b"},
+  {id:"fires",     label:"fires",  sub:"fires_s",   colour:"#f97316", optional:true},
+  {id:"radio",     label:"radio",  sub:"radio_s",   colour:"#a78bfa"},
+];
 
 function ageText(min){
   if(min==null||isNaN(min)) return "-";
@@ -269,8 +360,9 @@ const fmt=(v,u="",d=2)=>(v==null||v===""||isNaN(v))?"-":`${Number(v).toFixed(d)}
 
 async function load(){
   const j=(n)=>fetch(`${BASE}/${n}`,{cache:"no-cache"}).then(r=>r.json()).catch(()=>null);
-  [gj,meta,tide,areas,provinces]=await Promise.all([
-    j("stations.geojson"), j("meta.json"), j("tide.json"), j("areas.json"), j("provinces.geojson")]);
+  [gj,meta,tide,areas,provinces,quakes,fires]=await Promise.all([
+    j("stations.geojson"), j("meta.json"), j("tide.json"), j("areas.json"),
+    j("provinces.geojson"), j("quakes.geojson"), j("fires.geojson")]);
   return !!gj;
 }
 
@@ -319,8 +411,77 @@ function addLayers(){
     map.on("mouseenter","tide-c",()=>map.getCanvas().style.cursor="pointer");
     map.on("mouseleave","tide-c",()=>map.getCanvas().style.cursor="");
   }
+  addHazardLayers();
   applyVisibility();
   pulse();
+}
+
+function addHazardLayers(){
+  // Earthquakes: radius by magnitude, because a scale of numbers means nothing at a
+  // glance but a bigger dot does.
+  if(quakes && !map.getSource("quakes")){
+    map.addSource("quakes",{type:"geojson",data:quakes});
+    map.addLayer({id:"quake-c",type:"circle",source:"quakes",paint:{
+      "circle-color":["interpolate",["linear"],["get","mag"],2,"#fde68a",4,"#f59e0b",6,"#dc2626",7.5,"#7f1d1d"],
+      "circle-radius":["interpolate",["linear"],["zoom"],
+        2,["interpolate",["linear"],["get","mag"],1,1.5,5,5,8,11],
+        7,["interpolate",["linear"],["get","mag"],1,4,5,13,8,28]],
+      "circle-opacity":.5,"circle-stroke-width":1,"circle-stroke-color":"rgba(255,255,255,.7)"}});
+    map.on("click","quake-c",e=>{
+      const p=e.features[0].properties;
+      const when=p.time?new Date(Number(p.time)).toLocaleString(LANG==="th"?"th-TH":"en-GB"):"-";
+      new maplibregl.Popup({maxWidth:"270px"}).setLngLat(e.lngLat).setHTML(
+        `<div class="pt" style="background:#f59e0b">M ${esc(p.mag)}</div>
+         <div class="ph">${esc(p.place)||"-"}</div>
+         <div class="pr"><span>${esc(t("depth"))}</span><span class="num">${esc(p.depth_km)} km</span></div>
+         <div class="pr"><span>${esc(t("when"))}</span><span>${esc(when)}</span></div>`).addTo(map);
+    });
+    map.on("mouseenter","quake-c",()=>map.getCanvas().style.cursor="pointer");
+    map.on("mouseleave","quake-c",()=>map.getCanvas().style.cursor="");
+  }
+  if(fires && !map.getSource("fires")){
+    map.addSource("fires",{type:"geojson",data:fires});
+    map.addLayer({id:"fire-c",type:"circle",source:"fires",paint:{
+      "circle-color":"#f97316","circle-blur":.7,
+      "circle-radius":["interpolate",["linear"],["zoom"],4,2.5,9,6,13,12],
+      "circle-opacity":.75}});
+    map.on("click","fire-c",e=>{
+      const p=e.features[0].properties;
+      new maplibregl.Popup({maxWidth:"250px"}).setLngLat(e.lngLat).setHTML(
+        `<div class="pt" style="background:#f97316">${esc(t("fires"))}</div>
+         <div class="pr"><span>${esc(t("frp"))}</span><span class="num">${esc(p.frp)} MW</span></div>
+         <div class="pr"><span>${esc(t("conf"))}</span><span>${esc(p.confidence)}</span></div>
+         <div class="pr"><span>${esc(t("when"))}</span><span>${esc(p.acq_date)} ${esc(p.acq_time)}</span></div>`).addTo(map);
+    });
+  }
+  if(!map.getSource("radar")) initRadar();
+  if(!map.getSource("radio")) initRadio();
+}
+
+/* ---------- rain radar (RainViewer, animated) ---------- */
+async function initRadar(){
+  const idx=await fetch("https://api.rainviewer.com/public/weather-maps.json")
+    .then(r=>r.json()).catch(()=>null);
+  if(!idx||!idx.radar?.past?.length) return;
+  radarFrames=[...idx.radar.past, ...(idx.radar.nowcast||[])]
+    .map(f=>`${idx.host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`);
+  radarIdx=idx.radar.past.length-1;
+  map.addSource("radar",{type:"raster",tiles:[radarFrames[radarIdx]],tileSize:256,
+    attribution:"Radar © RainViewer"});
+  // Under the markers: weather is context, the gauges are the point.
+  const before=map.getLayer("prov-fill")?"prov-fill":undefined;
+  map.addLayer({id:"radar-r",type:"raster",source:"radar",
+    paint:{"raster-opacity":.6}},before);
+  applyVisibility();
+  startRadar();
+}
+function startRadar(){
+  clearInterval(radarTimer);
+  radarTimer=setInterval(()=>{
+    if(!shown.radar||!radarFrames.length||!map.getSource("radar")) return;
+    radarIdx=(radarIdx+1)%radarFrames.length;
+    map.getSource("radar").setTiles([radarFrames[radarIdx]]);
+  },900);
 }
 
 function modeColor(){
@@ -361,11 +522,110 @@ function pulse(){
     map.setPaintProperty("st-glow","circle-opacity",["case",["get","stale"],.15,o]);
   },70);
 }
+/* ---------- geolocated world radio, with an analog tuner ----------
+ * Idea borrowed from bilawalsidhu/gods-eye-view (MIT), which pairs Radio Browser with
+ * a map. The dial here is ordered by distance from wherever you are looking, so
+ * sweeping it walks outward from the middle of the screen rather than through a list.
+ * Only HTTPS streams are kept: an http stream on an https page is blocked as mixed
+ * content, so offering one would just be a button that silently does nothing.
+ */
+async function initRadio(){
+  const r=await fetch("https://de1.api.radio-browser.info/json/stations/search"
+    +"?has_geo_info=true&hidebroken=true&limit=800&order=clickcount&reverse=true",
+    {headers:{"Content-Type":"application/json"}}).then(x=>x.json()).catch(()=>null);
+  if(!Array.isArray(r)) return;
+  radioAll=r.filter(x=>x.geo_lat&&x.geo_long&&(x.url_resolved||"").startsWith("https"))
+    .map(x=>({name:x.name.trim(),url:x.url_resolved,cc:x.countrycode,
+              lat:+x.geo_lat,lon:+x.geo_long,bitrate:x.bitrate,tags:(x.tags||"").split(",")[0]}));
+  if(!radioAll.length) return;
+
+  map.addSource("radio",{type:"geojson",data:{type:"FeatureCollection",
+    features:radioAll.map((x,i)=>({type:"Feature",
+      geometry:{type:"Point",coordinates:[x.lon,x.lat]},properties:{i,name:x.name,cc:x.cc}}))}});
+  map.addLayer({id:"radio-c",type:"circle",source:"radio",paint:{
+    "circle-color":"#a78bfa","circle-radius":["interpolate",["linear"],["zoom"],3,2.2,8,5,13,8],
+    "circle-opacity":.85,"circle-stroke-width":1,"circle-stroke-color":"rgba(255,255,255,.65)"}});
+  map.on("click","radio-c",e=>{
+    const i=e.features[0].properties.i;
+    refreshDial(); 
+    const k=radioNear.findIndex(x=>x===radioAll[i]);
+    tuneTo(k>=0?k:0, true);
+    $("radio").classList.add("show");
+  });
+  map.on("mouseenter","radio-c",()=>map.getCanvas().style.cursor="pointer");
+  map.on("mouseleave","radio-c",()=>map.getCanvas().style.cursor="");
+  applyVisibility();
+}
+
+function km(a,b,c,d){
+  const R=6371,r=Math.PI/180;
+  const dp=(c-a)*r, dl=(d-b)*r;
+  const x=Math.sin(dp/2)**2+Math.cos(a*r)*Math.cos(c*r)*Math.sin(dl/2)**2;
+  return 2*R*Math.asin(Math.sqrt(x));
+}
+function refreshDial(){
+  if(!radioAll.length) return;
+  const c=map.getCenter();
+  radioNear=[...radioAll].sort((x,y)=>km(c.lat,c.lng,x.lat,x.lon)-km(c.lat,c.lng,y.lat,y.lon))
+    .slice(0,40);
+  drawDial();
+}
+function drawDial(){
+  const cv=$("dialc"); if(!cv) return;
+  const w=cv.clientWidth||320, h=46;
+  cv.width=w*devicePixelRatio; cv.height=h*devicePixelRatio;
+  const g=cv.getContext("2d"); g.scale(devicePixelRatio,devicePixelRatio);
+  g.clearRect(0,0,w,h);
+  g.strokeStyle="rgba(255,255,255,.16)"; g.lineWidth=1;
+  radioNear.forEach((st,i)=>{
+    const x=((i+0.5)/radioNear.length)*w;
+    const major=i%5===0;
+    g.beginPath(); g.moveTo(x, major?10:18); g.lineTo(x, h-12); g.stroke();
+    if(major){
+      g.fillStyle="rgba(255,255,255,.45)"; g.font="8px ui-monospace,monospace";
+      g.fillText(st.cc||"", x-6, h-3);
+    }
+  });
+  const nx=((radioIdx+0.5)/Math.max(radioNear.length,1))*w;
+  $("needle").style.left=`${nx}px`;
+}
+function tuneTo(i, play){
+  if(!radioNear.length) return;
+  radioIdx=Math.max(0,Math.min(radioNear.length-1,i));
+  const st=radioNear[radioIdx];
+  $("rname").textContent=st.name;
+  const c=map.getCenter();
+  $("rmeta").textContent=`${st.cc||"?"} · ${st.bitrate||"?"} kbps · ${Math.round(km(c.lat,c.lng,st.lat,st.lon))} km`
+    + (st.tags?` · ${st.tags}`:"");
+  drawDial();
+  if(play) playRadio(st);
+  else if(audio&&!audio.paused) playRadio(st);
+}
+function playRadio(st){
+  if(!audio){ audio=new Audio(); audio.crossOrigin="anonymous"; }
+  audio.src=st.url; audio.play().then(()=>{
+    $("rplay").textContent="⏸"; $("rplay").classList.add("playing");
+  }).catch(()=>{
+    // Dead streams are common in a crowd-sourced directory. Say so instead of
+    // leaving a play button that does nothing.
+    $("rplay").textContent="▶"; $("rplay").classList.remove("playing");
+    $("rmeta").textContent="stream unavailable";
+  });
+}
+
 function applyVisibility(){
   const set=(id,on)=>{ if(map.getLayer(id)) map.setLayoutProperty(id,"visibility",on?"visible":"none"); };
   set("prov-fill",shown.provinces); set("prov-line",shown.provinces);
   set("st-glow",shown.stations); set("st-core",shown.stations);
   set("tide-c",shown.tide);
+  set("radar-r",shown.radar);
+  set("quake-c",shown.quakes);
+  set("fire-c",shown.fires);
+  set("radio-c",shown.radio);
+  $("radio").classList.toggle("show",shown.radio);
+  if(shown.radio&&!radioNear.length) refreshDial();
+  if(!shown.radio&&audio){ audio.pause(); $("rplay").textContent="▶";
+    $("rplay").classList.remove("playing"); }
 }
 
 function stationPopup(e){
@@ -414,13 +674,28 @@ function tidePopup(e){
 function renderChrome(){
   document.documentElement.lang=LANG;
   $("h-base").textContent=t("base"); $("h-over").textContent=t("over");
-  $("o-sat").textContent=t("sat"); $("o-dark").textContent=t("dark"); $("o-light").textContent=t("light");
-  $("o-prov").textContent=t("prov"); $("o-stat").textContent=t("stat"); $("o-tide").textContent=t("tide");
-  $("camnote").textContent=t("camnote");
+  $("o-sat").textContent=t("sat"); $("o-dark").textContent=t("dark");
+  $("o-light").textContent=t("light"); $("o-osm").textContent=t("osm");
+  $("camnote").textContent=t("camnote")+(fires?"":" "+t("nofires"));
+  $("credit").textContent=t("credit");
+  $("fliplbl").textContent=basemap==="satellite"?t("map_s"):t("sat_s");
+  $("flip").firstChild.nodeValue=basemap==="satellite"?"🗺":"🛰";
+  $("rtip").textContent=t("tune");
+
+  // Tick boxes rather than pills: the user asked to "tick to show and unshow", and a
+  // checkbox says what it does without having to be learned.
+  $("layerlist").innerHTML=LAYERS.filter(l=>!l.optional||fires).map(l=>`
+    <div class="chk${shown[l.id]?" on":" off"}" data-layer="${l.id}">
+      <span class="box">✓</span>
+      <span>${esc(t(l.label))}${l.sub?`<small>${esc(t(l.sub))}</small>`:""}</span>
+      <span class="dotc" style="background:${l.colour}"></span>
+    </div>`).join("");
+  document.querySelectorAll("[data-layer]").forEach(el=>el.onclick=()=>{
+    shown[el.dataset.layer]=!shown[el.dataset.layer]; applyVisibility(); renderChrome();
+  });
   $("h-legend").textContent=t("legend"); $("h-worst").textContent=t("worst");
   document.querySelectorAll("#lang button").forEach(b=>b.classList.toggle("on",b.dataset.l===LANG));
   document.querySelectorAll("[data-base]").forEach(el=>el.classList.toggle("on",el.dataset.base===basemap));
-  document.querySelectorAll("[data-layer]").forEach(el=>el.classList.toggle("on",shown[el.dataset.layer]));
 
   const c=meta?.counts??{}, r=meta?.risk??{};
   $("stats").innerHTML=`
@@ -499,7 +774,8 @@ function setBasemap(name){
     center:[100.9,13.4],zoom:5.0,attributionControl:false,
     maxZoom:16,minZoom:3});
   map.addControl(new maplibregl.AttributionControl({compact:true,
-    customAttribution:"ThaiWater (HII) · Open-Meteo · SeRAPHIM AGPL-3.0"}));
+    customAttribution:"ThaiWater (HII) · Open-Meteo · USGS · RainViewer · Radio Browser · "
+      +"layers inspired by gods-eye-view (MIT) · SeRAPHIM AGPL-3.0"}));
   map.addControl(new maplibregl.NavigationControl({showCompass:false}),"bottom-right");
   map.addControl(new maplibregl.GeolocateControl({trackUserLocation:true}),"bottom-right");
   map.on("load",()=>{ addLayers(); renderChrome(); });
@@ -514,9 +790,29 @@ function setBasemap(name){
     LANG=b.dataset.l; localStorage.setItem("seraphim_lang",LANG); renderChrome();
   });
   document.querySelectorAll("[data-base]").forEach(el=>el.onclick=()=>setBasemap(el.dataset.base));
-  document.querySelectorAll("[data-layer]").forEach(el=>el.onclick=()=>{
-    shown[el.dataset.layer]=!shown[el.dataset.layer]; applyVisibility(); renderChrome();
-  });
+
+  // One tap to flip between imagery and a street map, without opening a drawer.
+  $("flip").onclick=()=>setBasemap(basemap==="satellite"?"osm":"satellite");
+
+  $("rclose").onclick=()=>{ shown.radio=false; applyVisibility(); renderChrome(); };
+  $("rplay").onclick=()=>{
+    if(!radioNear.length) refreshDial();
+    if(audio&&!audio.paused){ audio.pause(); $("rplay").textContent="▶";
+      $("rplay").classList.remove("playing"); }
+    else playRadio(radioNear[radioIdx]);
+  };
+  // Drag the dial like a tuner; also works as a tap anywhere along it.
+  let dragging=false;
+  const dialPick=(clientX)=>{
+    const r=$("dial").getBoundingClientRect();
+    const f=Math.max(0,Math.min(1,(clientX-r.left)/r.width));
+    tuneTo(Math.floor(f*radioNear.length), false);
+  };
+  $("dial").addEventListener("pointerdown",e=>{dragging=true;$("dial").setPointerCapture(e.pointerId);dialPick(e.clientX);});
+  $("dial").addEventListener("pointermove",e=>{ if(dragging) dialPick(e.clientX); });
+  $("dial").addEventListener("pointerup",e=>{ dragging=false; playRadio(radioNear[radioIdx]); });
+  map.on("moveend",()=>{ if(shown.radio) refreshDial(); });
+  window.addEventListener("resize",()=>{ if(shown.radio) drawDial(); });
   window.addEventListener("online",renderAge);
   window.addEventListener("offline",renderAge);
 
@@ -528,6 +824,8 @@ function setBasemap(name){
       await load();
       if(map.getSource("st")) map.getSource("st").setData(gj);
       if(map.getSource("prov")&&provinces) map.getSource("prov").setData(provinces);
+      if(map.getSource("quakes")&&quakes) map.getSource("quakes").setData(quakes);
+      if(map.getSource("fires")&&fires) map.getSource("fires").setData(fires);
       renderChrome();
     } else { renderAge(); }
   },60000);

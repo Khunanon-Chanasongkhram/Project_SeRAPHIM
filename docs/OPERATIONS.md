@@ -1,4 +1,4 @@
-# Operations — capacity, health, degraded mode
+# Operations, capacity, health, degraded mode
 
 Phase 6. Measured with `python3 -m tests.loadtest` from `workers/`, 2026-09-15.
 
@@ -51,7 +51,7 @@ that is what runs out.
 
 **The fix costs $5/month.** Cloudflare's Workers Paid plan raises the limit to 10M
 requests/month, roughly 50× what a national event needs. Nothing in the architecture
-changes. Budget it before flood season rather than during one — this is the single
+changes. Budget it before flood season rather than during one, this is the single
 cheapest thing standing between the system and the day it is needed most.
 
 D1 storage is not a constraint: a national event stores ~40 MB of the 500 MB free.
@@ -71,7 +71,7 @@ field instead of re-deriving judgement:
 | `reporting_rate` | ≤ 60% of stations stale | warn |
 | `snapshot_stale_after_minutes` | 90 min | cron runs every 30 min; 3 misses is a fault |
 
-`status` is `pass`, `warn` or `fail`. **The dangerous failure is the quiet one** — the
+`status` is `pass`, `warn` or `fail`. **The dangerous failure is the quiet one**, the
 pipeline keeps running, the map keeps rendering, and the data behind it stopped being
 true hours ago. Every check names what is wrong in words someone can act on.
 
@@ -84,9 +84,9 @@ Each layer fails toward still-being-useful:
 | Origin / snapshot unreachable | service worker serves the last cached snapshot; an amber banner states it is old and how old |
 | Snapshot older than 90 min | same banner, with the failing health checks listed |
 | Browser offline | banner says so explicitly and keeps the last known map |
-| No cached snapshot at all | clear failure message pointing at 1784 / 191 — never a blank page |
+| No cached snapshot at all | clear failure message pointing at 1784 / 191 - never a blank page |
 | SOS API unreachable | submissions queue in IndexedDB and retry every 45 s and on reconnect |
-| Rate limited (429) | treated as a retry, not a loss — the request stays queued |
+| Rate limited (429) | treated as a retry, not a loss - the request stays queued |
 | Ops API unreachable | the queue is live data with no useful cached version, so the console says so rather than leaving stale requests looking current |
 
 ## Rate limiting, and why it was shaped this way (historical, SOS only)
@@ -95,7 +95,7 @@ Load testing found the original design would have **silently blocked flood victi
 
 A single per-IP limit of 12 per 10 minutes looks reasonable until you remember that Thai
 mobile networks use carrier-grade NAT: thousands of subscribers share one public address.
-A limit tight enough to stop an abuser blocks an entire neighbourhood — and the people
+A limit tight enough to stop an abuser blocks an entire neighbourhood, and the people
 behind a shared mobile NAT are disproportionately those with no landline to call 1784 from.
 
 So there are two buckets, protecting against different things:
@@ -125,7 +125,7 @@ percentiles, throughput, and the capacity table above.
 
 ## Still open
 
-- **SMS / USSD intake** — needs a Thai telco or Twilio agreement. `source` already
+- **SMS / USSD intake**, needs a Thai telco or Twilio agreement. `source` already
   accepts `'sms'`, so intake slots in without a schema change.
 - **Real-network load testing** against a deployed Worker, rather than against the
   Python reference implementation.

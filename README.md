@@ -66,8 +66,14 @@ question, since none of this has been tested where it counts.
 ## What it does
 
 **Watch.** 1,121 live river gauges, rainfall, discharge forecasts, and tide prediction at
-23 points along both coasts, on one map. Satellite imagery by default, Thai and English,
-and it refreshes itself every 15 minutes without a reload.
+23 points along both coasts, on one map. Satellite imagery by default with a one tap flip
+to a street map, Thai and English, and it refreshes itself every 15 minutes without a
+reload.
+
+**Layers you can tick on and off.** Province risk shading, gauges, tide points, animated
+rain radar, earthquakes from the past 24 hours, active fires, and geolocated world radio
+with a tuner dial you can sweep. The radio has nothing to do with floods. It is there
+because it is fun, and because this is a project for enjoying.
 
 **Where, not just what.** All 77 provinces are shaded by the worst gauge in them, so you
 can see where the trouble is before you start tapping dots.
@@ -135,12 +141,29 @@ nothing to install.
 * **ThaiWater / HII** for the river gauges. Terms of use not confirmed yet, so do not
   put this in front of the public until that is sorted.
 * **Open-Meteo** for rain, river discharge and tide. CC-BY 4.0, non commercial.
-* **GDACS** and **USGS** for global events.
+* **USGS** for earthquakes, keyless.
+* **RainViewer** for global rain radar, keyless.
+* **Radio Browser** for geolocated stations, keyless.
+* **NASA FIRMS** for active fires. Optional: needs a free key, added as a repo secret so
+  it never reaches a browser. Without it the layer is just absent.
+* **Esri World Imagery** for satellite, **OpenStreetMap** and **CARTO** for maps.
 * Basemap from OpenStreetMap and CARTO.
 
 Everything in `docs/DATA_SOURCES.md` says whether I actually tested it and when. I did
 not take any of it from documentation alone, because a wrong water level is worse than no
 water level.
+
+## Credit where it is due
+
+The idea of putting a lot of live public feeds on one globe and letting you tick them on
+and off comes from [gods-eye-view](https://github.com/bilawalsidhu/gods-eye-view) by
+Bilawal Sidhu and Sameh Khamis, which is MIT licensed. The radio tuner, the earthquake
+layer, the active fire layer and the Esri plus OSM basemap stack are all their ideas, and
+several of the APIs here are ones they found first. SeRAPHIM shares no code with it, but
+it would look quite different without it.
+
+What is different here: this one is about water in Thailand. The gauges, the risk scoring,
+time to bank, the tide work and the fishing planner are its own.
 
 ## Licence
 

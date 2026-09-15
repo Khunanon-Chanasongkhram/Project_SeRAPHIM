@@ -355,6 +355,7 @@ def write_snapshot(
     areas: dict | None = None,
     fishing: dict | None = None,
     provinces: dict | None = None,
+    extra: dict[str, dict] | None = None,
 ) -> list[Path]:
     """Write the current snapshot. Gzip alongside: it is ~10x smaller and CDN-friendly."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -368,6 +369,9 @@ def write_snapshot(
         items.append(("fishing.json", fishing))
     if provinces is not None:
         items.append(("provinces.geojson", provinces))
+    for name, payload in (extra or {}).items():
+        if payload is not None:
+            items.append((name, payload))
     for name, payload in items:
         raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         path = out_dir / name

@@ -1,10 +1,10 @@
-# Security review — Phase 6
+# Security review, Phase 6
 
-Conducted 2026-09-15 against the Phase 0–4 codebase, before any deployment.
+Conducted 2026-09-15 against the Phase 0-4 codebase, before any deployment.
 All findings below are **fixed**; the notes explain the attack so the fix is not
 quietly reverted later.
 
-## F1 — Stored XSS in the responder console · CRITICAL · fixed
+## F1, Stored XSS in the responder console · CRITICAL · fixed
 
 **Attack.** `POST /api/sos` is public and unauthenticated. The `note` and
 `contact_name` fields were stored verbatim and rendered into `ops.html` with
@@ -15,7 +15,7 @@ quietly reverted later.
 ```
 
 executes in the browser of every responder who opens the queue, exfiltrating their
-bearer token — which grants read access to the name, phone number, precise location
+bearer token, which grants read access to the name, phone number, precise location
 and medical needs of everyone who asked for help.
 
 This is the most serious defect found: an anonymous attacker escalates to full access
@@ -24,10 +24,10 @@ to the public.
 
 **Fix.** An `esc()` escaper applied to every interpolated value in `ops.html`,
 `sos.html` and `index.html`, plus a restrictive Content-Security-Policy (F5) as
-defence in depth. Escaping happens at render, not on input — storing exactly what
+defence in depth. Escaping happens at render, not on input, storing exactly what
 someone typed matters when the text is a plea for help.
 
-## F2 — Province scope bypass · HIGH · fixed
+## F2, Province scope bypass · HIGH · fixed
 
 **Attack.** `scope_province` was enforced in the queue listing but **not** in
 `GET /api/sos/:id` or `PATCH /api/sos/:id`. A volunteer scoped to one district could
@@ -37,11 +37,11 @@ timestamp, so they are partially enumerable rather than unguessable.
 **Fix.** Scope is enforced in `detail()` and `update()` as well, returning `404` (not
 `403`) so a scoped responder cannot confirm that an out-of-scope request exists.
 
-## F3 — Deployable default IP salt · MEDIUM · fixed
+## F3, Deployable default IP salt · MEDIUM · fixed
 
 **Attack.** `IP_SALT` shipped as `change-me-before-deploy`. Deployed unchanged, every
 `ip_hash` is computed with a publicly known salt, so anyone who obtains the database
-can recover submitter IP addresses by hashing candidates — the IPv4 space is small
+can recover submitter IP addresses by hashing candidates, the IPv4 space is small
 enough to enumerate. That de-anonymises people who asked for help.
 
 **Fix.** The Worker refuses to accept submissions while the placeholder salt is in
@@ -49,7 +49,7 @@ place, returning a clear configuration error. Failing closed is correct here: a
 deployment that silently de-anonymises its users is worse than one that is visibly
 broken.
 
-## F4 — API origin taken from the URL query · MEDIUM · fixed
+## F4, API origin taken from the URL query · MEDIUM · fixed
 
 **Attack.** `sos.html` accepted `?api=` from the query string. A link such as
 `https://seraphim.example/sos.html?api=https://attacker.example` sends the victim's
@@ -60,14 +60,14 @@ fast through LINE and Facebook groups.
 **Fix.** The query parameter is honoured only for localhost (developer convenience);
 any other value is ignored in favour of the built-in origin.
 
-## F5 — No Content-Security-Policy · MEDIUM · fixed
+## F5, No Content-Security-Policy · MEDIUM · fixed
 
 **Fix.** `web/_headers` (Cloudflare Pages) sets a CSP restricting scripts to `self`
 and the two CDNs actually used, blocks framing, and disables the geolocation and
 camera permissions the pages do not need. This turns a future HTML-injection mistake
 from account takeover into a broken element.
 
-## F6 — Rate limiting would have blocked flood victims · HIGH · fixed
+## F6, Rate limiting would have blocked flood victims · HIGH · fixed
 
 Found by load testing rather than code review, which is why Phase 6 does both.
 
