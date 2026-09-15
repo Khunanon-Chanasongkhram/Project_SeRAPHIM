@@ -1,194 +1,152 @@
 # SeRAPHIM
 
-**S**ystem for **e**arly **R**eal-time **A**ssessment & **P**redictive **H**azard **I**ncident **M**onitoring
+System for early Real-time Assessment & Predictive Hazard Incident Monitoring.
 
-Flood intelligence and emergency coordination for Thailand, built to scale globally and
-to other hazards. Live river gauges, rainfall, tide and terrain on one map, with an
-early-warning engine that says *when* a bank overtops, not just that a level is high.
+A flood watching map for Thailand. It reads 1,121 public river gauges, mixes in rain and
+tide forecasts, and tries to answer one question: how long until this river comes over
+its bank?
 
----
+When nothing is flooding it turns into a fishing planner, because the same tide and moon
+data answers a much nicer question.
 
-## VIBE CODE ALERT
+## Vibe code alert
 
-> **This is a vibe code mini project. Please read this before you use it for anything.**
->
-> This whole thing was built fast, by one person, with heavy AI assistance, over a
-> handful of sessions. It is a personal side project and a learning exercise. It is not
-> a product, not an official service, and not something anybody has signed off on.
->
-> **What that actually means:**
->
-> * **It has never run in production.** At the time of writing it has never been
->   deployed, never served a real user, and never been through a real flood.
-> * **No hydrologist, engineer or emergency responder has reviewed it.** The risk
->   scoring is a transparent set of rules I wrote and can explain, not a validated
->   hydrological model. The fishing scoring is folklore plus arithmetic.
-> * **The data is third party and can be wrong, late or missing.** Gauges fail. Feeds
->   go down. Forecasts are forecasts. The system tries hard to say so when it does not
->   know, but it cannot know what it does not know.
-> * **Time-to-bank is linear extrapolation, not a prediction.** It assumes the river
->   keeps rising at exactly the rate it has been. Real rivers do not agree to that.
-> * **The terms of use for the Thai water data are not confirmed yet.** See
->   [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md).
->
-> **Do not make a safety decision based on this.** If water is rising where you are,
-> trust your own eyes, then trust the authorities, then maybe glance at this.
->
-> **In an emergency in Thailand, call 1784 (DDPM) or 191. Not this.**
->
-> It is open source under AGPL-3.0 so you can read exactly what it does and judge it
-> yourself. That is the point. If you find something wrong, please open an issue.
+Please read this part before anything else.
 
----
+I built this fast, mostly by talking to an AI, over a handful of sessions. It is a
+personal side project. It is not a product, it is not an official service, and nobody
+qualified has checked it.
 
-## Status
+So:
 
-Phases 0, 1, 2, 3, 4 and 6 are code complete and locally verified. Nothing is deployed
-yet. Phase 5 (terrain) and Phase 7 (global expansion) are not started.
-See [`PROGRESS.md`](PROGRESS.md) for the full build log, including the bugs found along
-the way and the ones I caught in my own work.
+* It has never run in production. No real user, no real flood, not once.
+* No hydrologist or emergency responder has looked at it. The risk scoring is a set of
+  rules I wrote. I can explain every one of them, but that is not the same as being
+  right.
+* The data comes from other people's APIs. Gauges break, feeds go down, forecasts are
+  forecasts. I try to show you when the data is old or missing, but I cannot show you
+  what I do not know about.
+* "Time to bank" assumes the river keeps rising at exactly the rate it has been rising.
+  Rivers do not agree to that.
+* I have not confirmed the terms of use for the Thai water data yet. See
+  `docs/DATA_SOURCES.md`.
+
+Do not make a safety decision because of this map. If the water is rising where you are,
+trust your eyes first, then the authorities, then maybe this.
+
+**In an emergency in Thailand call 1784 (DDPM) or 191. Not this.**
+
+It is AGPL so you can read exactly what it does instead of taking my word for it. If you
+find something wrong, please open an issue. I would rather know.
 
 ## Why it exists
 
-Thailand has excellent public water telemetry, 1,121 live gauges, and very little
-tooling that turns it into a decision. Most dashboards show a level and a colour. Almost
-none say:
+I am doing a PhD, and some weeks the research goes nowhere. You read, you write, you
+rerun everything, and at the end of the week you cannot point at anything and say "I
+made that." It gets to you after a while.
 
-> *This bank overtops in about 3.3 hours at the current rate, and a spring high tide at
-> 18:40 will slow drainage.*
+So I needed a thing to build. Something with an end of the day, where I could see
+progress and nobody was going to review it. This is that thing. It is my stress relief
+project, which is a strange thing to say about a flood warning system, but here we are.
 
-That sentence is the idea. Whether this delivers it well enough to matter is exactly
-what has not been tested yet.
+I picked floods because Thailand floods every year and I grew up with it in the news.
+And because when I went looking, the data was already there. Over a thousand gauges,
+updating all day, sitting in a public API that almost nothing is built on top of. Most of
+the dashboards I found show you a number and a colour. Almost none of them will say the
+thing you actually want to hear:
+
+> This bank goes over in about 3.3 hours at the current rate, and high tide at 18:40 will
+> stop it draining.
+
+That sentence is the whole idea. Whether I got anywhere near it is still an open
+question, since none of this has been tested where it counts.
 
 ## What it does
 
-**Watch.** 1,121 live Thai river gauges, rainfall, GloFAS discharge forecasts, and tide
-prediction at 23 verified coastal points, on one map.
+**Watch.** 1,121 live river gauges, rainfall, discharge forecasts, and tide prediction at
+23 points along both coasts, on one map.
 
-**Predict.** An explainable risk score (1 to 5) across 479 districts in all 77
-provinces, including **time-to-bank** and tide compounding, which is the mechanism
-behind much of Bangkok's flooding: discharge arriving when a high tide has shut the
-outflow. Every score carries the reasoning that produced it, in Thai and English.
+**Predict.** A risk score from 1 to 5 for every district in all 77 provinces, with time
+to bank where the trend is solid enough to show one. It also checks whether a high tide
+is about to block drainage, which is a big part of why Bangkok floods the way it does.
+Every score comes with the reasons behind it, in Thai and English, so you can disagree
+with it.
 
-**Respond.** Citizens request help offline first (the form works with no signal and
-syncs later). Verified responders triage on a live map with duplicate-collapsing
-clusters, so fourteen requests from one soi dispatch one boat rather than fourteen. Full
-PDPA controls: recorded consent, 90 day auto-purge, access logging.
+**Respond.** People can ask for help from a form that works with no signal and sends
+later when it reconnects. Volunteers and officials triage on a live map, and requests
+from the same soi get grouped so you send one boat instead of fourteen. Consent is
+recorded, data deletes itself after 90 days, and every look at someone's details is
+logged.
 
-**Calm mode.** On the days nothing is flooding, the same tide, weather and lunar data
-becomes a fishing planner for 40 spots. This is not a side feature. An app opened twice
-in a lifetime is an app nobody has installed when it matters. Retention is a safety
-feature.
+**Fish.** Tide, moon and weather for 40 spots, sea and reservoir and river. Partly
+because it is useful, and partly because an app you open twice in your life is an app
+you do not have installed when you need it.
 
-## Architecture: static first, $0/month
+## Status
 
-Free hosting turned out to improve the design. With no always-on server, the shape
-becomes: compute on a schedule, publish static files, serve from a CDN. That is also the
-most disaster-resilient option available, since static files on a global CDN are very
-hard to knock over.
+Phases 0, 1, 2, 3, 4 and 6 are built and tested locally. Nothing is deployed yet. Terrain
+(phase 5) and going global (phase 7) are not started.
 
-```
-GitHub Actions (cron)
-  -> fetch ThaiWater + Open-Meteo + GDACS
-  -> normalise to one datum (metres above MSL)
-  -> compute freeboard / time-to-bank / tide compounding
-  -> stations.geojson + meta.json -> Cloudflare R2/Pages -> CDN -> users
-```
+`PROGRESS.md` has the full build log, including the bugs. I kept the mistakes in there on
+purpose, including a few where I broke something and my own test caught it.
 
-**There is no runtime database on the monitoring path.** A million people opening the
-map during a flood costs nothing and touches no origin server. A live server is used for
-exactly one thing: accepting SOS submissions.
+## Running it
 
-Full detail in [`docs/PLAN.md`](docs/PLAN.md).
-
-## Deploying
-
-See **[`docs/DEPLOY.md`](docs/DEPLOY.md)**. Everything runs on free tiers, and no Node,
-npm or wrangler is needed locally, because the Worker deploys from CI. One file,
-`web/config.js`, points the site at your services.
-
-## Quickstart
-
-No dependencies. Python 3.11+ standard library only. No `pip install`, no `npm`.
+Python 3.11 or newer. No dependencies, no npm, no build step.
 
 ```bash
-# fetch live data and build a snapshot
+# pull live data and build a snapshot
 cd workers
 python3 -m seraphim.cli build --out ../data
-python3 -m seraphim.cli sources              # list registered adapters
-python3 -m seraphim.cli build --no-forecast  # water levels only, no upstream calls
 
 # tests
 python3 -m unittest discover -s tests -v
 
-# spike load test
-python3 -m tests.loadtest
-
-# view it
+# look at it
 cd .. && python3 -m http.server 8000
-# -> http://localhost:8000/web/
-
-# SOS API locally (no node required)
-cd workers && python3 -m seraphim.devserver --port 8788 --seed
-# -> citizen form: http://localhost:8000/web/sos.html?api=http://127.0.0.1:8788
-# -> ops console:  http://localhost:8000/web/ops.html  (paste the printed token)
+# then open http://localhost:8000/web/
 ```
 
-## Layout
+For the SOS side you also need the local API:
+
+```bash
+cd workers && python3 -m seraphim.devserver --port 8788 --seed
+# form:    http://localhost:8000/web/sos.html?api=http://127.0.0.1:8788
+# console: http://localhost:8000/web/ops.html   (paste the token it prints)
+```
+
+To put it online, `docs/DEPLOY.md` walks through it. It all fits on free tiers, and you
+do not need Node installed because the Worker deploys from GitHub Actions.
+
+## What is where
 
 | Path | What |
 |---|---|
-| **`docs/DEPLOY.md`** | **step by step deployment, start here to go live** |
-| `docs/PLAN.md` | architecture, risk engine, phases, risks |
-| `docs/SECURITY.md` | security review, 6 findings, all fixed |
-| `docs/OPERATIONS.md` | capacity, health thresholds, degraded mode |
-| `docs/DATA_SOURCES.md` | every endpoint, marked tested or unverified, with dates |
-| `workers/seraphim/adapters/` | one adapter per source, behind `SourceAdapter` |
-| `workers/seraphim/models.py` | canonical types; the datum contract lives here |
-| `workers/seraphim/risk.py` | risk engine: scoring, time-to-bank, tide compounding |
-| `workers/seraphim/history.py` | archive replay and least-squares rate of rise |
-| `workers/seraphim/tide.py` | extremes, lunar phase, empirical tidal-range classification |
-| `workers/seraphim/astro.py` | sun and moon position, rise, set, transit, validated |
-| `workers/seraphim/fishing.py` | solunar windows and transparent bite scoring |
-| `workers/seraphim/publish.py` | snapshot writer; the output contract *is* the API |
-| `workers/tests/loadtest.py` | spike load test |
-| `web/` | map (`index.html`), fishing (`fish.html`), SOS (`sos.html`), ops (`ops.html`) |
-| `api/` | Cloudflare Worker and D1 schema for SOS, plus the conformance suite |
-| `workers/seraphim/devserver.py` | Python dev server for the SOS API, no node needed |
+| `docs/DEPLOY.md` | how to get it online, start here |
+| `docs/PLAN.md` | the plan, the phases, what could go wrong |
+| `docs/SECURITY.md` | security review, six findings, all fixed |
+| `docs/OPERATIONS.md` | capacity, health checks, what happens when things break |
+| `docs/DATA_SOURCES.md` | every API, tested or not, with the date I checked |
+| `workers/seraphim/` | the Python that fetches, scores and publishes |
+| `web/` | the map, the fishing page, the SOS form, the ops console |
+| `api/` | the Cloudflare Worker and database for SOS |
 
-## Data sources and attribution
+## Where the data comes from
 
-See [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md) for verified endpoints and test dates.
+* **ThaiWater / HII** for the river gauges. Terms of use not confirmed yet, so do not
+  put this in front of the public until that is sorted.
+* **Open-Meteo** for rain, river discharge and tide. CC-BY 4.0, non commercial.
+* **GDACS** and **USGS** for global events.
+* Basemap from OpenStreetMap and CARTO.
 
-* **ThaiWater / Hydro-Informatics Institute (HII)**, Thai gauge telemetry.
-  Terms of use **not yet confirmed** with HII. Required before any public launch.
-* **Open-Meteo**, GloFAS river discharge, precipitation, tide
-  (`sea_level_height_msl`). CC-BY 4.0, non-commercial use.
-* **GDACS** and **USGS**, global multi-hazard events.
-* Basemap (c) OpenStreetMap contributors, (c) CARTO.
-
-Every endpoint in that file is marked tested or unverified, with the date it was
-checked. Nothing entered the code on the strength of documentation alone.
-
-## Design rules
-
-These are enforced in review. The reasoning is in [`CLAUDE.md`](CLAUDE.md).
-
-1. Never invent an endpoint. Probe it and record the result.
-2. One canonical datum (metres above MSL). Convert in the adapter, never downstream.
-3. A null never becomes `0.0`. "No reading" must not render as "river at zero".
-4. Every risk score ships with its reasoning. No bare colour badges.
-5. Always display data age. Cron drifts, so nothing is labelled "live".
-6. Public pages stay statically pre-rendered.
-7. A dead source degrades the map, it never takes it down.
-8. Time-to-bank is withheld unless the trend earns it. Weak fits publish nothing.
-9. SOS submissions are never lost to a bad connection. They queue locally and retry.
-10. Personal data is never returned unauthenticated, and every authorised read is logged.
+Everything in `docs/DATA_SOURCES.md` says whether I actually tested it and when. I did
+not take any of it from documentation alone, because a wrong water level is worse than no
+water level.
 
 ## Licence
 
-[GNU AGPL-3.0](LICENSE). Chosen deliberately: if someone runs a modified SeRAPHIM as a
-public service, the people relying on it are entitled to see what it actually does.
-Safety software should be inspectable by the people whose safety depends on it.
+AGPL-3.0. If someone runs a changed version of this as a public service, the people
+relying on it should be able to see what it really does. That seems like the right rule
+for something that claims to warn you about floods.
 
-That applies to this repository too. Read it before you trust it.
+Same goes here. Read it before you trust it.
