@@ -61,14 +61,33 @@ Copy the URL — it looks like `https://pub-<hash>.r2.dev`.
 > R2.dev is rate-limited and Cloudflare calls it development-grade. Fine to start; move
 > to a custom domain when you have one.
 
-**Add CORS**, or the browser blocks every fetch. Same Settings page → **CORS policy**:
+**Add CORS**, or the browser blocks every fetch and shows you an empty map with no
+error. Same Settings page → **CORS policy → Add CORS policy**:
 
 ```json
-[{ "AllowedOrigins": ["*"],
-   "AllowedMethods": ["GET", "HEAD"],
-   "AllowedHeaders": ["*"],
-   "MaxAgeSeconds": 3600 }]
+[
+  {
+    "AllowedOrigins": ["*"],
+    "AllowedMethods": ["GET", "HEAD"],
+    "AllowedHeaders": ["Content-Type", "Range"],
+    "ExposeHeaders": ["Content-Length", "Content-Range"],
+    "MaxAgeSeconds": 3600
+  }
+]
 ```
+
+Two notes. `"AllowedHeaders": ["*"]` is common in S3 examples but does not behave the
+same way on R2, so the headers are listed explicitly. And `"AllowedOrigins": ["*"]` is
+fine here because this bucket holds public, read-only flood data and no credentials are
+ever sent to it. Once you have your Pages URL you can narrow it to that origin.
+
+**Verify it before moving on:**
+
+```bash
+python3 scripts/check_deploy.py --data https://pub-<hash>.r2.dev/latest
+```
+
+This will fail until step 3 puts data in the bucket. That is expected.
 
 **Create an API token:** R2 → **Manage API Tokens → Create API token**,
 permission **Object Read & Write**, scoped to this bucket. Save the
@@ -90,7 +109,13 @@ Repo → **Settings → Secrets and variables → Actions → New repository sec
 | `CF_R2_SECRET_ACCESS_KEY` | from step 2 |
 
 **Check:** Actions → `ingest` → **Run workflow**. The summary should report ~1,121
-stations, and `https://pub-<hash>.r2.dev/latest/meta.json` should load in a browser.
+stations. Then:
+
+```bash
+python3 scripts/check_deploy.py --data https://pub-<hash>.r2.dev/latest
+```
+
+Everything should pass except time to bank, which warns until the archive has built up.
 
 > **Time-to-bank will be empty on the first runs.** It is computed from our own archive,
 > which the cache carries between runs, so it needs roughly 1–2 hours of history before
@@ -123,8 +148,15 @@ python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 **Deploy:** Actions → **deploy-api → Run workflow**, tick **apply_schema** the first
 time. Note the `*.workers.dev` URL it prints.
 
-**Check:** `https://seraphim-sos.<subdomain>.workers.dev/api/health` returns
-`{"ok":true,...}` with the 1784 / 191 disclaimer attached.
+**Check:**
+
+```bash
+python3 scripts/check_deploy.py --api https://seraphim-sos.<subdomain>.workers.dev
+```
+
+It confirms the Worker answers, that the disclaimer rides on responses, that an
+unauthenticated caller cannot read the queue, and that the public summary leaks no
+personal data.
 
 ---
 
