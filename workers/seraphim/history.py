@@ -27,6 +27,11 @@ DEFAULT_WINDOW_HOURS = 6.0
 MIN_POINTS = 3
 MIN_SPAN_HOURS = 0.75
 
+#: A river changing more slowly than this is treated as steady rather than trending.
+#: Matches the rate below which time-to-bank already refuses to publish, so the two
+#: agree about what counts as movement.
+STEADY_RATE_M_PER_HR = 0.01
+
 
 @dataclass(frozen=True, slots=True)
 class Trend:
@@ -39,9 +44,22 @@ class Trend:
 
     @property
     def confidence(self) -> str:
-        """good | fair | poor | none — drives whether a time-to-bank is published at all."""
+        """steady | good | fair | poor | none.
+
+        `steady` exists because of a measurement, not a hunch. Backtesting showed the
+        tiers were not ordered: "poor" predicted better than "fair". The cause was a
+        selection effect. A flat river has a low R2 because there is no signal to fit,
+        not because the fit is bad, and a flat river is trivially easy to predict, so
+        those stations were being filed under "poor" and quietly flattering it.
+
+        Splitting them out lets the remaining tiers mean what they claim: how much to
+        trust a rate of change on a river that is actually changing. The threshold
+        matches the one time-to-bank already uses, so the two agree on what movement is.
+        """
         if self.rate_m_per_hr is None or self.points < MIN_POINTS:
             return "none"
+        if abs(self.rate_m_per_hr) < STEADY_RATE_M_PER_HR:
+            return "steady"
         if self.points >= 5 and self.span_hours >= 2.0 and (self.r2 or 0) >= 0.7:
             return "good"
         if self.points >= 4 and (self.r2 or 0) >= 0.4:

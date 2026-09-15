@@ -27,6 +27,7 @@ from seraphim.publish import (
     write_snapshot,
 )
 from seraphim.risk import assess, rollup
+from seraphim.validate import backtest, format_report
 
 
 def _forecasts(
@@ -220,8 +221,19 @@ def build(
                 # Not an error: the layer is optional and needs a free NASA key.
                 print(f"[fires] skipped: {fh.error}")
 
+    # --- does the prediction actually predict? measured, then published ---
+    if archive:
+        import time as _time
+        t0 = _time.perf_counter()
+        validation = backtest(out_root / "archive")
+        validation["generated_at"] = generated_at.isoformat()
+        extra["validation.json"] = validation
+        print(f"[validation] {format_report(validation)}")
+        print(f"[validation] took {_time.perf_counter() - t0:.1f}s")
+
     geojson = build_geojson(states, risks)
-    meta = build_meta(states, health, generated_at, tide_points=len(tide_points), risks=risks)
+    meta = build_meta(states, health, generated_at, tide_points=len(tide_points),
+                      risks=risks, validation=extra.get("validation.json"))
     tide = build_tide(tide_points, generated_at) if tide_points else None
     areas_doc = build_areas(areas, generated_at)
     provinces = build_provinces(states, areas, generated_at)

@@ -233,7 +233,9 @@
     <div class="modes" id="modes"></div>
     <h5 id="h-legend"></h5>
     <div class="legend" id="legend"></div>
-    <h5 id="h-worst"></h5>
+    <h5 id="h-acc"></h5>
+  <div id="acc"></div>
+  <h5 id="h-worst"></h5>
     <div class="worst" id="worst"></div>
     <div class="disc" id="disc"></div>
   </div>
@@ -271,7 +273,10 @@ const I18N={
     tune:"ลากเพื่อหมุนหาคลื่น · แตะหมุดวิทยุบนแผนที่",
     mag:"ขนาด", depth:"ความลึก", when:"เมื่อ", frp:"ความแรง", conf:"ความเชื่อมั่น",
     nofires:"ไม่มีชั้นจุดความร้อน เพราะยังไม่ได้ตั้งค่าคีย์ NASA FIRMS",
-    credit:"แรงบันดาลใจชั้นข้อมูลจาก gods-eye-view (MIT)", sat_s:"ดาวเทียม", map_s:"แผนที่" },
+    credit:"แรงบันดาลใจชั้นข้อมูลจาก gods-eye-view (MIT)", sat_s:"ดาวเทียม", map_s:"แผนที่",
+    acc:"ความแม่นยำที่วัดได้", accnone:"ยังไม่มีข้อมูลพอจะวัด",
+    acc_err:"คลาดเคลื่อนทั่วไป", acc_skill:"ดีกว่าการเดาว่าน้ำไม่เปลี่ยน",
+    acc_hit:"คำเตือนที่เป็นจริง", acc_at:"ที่ระยะ", worse:"แย่กว่าการเดาว่าไม่เปลี่ยน" },
   en:{ base:"BASEMAP", sat:"Satellite", dark:"Dark", light:"Light",
     over:"LAYERS", prov:"Province risk", stat:"Gauges", tide:"Tide points",
     camnote:"No CCTV layer: no public camera feed has been found to build on.",
@@ -296,7 +301,10 @@ const I18N={
     tune:"drag to tune · or tap a radio pin on the map",
     mag:"magnitude", depth:"depth", when:"when", frp:"power", conf:"confidence",
     nofires:"No active-fire layer: a free NASA FIRMS key is not configured.",
-    credit:"Layer set inspired by gods-eye-view (MIT)", sat_s:"SAT", map_s:"MAP" }
+    credit:"Layer set inspired by gods-eye-view (MIT)", sat_s:"SAT", map_s:"MAP",
+    acc:"MEASURED ACCURACY", accnone:"not enough history to measure yet",
+    acc_err:"typical error", acc_skill:"better than assuming no change",
+    acc_hit:"bank warnings that came true", acc_at:"at", worse:"worse than assuming no change" }
 };
 let LANG = localStorage.getItem("seraphim_lang")
   || ((navigator.language||"").toLowerCase().startsWith("th") ? "th" : "en");
@@ -643,7 +651,9 @@ function stationPopup(e){
     ${tag}
     <div class="ph">${esc(p.name)||"-"}</div>
     <div class="psub">${esc(p.district)||""} ${esc(p.province)||""}${stale?" · "+esc(t("stale")):""}</div>
-    ${ttb!==null?`<div class="pttb">⚠ ${esc(t("ttb"))} ~${ttb} ${esc(t("hr"))} ${esc(t("est"))}</div>`:""}
+    ${ttb!==null?`<div class="pttb">⚠ ${esc(t("ttb"))} ~${ttb} ${esc(t("hr"))} ${esc(t("est"))}</div>
+      ${meta?.validation?`<div class="conf">${esc(t("acc_err"))} ±${meta.validation.median_error_m} m
+        ${esc(t("acc_at"))} ${meta.validation.lead_hours}h · n=${meta.validation.samples}</div>`:""}`:""}
     <div class="pr"><span>${esc(t("level"))}</span><span class="num">${fmt(n("level_msl")," m")}</span></div>
     <div class="pr"><span>${esc(t("bank"))}</span><span class="num">${fmt(n("bank_msl")," m")}</span></div>
     <div class="pr"><span>${esc(over?t("above"):t("fb"))}</span><span class="num" style="color:${over?RISK[5]:"inherit"}">${fb===null?"-":fmt(Math.abs(fb)," m")}</span></div>
@@ -694,6 +704,8 @@ function renderChrome(){
     shown[el.dataset.layer]=!shown[el.dataset.layer]; applyVisibility(); renderChrome();
   });
   $("h-legend").textContent=t("legend"); $("h-worst").textContent=t("worst");
+  $("h-acc").textContent=t("acc");
+  renderAccuracy();
   document.querySelectorAll("#lang button").forEach(b=>b.classList.toggle("on",b.dataset.l===LANG));
   document.querySelectorAll("[data-base]").forEach(el=>el.classList.toggle("on",el.dataset.base===basemap));
 
@@ -730,6 +742,27 @@ function renderChrome(){
 
   $("disc").innerHTML=t("disc")+` · <a href="./fish.html">${esc(t("fish"))}</a>`;
   renderAge();
+}
+
+/* The prediction should carry its own track record. A confident red "3.1 h to bank"
+   with nothing behind it invites more trust than it has earned. */
+function renderAccuracy(){
+  const v=meta?.validation;
+  const el=$("acc");
+  if(!v){ el.innerHTML=`<div style="font-size:11.5px;color:var(--faint)">${esc(t("accnone"))}</div>`; return; }
+  const skill=v.skill_vs_persistence;
+  const good=skill!=null&&skill>0;
+  const pct=skill==null?null:Math.round(Math.abs(skill)*100);
+  el.innerHTML=`
+    <div class="legend" style="margin-bottom:4px">
+      <div><span class="d" style="background:${good?"#3fb950":"#e5484d"}"></span>
+        ${esc(t("acc_err"))} ±${v.median_error_m} m ${esc(t("acc_at"))} ${v.lead_hours}h</div>
+      ${pct==null?"":`<div><span class="d" style="background:${good?"#3fb950":"#e5484d"}"></span>
+        ${pct}% ${esc(good?t("acc_skill"):t("worse"))}</div>`}
+      ${v.hit_rate==null?"":`<div><span class="d" style="background:#d99e0b"></span>
+        ${Math.round(v.hit_rate*100)}% ${esc(t("acc_hit"))}</div>`}
+    </div>
+    <div style="font-size:10px;color:var(--faint);line-height:1.4">${esc(v.note)} · n=${v.samples}</div>`;
 }
 
 function renderAge(){

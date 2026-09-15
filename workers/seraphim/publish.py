@@ -238,6 +238,7 @@ def build_meta(
     generated_at: datetime,
     tide_points: int = 0,
     risks: dict | None = None,
+    validation: dict | None = None,
 ) -> dict:
     """Machine-readable health. Published so a broken feed is visible, not silent."""
     ages = [s.data_age_minutes for s in states]
@@ -255,6 +256,7 @@ def build_meta(
             "tide_points": tide_points,
         },
         "risk": _risk_counts(risks or {}),
+        "validation": _validation_headline(validation),
         "health": build_health(states, health, {
             "stations": len(states),
             "stale": sum(1 for s in states if s.is_stale),
@@ -326,6 +328,29 @@ def build_health(states, health, meta_counts: dict) -> dict:
             "A client whose snapshot is older than snapshot_stale_after_minutes should "
             "tell the reader the data is stale rather than render it as current."
         ),
+    }
+
+
+def _validation_headline(validation: dict | None) -> dict | None:
+    """The one number a reader deserves next to a prediction: does it beat doing nothing?
+
+    Reported for rivers that actually moved, because predicting a flat river correctly
+    is not skill and flat rivers dominate the raw figure.
+    """
+    if not validation or not validation.get("by_lead"):
+        return None
+    rows = [r for r in validation["by_lead"] if r.get("moving_only")]
+    if not rows:
+        return None
+    best = max(rows, key=lambda r: r["moving_only"]["n"])
+    m = best["moving_only"]
+    return {
+        "lead_hours": best["lead_hours"],
+        "samples": m["n"],
+        "median_error_m": m["median_error_m"],
+        "skill_vs_persistence": m["skill_vs_persistence"],
+        "hit_rate": (validation.get("bank_calls") or {}).get("hit_rate"),
+        "note": "measured on rivers that actually moved; see validation.json",
     }
 
 

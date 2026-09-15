@@ -30,6 +30,48 @@ Then Phase 3 (calm mode / fishing), 5 (terrain) or 6 (harden + load test).
 
 ---
 
+## 2026-09-15 - Session 14: validation. The predictions are now measured.
+
+He chose validation over terrain. Right call: nothing in the project checked whether its
+headline number was true.
+
+**Built `seraphim/validate.py`.** Replays the archive, makes predictions using only data
+that existed at the time, compares to what happened. Runs every build in 0.2s, publishes
+`validation.json`, headline into `meta.json`, shown in the UI beside the prediction.
+
+**The result, on rivers that are actually moving: +35 to +40% skill against persistence**,
+typical error about 9 cm at 3 h lead. Across ALL rivers it is negative beyond 1 h, because
+on a flat river persistence is exactly right and extrapolating a small noisy trend only
+adds error. Time-to-bank already refuses to fire below 1 cm/hr, so it lives entirely in the
+regime where the forecast has skill. Both numbers are published; neither is hidden.
+
+**A bug the process caught in itself.** The first version matched predictions to the
+nearest observation within 30 min. Numbers looked plausible, were not: 738 of the real
+observation gaps are exactly 180 minutes, so origin+3h always landed on a reading and
+origin+2h never did, scoring zero. Each lead was measured on a different population of
+stations, making them incomparable. Fixed by interpolating the observed series to the exact
+target time. **The first version of a measurement can be wrong in a way that looks like a
+result.**
+
+**A real defect found and fixed: the confidence tiers were not ordered.** `poor` predicted
+better than `fair`. Cause was a selection effect, flat rivers scoring low R2 because there
+is no signal to fit, then being trivially easy to predict. Added a `steady` tier, which
+pulled out 1,284 flat cases; the moving tiers now order correctly by p90
+(good 0.157 < fair 0.239 < poor 0.260).
+
+**A process mistake worth remembering.** My first attempt at the `steady` edit silently did
+nothing: the docstring in `history.py` still contained an em dash (I had only cleaned the
+.md files) so the replace pattern never matched, and I reported success. Caught it only
+because the measurement did not change. **Assert that a replacement matched.**
+
+**Bank warnings: 7 of 11 came true, median timing error 3.06 h.** Sample far too small to
+mean anything; published anyway rather than waiting for a flattering number.
+
+Docs: `docs/VALIDATION.md`, plus a "Does it work?" section in the README with the real
+figures including the unflattering ones. 131 tests.
+
+---
+
 ## 2026-09-15 - Session 13: more layers, radio, and credit where it is due
 
 He asked for: satellite/normal switching, tick boxes for layers, weather, Esri + OSM

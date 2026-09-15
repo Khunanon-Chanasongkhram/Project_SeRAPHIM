@@ -88,6 +88,24 @@ with it.
 because it is useful, and partly because an app you open twice in your life is an app
 you do not have installed when you need it.
 
+## Does it work?
+
+I finally measured it instead of guessing. Every build now backtests its own predictions
+against what actually happened and publishes the result.
+
+On rivers that are actually moving, the forecast is about **35 to 40 percent better than
+assuming the level does not change**, with a typical error around 9 cm at a 3 hour lead.
+On flat rivers it is worse than doing nothing, which is why time-to-bank refuses to fire
+below 1 cm/hr and never sees that case.
+
+Bank warnings: 7 of 11 came true so far, with a median timing error of 3 hours. Eleven is
+far too small a sample to mean much, and I would not lean on that number yet.
+
+The measurement also found a real defect and fixed it: the confidence labels were not
+ordered, because flat rivers were being filed as "poor" and making that tier look good.
+Details, method and the bug I found in my own first attempt at measuring are in
+[`docs/VALIDATION.md`](docs/VALIDATION.md).
+
 ## Status
 
 Phases 0, 1, 2, 3 and 6 are built and tested locally. Terrain (phase 5) and going global
@@ -132,6 +150,7 @@ nothing to install.
 | `docs/SECURITY.md` | security review, six findings, all fixed |
 | `docs/OPERATIONS.md` | capacity, health checks, what happens when things break |
 | `docs/DATA_SOURCES.md` | every API, tested or not, with the date I checked |
+| `docs/VALIDATION.md` | whether the predictions are any good, measured |
 | `workers/seraphim/` | the Python that fetches, scores and publishes |
 | `web/` | the map and the fishing page |
 | `scripts/check_js.py` | scans inline JS and translations, since there is no Node here |
