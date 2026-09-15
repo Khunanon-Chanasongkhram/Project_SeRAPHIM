@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>SeRAPHIM — เฝ้าระวังน้ำ / Water Watch</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<style>
+  :root{
+    --bg:#f6f7f9; --fg:#12161c; --muted:#5b6672; --line:#dde3ea; --card:#fff;
+    --over:#c2182b; --high:#e8590c; --mid:#c99a06; --ok:#1c7ed6; --stale:#8b97a3;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font:14px/1.5 system-ui,-apple-system,"Noto Sans Thai",sans-serif;
+    color:var(--fg);background:var(--bg)}
+  #map{position:absolute;inset:0}
+  .panel{position:absolute;z-index:2;background:var(--card);border:1px solid var(--line);
+    border-radius:10px;box-shadow:0 2px 12px rgba(16,24,40,.10)}
+  #hud{top:calc(env(safe-area-inset-top,0px) + 10px);left:10px;width:min(330px,calc(100vw - 20px));padding:12px 14px}
+  h1{margin:0;font-size:15px;letter-spacing:.02em}
+  h1 span{color:var(--muted);font-weight:400}
+  .sub{color:var(--muted);font-size:11.5px;margin:2px 0 10px}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+  .stat{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 8px}
+  .stat b{display:block;font-size:19px;line-height:1.15;font-variant-numeric:tabular-nums}
+  .stat i{font-style:normal;color:var(--muted);font-size:10.5px}
+  .age{display:flex;align-items:center;gap:7px;font-size:12px;padding:7px 9px;border-radius:7px;
+    background:#eef6ff;border:1px solid #cfe3f8}
+  .age.warn{background:#fff6e6;border-color:#ffd8a8}
+  .age.bad{background:#ffeceb;border-color:#ffc9c9}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none}
+  .age.warn .dot{background:var(--high)} .age.bad .dot{background:var(--over)}
+  .legend{margin-top:10px;border-top:1px solid var(--line);padding-top:9px;
+    display:flex;flex-direction:column;gap:5px;font-size:11.5px;color:var(--muted)}
+  .legend div{display:flex;align-items:center;gap:7px}
+  .sw{width:11px;height:11px;border-radius:50%;border:1.5px solid rgba(0,0,0,.25);flex:none}
+  #alert{position:absolute;z-index:3;left:10px;right:10px;
+    bottom:calc(env(safe-area-inset-bottom,0px) + 10px);margin:0 auto;max-width:640px;
+    padding:9px 12px;font-size:12px;background:#fff8f8;border:1px solid #ffc9c9;color:#8b1a1a}
+  #alert b{color:var(--over)}
+  .maplibregl-popup-content{font:13px/1.45 system-ui,"Noto Sans Thai",sans-serif;padding:11px 13px;border-radius:9px}
+  .pop-h{font-weight:600;margin-bottom:5px}
+  .pop-r{display:flex;justify-content:space-between;gap:14px;padding:2px 0;border-top:1px solid #f0f2f5}
+  .pop-r span:first-child{color:var(--muted)}
+  .pop-r span:last-child{font-variant-numeric:tabular-nums;font-weight:500}
+  .tag{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;color:#fff;margin-bottom:5px}
+  @media (max-width:520px){ #hud{padding:10px 11px} .stat b{font-size:17px} }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="hud" class="panel">
+  <h1>SeRAPHIM <span>· เฝ้าระวังน้ำ</span></h1>
+  <div class="sub">ระดับน้ำจากสถานีโทรมาตร · Live river gauges, Thailand</div>
+  <div class="stats">
+    <div class="stat"><b id="s-total">–</b><i>สถานี / stations</i></div>
+    <div class="stat"><b id="s-over" style="color:var(--over)">–</b><i>ล้นตลิ่ง / over bank</i></div>
+    <div class="stat"><b id="s-stale" style="color:var(--stale)">–</b><i>ข้อมูลเก่า / stale</i></div>
+  </div>
+  <div class="age" id="age"><span class="dot"></span><span id="age-t">กำลังโหลด… / loading…</span></div>
+  <div class="legend">
+    <div><span class="sw" style="background:var(--over)"></span> ล้นตลิ่ง · over bank</div>
+    <div><span class="sw" style="background:var(--high)"></span> ต่ำกว่าตลิ่ง &lt; 0.5 ม. · &lt;0.5 m freeboard</div>
+    <div><span class="sw" style="background:var(--mid)"></span> 0.5–1.5 ม.</div>
+    <div><span class="sw" style="background:var(--ok)"></span> &gt; 1.5 ม. · ample</div>
+    <div><span class="sw" style="background:var(--stale);border-style:dashed"></span> ไม่ส่งข้อมูล · not reporting</div>
+  </div>
+</div>
+
+<div id="alert" class="panel">
+  <b>ไม่ใช่ช่องทางแจ้งเหตุฉุกเฉินทางราชการ</b> — เหตุด่วนโทร <b>1784</b> (ปภ.) หรือ <b>191</b>.
+  Not an official emergency channel — call <b>1784</b> / <b>191</b>.
+</div>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+// Snapshot location. Static file on a CDN — there is no API server to fall over.
+const DATA = new URLSearchParams(location.search).get("data")
+  || window.SERAPHIM_DATA_URL || "../data/out/stations.geojson";
+const META = DATA.replace(/stations\.geojson$/, "meta.json");
+
+const map = new maplibregl.Map({
+  container: "map",
+  // CARTO Positron: free, no API key, and light — chosen for daylight legibility on a
+  // phone rather than for looking dramatic.
+  style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+  center: [100.9, 13.6], zoom: 5.1, attributionControl: false
+});
+map.addControl(new maplibregl.AttributionControl({
+  compact: true,
+  customAttribution: "ข้อมูล / Data: ThaiWater (HII) · SeRAPHIM (AGPL-3.0)"
+}));
+map.addControl(new maplibregl.NavigationControl({showCompass:false}), "top-right");
+map.addControl(new maplibregl.GeolocateControl({trackUserLocation:true}), "top-right");
+
+const fmt = (v, u = "", d = 2) =>
+  (v === null || v === undefined) ? "—" : `${Number(v).toFixed(d)}${u}`;
+
+function ageLabel(min) {
+  if (min == null) return "—";
+  if (min < 90) return `${Math.round(min)} นาที / min`;
+  const h = min / 60;
+  return h < 48 ? `${h.toFixed(1)} ชม. / hr` : `${(h/24).toFixed(1)} วัน / days`;
+}
+
+map.on("load", async () => {
+  let gj, meta = null;
+  try {
+    gj = await (await fetch(DATA, {cache:"no-cache"})).json();
+    meta = await (await fetch(META, {cache:"no-cache"})).json().catch(() => null);
+  } catch (e) {
+    document.getElementById("age-t").textContent = "โหลดข้อมูลไม่สำเร็จ / failed to load snapshot";
+    document.getElementById("age").className = "age bad";
+    return;
+  }
+
+  map.addSource("st", {type:"geojson", data: gj});
+
+  // Colour encodes freeboard, but colour is never the ONLY signal: radius scales with
+  // severity too, and stations that stopped reporting get a dashed grey treatment.
+  const colour = [
+    "case",
+      ["get","stale"], "#8b97a3",
+      ["==", ["get","freeboard_m"], null], "#b6bfc9",
+      ["<=", ["get","freeboard_m"], 0],   "#c2182b",
+      ["<",  ["get","freeboard_m"], 0.5], "#e8590c",
+      ["<",  ["get","freeboard_m"], 1.5], "#c99a06",
+      "#1c7ed6"
+  ];
+
+  map.addLayer({
+    id:"st-c", type:"circle", source:"st",
+    paint:{
+      "circle-color": colour,
+      "circle-radius":["interpolate",["linear"],["zoom"],
+        4, ["case",["<=",["get","freeboard_m"],0],4.2,2.6],
+        9, ["case",["<=",["get","freeboard_m"],0],9,5.5],
+        13,["case",["<=",["get","freeboard_m"],0],15,10]],
+      "circle-stroke-width":["case",["get","stale"],1.4,1],
+      "circle-stroke-color":["case",["get","stale"],"#5b6672","#fff"],
+      "circle-opacity":["case",["get","stale"],.55,.92]
+    }
+  });
+
+  map.on("mouseenter","st-c",()=>map.getCanvas().style.cursor="pointer");
+  map.on("mouseleave","st-c",()=>map.getCanvas().style.cursor="");
+  map.on("click","st-c", e => {
+    const p = e.features[0].properties;
+    const fb = p.freeboard_m === null || p.freeboard_m === "" ? null : Number(p.freeboard_m);
+    const over = fb !== null && fb <= 0;
+    const tag = over
+      ? `<div class="tag" style="background:var(--over)">ล้นตลิ่ง · OVER BANK</div>`
+      : (p.stale === true || p.stale === "true"
+          ? `<div class="tag" style="background:var(--stale)">ไม่ส่งข้อมูล · NOT REPORTING</div>` : "");
+    new maplibregl.Popup({maxWidth:"310px"})
+      .setLngLat(e.lngLat)
+      .setHTML(`
+        ${tag}
+        <div class="pop-h">${p.name ?? "—"}</div>
+        <div class="pop-r"><span>จังหวัด / province</span><span>${p.province ?? "—"}</span></div>
+        <div class="pop-r"><span>ระดับน้ำ / level</span><span>${fmt(p.level_msl," m MSL")}</span></div>
+        <div class="pop-r"><span>ระดับตลิ่ง / bank</span><span>${fmt(p.bank_msl," m MSL")}</span></div>
+        <div class="pop-r"><span>${over?"สูงกว่าตลิ่ง / above bank":"ต่ำกว่าตลิ่ง / freeboard"}</span>
+          <span style="color:${over?"var(--over)":"inherit"}">${fb===null?"—":fmt(Math.abs(fb)," m")}</span></div>
+        <div class="pop-r"><span>อายุข้อมูล / data age</span><span>${ageLabel(Number(p.data_age_min))}</span></div>
+        <div class="pop-r"><span>หน่วยงาน / agency</span><span>${p.agency ?? "—"}</span></div>
+      `).addTo(map);
+  });
+
+  // Headline counts come from the snapshot's own meta, so the UI cannot disagree with
+  // what the pipeline actually published.
+  const c = meta?.counts ?? {};
+  document.getElementById("s-total").textContent = c.stations ?? gj.features.length;
+  document.getElementById("s-over").textContent  = c.at_or_over_bank ?? "–";
+  document.getElementById("s-stale").textContent = c.stale ?? "–";
+
+  // Data age is displayed, never hidden: Actions cron drifts, so "live" would be a lie.
+  const gen = meta?.generated_at ? new Date(meta.generated_at) : null;
+  const mins = gen ? (Date.now() - gen.getTime()) / 60000 : null;
+  const el = document.getElementById("age");
+  const med = meta?.data_age_minutes?.median;
+  el.className = "age" + (mins == null || mins > 180 ? " bad" : mins > 75 ? " warn" : "");
+  document.getElementById("age-t").textContent = gen
+    ? `อัปเดตเมื่อ ${ageLabel(mins)} ที่แล้ว · median reading age ${ageLabel(med)}`
+    : "ไม่ทราบเวลาข้อมูล / snapshot time unknown";
+});
+</script>
+</body>
+</html>

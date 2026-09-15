@@ -1,0 +1,15 @@
+# Snapshot output — published to Cloudflare, never committed.
+# ~600 KB/snapshot x 48/day would add ~10 GB/year to this repo.
+/data/out/
+/data/archive/
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+.DS_Store
+.pytest_cache/
+node_modules/

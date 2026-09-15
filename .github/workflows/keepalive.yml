@@ -1,0 +1,26 @@
+name: keepalive
+
+# GitHub disables scheduled workflows after 60 days of repository inactivity, silently.
+# This project's ingest job deliberately commits nothing (snapshots go to R2, not git),
+# so without this the cron would simply stop one day with no failure and no alert.
+on:
+  schedule:
+    - cron: "0 3 1 * *" # 03:00 UTC on the 1st of each month
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  touch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          date -u +"last keepalive: %Y-%m-%dT%H:%M:%SZ" > .github/HEARTBEAT
+          git config user.name "seraphim-bot"
+          git config user.email "noreply@users.noreply.github.com"
+          git add .github/HEARTBEAT
+          git diff --staged --quiet || git commit -m "chore: keepalive (keeps scheduled workflows enabled)"
+          git push

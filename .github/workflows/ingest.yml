@@ -1,0 +1,87 @@
+name: ingest
+
+# CADENCE NOTE — this is the single most cost-sensitive line in the repo.
+# Private repos get 2,000 Actions minutes/month on the Free plan, and every job is
+# rounded UP to a whole minute. At */30 that is ~1,440 min/month, which fits.
+# At */15 it would be ~2,880 min/month, which does NOT.
+# Public repos get unlimited minutes — when this repo goes public, drop to */15 or */10.
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths: ["workers/**", ".github/workflows/ingest.yml"]
+
+concurrency:
+  # Never let a slow run overlap the next tick.
+  group: ingest
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # No pip install: the project is stdlib-only by design. Nothing to cache,
+      # no supply chain, and the job starts in seconds — which is what keeps us
+      # inside the free minute budget.
+      - name: Tests
+        working-directory: workers
+        run: python -m unittest discover -s tests -q
+
+      - name: Build snapshot
+        working-directory: workers
+        run: python -m seraphim.cli build --out ../data
+
+      - name: Summary
+        run: |
+          python - <<'PY'
+          import json, pathlib
+          m = json.loads(pathlib.Path("data/out/meta.json").read_text(encoding="utf-8"))
+          c, a = m["counts"], m["data_age_minutes"]
+          out = pathlib.Path(__import__("os").environ["GITHUB_STEP_SUMMARY"])
+          out.write_text(
+              f"### SeRAPHIM snapshot\n\n"
+              f"- generated: `{m['generated_at']}`\n"
+              f"- stations: **{c['stations']}** ({c['with_bank_level']} with bank level)\n"
+              f"- at/over bank: **{c['at_or_over_bank']}**\n"
+              f"- stale: {c['stale']} | median age: {a['median']} min\n\n"
+              + "\n".join(
+                  f"- `{s['source']}` ok={s['ok']} stations={s['stations']}"
+                  + (f" error={s['error']}" if s.get("error") else "")
+                  + "".join(f"\n  - ⚠️ {w}" for w in s.get("warnings", []))
+                  for s in m["sources"]
+              ),
+              encoding="utf-8",
+          )
+          PY
+
+      # Publishes only when R2 secrets exist, so the workflow is green from day one
+      # and starts publishing the moment Cloudflare is wired up.
+      - name: Publish to Cloudflare R2
+        if: ${{ env.CF_ACCOUNT_ID != '' }}
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          BUCKET: ${{ secrets.CF_R2_BUCKET }}
+        run: |
+          ENDPOINT="https://${CF_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          # Short max-age: clients must be able to see a fresh snapshot quickly,
+          # but stale-while-revalidate keeps the map up if a build fails.
+          aws s3 cp data/out/ "s3://${BUCKET}/latest/" --recursive \
+            --endpoint-url "$ENDPOINT" \
+            --cache-control "public, max-age=60, stale-while-revalidate=1800"
+          aws s3 cp data/archive/ "s3://${BUCKET}/archive/" --recursive \
+            --endpoint-url "$ENDPOINT" --cache-control "public, max-age=31536000, immutable"
