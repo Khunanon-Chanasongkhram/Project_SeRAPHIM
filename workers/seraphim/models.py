@@ -164,6 +164,45 @@ class Forecast:
     forecast_level_at: str | None = None
     forecast_level_source: str | None = None
 
+    # --- flood history, from this gauge's own GloFAS grid cell -------------------
+    # All of this is MODELLED river flow measured against its own past, never an
+    # observation that anywhere flooded and never a flood extent or depth. See
+    # floodhist.py. Absent entirely for cells whose climatology has not been fetched
+    # yet, which the UI reports rather than papering over.
+    #: Years of record behind the numbers below.
+    flood_years: float | None = None
+    #: Where today's modelled flow sits in that record, 0-100.
+    flood_percentile: float | None = None
+    #: 0-3, how often this cell runs above its own 2-year flow level. About frequency,
+    #: not about today: a place is flood-prone in the dry season too.
+    flood_prone: int | None = None
+    #: Days a year this river runs above its own 2-year flow level. The statistic
+    #: flood exposure is built on. NOT the episode count, which is pinned near five a
+    #: decade by the definition of a 2-year return period and so is the same number for
+    #: every river on Earth; see floodhist.STATS_SCHEMA.
+    flood_high_days_per_year: float | None = None
+    #: Steepness of the flood growth curve, 10-year level over 2-year level.
+    flood_growth_ratio: float | None = None
+    flood_last_episode_on: str | None = None
+    flood_worst_cms: float | None = None
+    flood_worst_on: str | None = None
+    #: Flow this river reaches about once every 2 (or 5) years, from a Gumbel fit to
+    #: annual maxima. The yardstick the outlook below is measured against.
+    flood_return_2y_cms: float | None = None
+    flood_return_5y_cms: float | None = None
+    #: The predicted half: day of the 30-day outlook on which flow first reaches the
+    #: 2- or 5-year level, and which of the two it is.
+    #: Day of the 30-day outlook on which flow first reaches the 2-year level: the
+    #: soonest crossing worth acting on.
+    flood_outlook_day: int | None = None
+    #: And the day it first reaches the rarer 5-year level, where it does at all.
+    flood_outlook_5y_day: int | None = None
+    #: The strongest level the outlook reaches, 2 or 5, for the label.
+    flood_outlook_period_y: int | None = None
+    flood_outlook_peak_vs_2y: float | None = None
+    #: Months this river normally runs highest, e.g. "Aug-Oct".
+    flood_season_months: str | None = None
+
     @property
     def discharge_rise_ratio(self) -> float | None:
         """Peak forecast discharge ÷ today's. >1 means the model expects a rise.

@@ -15,6 +15,21 @@
     --l1:#2f81f7; --l2:#d99e0b; --l3:#e8590c; --l4:#e5484d; --l5:#ff2d55;
     --ok:#3fb950;
     --sheet-collapsed:74px;
+    /* One easing curve and three durations for the whole interface. Motion that all
+       moves the same way reads as one object; motion that each element invents for
+       itself reads as jitter. */
+    --ease:cubic-bezier(.22,.61,.36,1);
+    --ease-out:cubic-bezier(.16,1,.3,1);
+    --fast:.13s; --med:.24s; --slow:.42s;
+    --fp1:#fbbf24; --fp2:#f97316; --fp3:#b91c1c;
+  }
+  /* Somebody who has asked their operating system to stop animating things has usually
+     asked for a reason, and "emergency map" is not an exemption. Everything below still
+     changes state, it just stops travelling to get there. */
+  @media (prefers-reduced-motion: reduce){
+    :root{--fast:0s; --med:0s; --slow:0s}
+    *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;
+      transition-duration:.001ms!important;scroll-behavior:auto!important}
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--fg);
@@ -40,28 +55,45 @@
   @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(63,185,80,.55)}70%{box-shadow:0 0 0 9px rgba(63,185,80,0)}100%{box-shadow:0 0 0 0 rgba(63,185,80,0)}}
   .btn{background:var(--panel);border:1px solid var(--line);color:var(--fg);
     border-radius:9px;padding:7px 10px;font:inherit;font-size:12px;cursor:pointer;
-    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);line-height:1}
-  .btn:active{background:rgba(255,255,255,.1)}
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);line-height:1;
+    transition:background var(--fast) var(--ease),border-color var(--fast) var(--ease),
+      transform var(--fast) var(--ease),color var(--fast) var(--ease)}
+  .btn:hover{border-color:var(--line-strong)}
+  .btn:active{background:rgba(255,255,255,.1);transform:scale(.96)}
   .btn.on{background:var(--fg);color:var(--panel-solid);border-color:var(--fg);font-weight:700}
   .seg{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:9px;
     overflow:hidden;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
   .seg button{background:none;border:0;color:var(--dim);font:inherit;font-size:11px;
-    font-weight:700;padding:7px 9px;cursor:pointer}
+    font-weight:700;padding:7px 9px;cursor:pointer;
+    transition:background var(--fast) var(--ease),color var(--fast) var(--ease)}
+  .seg button:hover{color:var(--fg)}
   .seg button.on{background:var(--fg);color:var(--panel-solid)}
+  /* A visible focus ring, because the map is operable from a keyboard and an invisible
+     one means it is not. :focus-visible so a mouse click does not leave a ring behind. */
+  :focus-visible{outline:2px solid var(--l1);outline-offset:2px;border-radius:7px}
 
   /* ---------- layers drawer ---------- */
   #layers{position:absolute;z-index:6;top:calc(env(safe-area-inset-top,0px) + 50px);right:10px;
     width:min(240px,calc(100vw - 20px));background:var(--panel);border:1px solid var(--line);
     border-radius:13px;padding:11px;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
-    display:none;box-shadow:0 12px 40px rgba(0,0,0,.55)}
-  #layers.show{display:block}
+    box-shadow:0 12px 40px rgba(0,0,0,.55);
+    /* Animated open/close instead of display:none, which cannot be transitioned and
+       so made every panel appear as a jump cut. visibility keeps it out of the tab
+       order while closed. */
+    opacity:0;visibility:hidden;transform:translateY(-8px) scale(.97);
+    transform-origin:top right;
+    transition:opacity var(--med) var(--ease-out),transform var(--med) var(--ease-out),
+      visibility 0s linear var(--med)}
+  #layers.show{opacity:1;visibility:visible;transform:none;transition-delay:0s}
   #layers h4{margin:0 0 6px;font-size:10px;letter-spacing:.12em;color:var(--faint);font-weight:700}
   #layers h4:not(:first-child){margin-top:12px}
   .opt{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:8px;cursor:pointer;
-    font-size:12.5px}
+    font-size:12.5px;transition:background var(--fast) var(--ease)}
+  .opt:hover{background:rgba(255,255,255,.05)}
   .opt:active{background:rgba(255,255,255,.07)}
   .opt.on{background:rgba(47,129,247,.18)}
-  .opt .sw{width:9px;height:9px;border-radius:50%;background:var(--faint);flex:none}
+  .opt .sw{width:9px;height:9px;border-radius:50%;background:var(--faint);flex:none;
+    transition:background var(--med) var(--ease),box-shadow var(--med) var(--ease)}
   .opt.on .sw{background:var(--l1);box-shadow:0 0 8px var(--l1)}
   .note{font-size:10.5px;color:var(--faint);line-height:1.4;margin-top:9px;
     padding-top:9px;border-top:1px solid var(--line)}
@@ -70,19 +102,38 @@
   #sheet{position:absolute;z-index:5;left:0;right:0;bottom:0;
     background:var(--panel);border-top:1px solid var(--line-strong);
     border-radius:16px 16px 0 0;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
-    max-height:min(62vh,520px);height:var(--sheet-collapsed);
-    transition:height .26s cubic-bezier(.4,0,.2,1);overflow:hidden;
-    box-shadow:0 -10px 40px rgba(0,0,0,.5)}
+    max-height:min(88vh,760px);height:var(--sheet-collapsed);
+    transition:height var(--med) var(--ease-out);overflow:hidden;
+    box-shadow:0 -10px 40px rgba(0,0,0,.5);
+    /* The sheet is the one element that moves on every interaction, so it is promoted
+       to its own layer once rather than re-rasterised each frame. */
+    will-change:height;touch-action:none}
   #sheet.open{height:min(62vh,520px)}
-  #grab{padding:7px 0 3px;display:flex;justify-content:center;cursor:pointer}
-  #grab i{display:block;width:34px;height:4px;border-radius:2px;background:var(--line-strong)}
-  #sheetbody{overflow-y:auto;max-height:calc(min(62vh,520px) - 18px);
-    padding:0 12px calc(env(safe-area-inset-bottom,0px) + 14px);-webkit-overflow-scrolling:touch}
+  #sheet.full{height:min(88vh,760px)}
+  /* While a finger is on it the height follows the finger directly, so the transition
+     has to be out of the way or every frame fights the last one. */
+  #sheet.dragging{transition:none}
+  #grab{padding:9px 0 5px;display:flex;justify-content:center;cursor:grab;
+    touch-action:none}
+  #grab:active{cursor:grabbing}
+  #grab i{display:block;width:38px;height:4px;border-radius:2px;background:var(--line-strong);
+    transition:background var(--fast) var(--ease),width var(--med) var(--ease)}
+  #grab:hover i{background:var(--dim);width:46px}
+  #sheetbody{overflow-y:auto;max-height:calc(min(88vh,760px) - 22px);
+    padding:0 12px calc(env(safe-area-inset-bottom,0px) + 14px);-webkit-overflow-scrolling:touch;
+    overscroll-behavior:contain;touch-action:pan-y}
 
   .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;cursor:pointer}
   .stat{background:rgba(255,255,255,.045);border:1px solid var(--line);border-radius:10px;
-    padding:7px 9px}
+    padding:7px 9px;transition:background var(--fast) var(--ease),
+      border-color var(--fast) var(--ease),transform var(--fast) var(--ease)}
+  .stats:hover .stat{background:rgba(255,255,255,.07)}
+  .stats:active .stat{transform:scale(.985)}
   .stat b{display:block;font-size:20px;line-height:1.1}
+  /* A number that changes should be seen to change, or a phone on a windowsill silently
+     goes from 12 over bank to 40 and nobody notices. */
+  .stat b.bump{animation:bump var(--slow) var(--ease-out)}
+  @keyframes bump{0%{transform:scale(1)}30%{transform:scale(1.22)}100%{transform:scale(1)}}
   .stat i{font-style:normal;font-size:9.5px;color:var(--dim);letter-spacing:.03em}
   .age{margin-top:9px;font-size:11px;color:var(--dim);display:flex;gap:6px;align-items:center}
 
@@ -162,8 +213,10 @@
     box-shadow:0 0 10px var(--l4);pointer-events:none}
   .rtip{font-size:10px;color:var(--faint);margin-top:6px;text-align:center}
 
-  #degraded{position:absolute;z-index:7;left:10px;right:10px;
-    top:calc(env(safe-area-inset-top,0px) + 50px);margin:0 auto;max-width:520px;
+  /* Lives inside #toasts so a staleness banner and an alert stack instead of landing
+     on top of each other, which is what happened when both were absolutely positioned
+     at the same offset. */
+  #degraded{pointer-events:auto;
     background:rgba(60,20,10,.92);border:1px solid rgba(232,89,12,.5);color:#ffd9c2;
     border-radius:11px;padding:9px 12px;font-size:11.5px;display:none;
     backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
@@ -217,12 +270,134 @@
   #livebtn .pulse{width:7px;height:7px;border-radius:50%;background:#3fb950;flex:none;
     animation:lp 1.8s ease-in-out infinite}
   #livebtn.off .pulse{display:none}
+  #livebtn.paused .pulse{animation:none;background:var(--faint)}
   @keyframes lp{0%,100%{opacity:1}50%{opacity:.25}}
   [hidden]{display:none!important}
+
+  /* ---------- popups: arrive, rather than appear ---------- */
+  .maplibregl-popup{animation:popin var(--med) var(--ease-out)}
+  @keyframes popin{from{opacity:0;transform:translateY(6px) scale(.96)}to{opacity:1;transform:none}}
+  .maplibregl-popup-content{max-height:min(70vh,560px);overflow-y:auto;overscroll-behavior:contain}
+  .sharebtn{transition:background var(--fast) var(--ease),border-color var(--fast) var(--ease),
+    transform var(--fast) var(--ease)}
+  .sharebtn:hover{background:#242a33;border-color:#3a414b;color:var(--fg)}
+  .sharebtn:active{transform:scale(.97)}
+
+  /* ---------- toasts ----------
+     The watch alerts used to be written into #degraded, which renderAge() rewrites
+     every 60 seconds, so an alert could be erased by a routine staleness check before
+     anyone read it. Alerts get their own surface that nothing else touches. */
+  #toasts{position:absolute;z-index:9;left:10px;right:10px;
+    top:calc(env(safe-area-inset-top,0px) + 50px);margin:0 auto;max-width:520px;
+    display:flex;flex-direction:column;gap:7px;pointer-events:none}
+  .toast{pointer-events:auto;background:rgba(18,23,30,.96);border:1px solid var(--line-strong);
+    border-left:3px solid var(--l1);border-radius:11px;padding:10px 12px;font-size:12px;
+    box-shadow:0 12px 34px rgba(0,0,0,.6);backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);display:flex;gap:10px;align-items:flex-start;
+    animation:toastin var(--med) var(--ease-out)}
+  .toast.alert{border-left-color:var(--l5);background:rgba(48,12,18,.96);color:#ffd9e0}
+  .toast.info{border-left-color:var(--l1)}
+  .toast.leaving{animation:toastout var(--med) var(--ease) forwards}
+  @keyframes toastin{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
+  @keyframes toastout{to{opacity:0;transform:translateY(-8px)}}
+  .toast .tbody{flex:1;min-width:0;line-height:1.45}
+  .toast .tbody b{display:block;margin-bottom:2px}
+  .toast button{background:rgba(255,255,255,.08);border:1px solid var(--line);color:inherit;
+    border-radius:7px;font:inherit;font-size:11px;padding:5px 9px;cursor:pointer;flex:none}
+  .toast button:active{transform:scale(.95)}
+
+  /* ---------- first paint ----------
+     Until now the page was a black rectangle while ~1 MB of gauges downloaded, which
+     on a slow connection is indistinguishable from a site that is broken. */
+  #boot{position:absolute;inset:0;z-index:20;display:grid;place-items:center;
+    background:var(--bg);transition:opacity var(--slow) var(--ease),visibility 0s linear var(--slow)}
+  #boot.gone{opacity:0;visibility:hidden;pointer-events:none}
+  #boot .bwrap{text-align:center}
+  #boot .bmark{font-size:15px;font-weight:700;letter-spacing:.2em;margin-bottom:14px}
+  #boot .bbar{width:168px;height:3px;border-radius:2px;background:rgba(255,255,255,.1);
+    overflow:hidden;margin:0 auto}
+  #boot .bbar i{display:block;height:100%;width:40%;border-radius:2px;background:var(--l1);
+    animation:slide 1.25s var(--ease) infinite}
+  @keyframes slide{0%{transform:translateX(-110%)}100%{transform:translateX(320%)}}
+  #boot .bmsg{margin-top:11px;font-size:11px;color:var(--faint)}
+
+  /* ---------- flood history in the popup ---------- */
+  .fh{margin-top:9px;background:rgba(56,189,248,.07);border:1px solid rgba(56,189,248,.2);
+    border-radius:9px;padding:8px 10px}
+  .fh b.fhh{display:block;font-size:9.5px;letter-spacing:.1em;color:#7dd3fc;margin-bottom:5px}
+  .fh .pr{border-top-color:rgba(255,255,255,.07)}
+  .fh .pr:first-of-type{border-top:0}
+  /* One bar is worth more than one number here: "92nd percentile" means little, a bar
+     nearly full against a marked 2-year line means it immediately. */
+  .fhbar{position:relative;height:7px;border-radius:4px;margin:7px 0 3px;
+    background:rgba(255,255,255,.09);overflow:hidden}
+  .fhbar i{display:block;height:100%;border-radius:4px;
+    background:linear-gradient(90deg,#0ea5e9,#f59e0b 72%,#e5484d);
+    animation:grow var(--slow) var(--ease-out)}
+  @keyframes grow{from{width:0}}
+  .fhscale{display:flex;justify-content:space-between;font-size:9px;color:var(--faint)}
+  .fhout{margin-top:7px;padding:7px 9px;border-radius:8px;background:rgba(229,72,77,.14);
+    border:1px solid rgba(229,72,77,.34);font-size:11.5px;color:#ffc9cd;line-height:1.45}
+  .fhout b{color:#fff}
+  .fhpill{display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.06em;
+    padding:2px 7px;border-radius:999px;color:#1a1207;margin-left:6px}
+
+  /* ---------- forecast sparkline ---------- */
+  .spark{margin:7px 0 2px}
+  .spark svg{display:block;width:100%;height:46px;overflow:visible}
+  .spark .sline{fill:none;stroke:#38bdf8;stroke-width:1.8;stroke-linecap:round;
+    stroke-linejoin:round}
+  .spark .sband{fill:rgba(56,189,248,.16)}
+  .spark .sbank{stroke:var(--l5);stroke-width:1;stroke-dasharray:3 3}
+  .spark .sdot{fill:#38bdf8}
+  .spark .stxt{fill:var(--faint);font-size:8px}
+
+  /* ---------- timeline ---------- */
+  #tlplay{background:#171b21;border:1px solid #2a2f36;color:#e8edf3;border-radius:7px;
+    width:30px;height:30px;font-size:12px;cursor:pointer;flex:none;
+    transition:background var(--fast) var(--ease),transform var(--fast) var(--ease)}
+  #tlplay:active{transform:scale(.92)}
+  #tlplay.on{background:var(--l1);border-color:var(--l1)}
+  .tlrow{display:flex;gap:6px;align-items:center}
+  .tlbtns button{transition:background var(--fast) var(--ease),color var(--fast) var(--ease),
+    border-color var(--fast) var(--ease),transform var(--fast) var(--ease)}
+  .tlbtns button:active{transform:scale(.94)}
+  /* The step that is showing gets a moving underline rather than only a colour swap,
+     so the eye can follow the playhead while it advances on its own. */
+  .tltrack{position:relative;height:3px;border-radius:2px;background:rgba(255,255,255,.08);
+    margin-top:6px;overflow:hidden}
+  .tltrack i{position:absolute;top:0;bottom:0;border-radius:2px;background:var(--l1);
+    transition:left var(--med) var(--ease-out),width var(--med) var(--ease-out)}
+
+  .wrow{transition:background var(--fast) var(--ease),transform var(--fast) var(--ease)}
+  .wrow:hover{background:#1d232b}
+  .wrow:active{transform:scale(.99)}
+  .worst a{transition:background var(--fast) var(--ease),padding-left var(--fast) var(--ease)}
+  .worst a:hover{background:rgba(255,255,255,.05);padding-left:10px}
+  /* Rows arrive in sequence rather than all at once: it reads as a list being filled
+     in, and it makes a reordering visible instead of instantaneous. */
+  .worst a,.wrow{animation:rowin var(--med) var(--ease-out) backwards}
+  @keyframes rowin{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
+  #degraded{transition:opacity var(--med) var(--ease),transform var(--med) var(--ease)}
+  #degraded:not(.show){opacity:0;transform:translateY(-6px)}
+  #degraded.show{opacity:1;transform:none}
+  .dsm{background:none;border:0;color:inherit;opacity:.7;font:inherit;font-size:15px;
+    cursor:pointer;padding:0 2px;margin-left:auto}
+  .drow{display:flex;gap:8px;align-items:flex-start}
 </style>
 </head>
 <body>
 <div id="map"></div>
+
+<!-- Shown until the first snapshot is on screen. A black rectangle for six seconds on a
+     slow connection is indistinguishable from a site that has failed. -->
+<div id="boot"><div class="bwrap">
+  <div class="bmark">SeRAPHIM</div>
+  <div class="bbar"><i></i></div>
+  <div class="bmsg" id="bootmsg"></div>
+</div></div>
+
+<div id="toasts"><div id="degraded"></div></div>
 
 <div id="top">
   <div class="brand"><span class="live" id="live"></span>SeRAPHIM</div>
@@ -230,8 +405,6 @@
   <div class="seg" id="lang"><button data-l="th">ไทย</button><button data-l="en">EN</button></div>
   <button class="btn" id="layersbtn">◈</button>
 </div>
-
-<div id="degraded"></div>
 
 <div id="layers">
   <h4 id="h-base"></h4>
@@ -273,6 +446,8 @@
     <div class="legend" id="legend"></div>
     <h5 id="h-acc"></h5>
   <div id="acc"></div>
+  <h5 id="h-fh"></h5>
+  <div id="fhsum"></div>
   <h5 id="h-worst"></h5>
     <div class="worst" id="worst"></div>
     <div class="disc" id="disc"></div>
@@ -352,7 +527,37 @@ const I18N={
     alert:"ระดับเตือน", kind:"ประเภท", country:"ประเทศ",
     notbank:"เครือข่ายนี้ไม่ได้เผยแพร่ระดับตลิ่ง จึงไม่มีการคาดการณ์เวลาน้ำล้น",
     terrain:"พื้นที่ต่ำใกล้จุดน้ำล้น", terrain_s:"บอกทิศทางน้ำไป ไม่ได้บอกความลึก",
-    below:"ต่ำกว่าจุดวัด", nearstn:"ใกล้สถานี", tcav:"เป็นเพียงภูมิประเทศ ไม่ใช่แบบจำลองน้ำท่วม" },
+    below:"ต่ำกว่าจุดวัด", nearstn:"ใกล้สถานี", tcav:"เป็นเพียงภูมิประเทศ ไม่ใช่แบบจำลองน้ำท่วม",
+    fh:"ประวัติน้ำหลาก", fh_none:"ยังไม่ได้ประมวลผลย้อนหลังบริเวณนี้",
+    fh_pct:"ปริมาณน้ำวันนี้เทียบสถิติ", fh_prone:"ความถี่ที่น้ำหลาก",
+    fh_prone0:"แทบไม่เคย", fh_prone1:"นาน ๆ ครั้ง", fh_prone2:"บ่อย", fh_prone3:"บ่อยมาก",
+    fh_days_hi:"วันที่น้ำสูงผิดปกติ/ปี", fh_growth:"ความรุนแรงรอบ 10 ปี/2 ปี",
+    fh_last:"น้ำหลากครั้งล่าสุด", fh_worst:"สูงสุดในสถิติ",
+    fh_season:"ฤดูน้ำมากปกติ", fh_return:"ระดับรอบ", fh_yr:"ปี",
+    fh_years:"จากสถิติ", fh_outlook:"คาดว่าน้ำจะถึงระดับรอบ",
+    fh_in_days:"ในอีก", fh_days:"วัน", fh_top:"เทียบเท่าระดับสูงสุดในรอบ 12 ปี",
+    fh_note:"เป็นปริมาณน้ำท่าจากแบบจำลอง GloFAS เทียบกับสถิติของจุดนี้เอง ไม่ใช่การวัดพื้นที่น้ำท่วมจริง และไม่ได้บอกความลึก",
+    floodprone:"พื้นที่น้ำหลากซ้ำซาก", floodprone_s:"ดูจากความถี่ในอดีต ไม่ใช่สถานการณ์วันนี้",
+    fp_predicted:"พื้นที่เสี่ยงตามคาดการณ์", fp_predicted_s:"คาดว่าน้ำจะถึงระดับรอบ 2-5 ปี",
+    pastfloods:"น้ำท่วมในอดีต", pastfloods_s:"เหตุการณ์ที่มีรายงาน (GDACS)",
+    pf_when:"ช่วงเวลา", pf_days:"ยาวนาน", pf_where:"ประเทศที่กระทบ",
+    pf_note:"จุดหมายถึงตำแหน่งที่รายงานเหตุการณ์ ไม่ใช่ขอบเขตพื้นที่น้ำท่วม",
+    pf_report:"รายงานฉบับเต็ม",
+    gfh:"Google Flood Hub", gfh_s:"คาดการณ์ระดับความรุนแรงจาก Google",
+    gfh_sev:"ระดับความรุนแรง", gfh_trend:"แนวโน้ม", gfh_issued:"ออกเมื่อ",
+    gfh_window:"ช่วงคาดการณ์", gfh_change:"คาดว่าจะเปลี่ยนแปลง",
+    gfh_inund:"มีแผนที่พื้นที่น้ำท่วม", gfh_maps:"ชั้น",
+    gfh_verified:"ผ่านการตรวจสอบคุณภาพ", gfh_unverified:"ความเชื่อมั่นต่ำกว่า",
+    gfh_note:"เป็นการคาดการณ์ของ Google ซึ่งเป็นอิสระจากค่าที่วัดได้ในโครงการนี้ แสดงคู่กันเพื่อให้เปรียบเทียบได้ ไม่ได้นำมารวมเป็นค่าเดียว",
+    gfh_nokey:"ไม่มีชั้นข้อมูล Google Flood Hub เพราะยังไม่ได้ตั้งค่าคีย์ API",
+    gfh_nolevel:"ไม่มีค่าระดับน้ำ เป็นระดับความรุนแรงกับแนวโน้มเท่านั้น",
+    loading:"กำลังโหลดข้อมูล", dismiss:"ปิด", tl_play:"เล่นภาพคาดการณ์", tl_pause:"หยุด",
+    live_first:"ข้อมูลสดเปิดอยู่ เบราว์เซอร์ของคุณจะติดต่อกับ",
+    live_first2:"โดยตรงทุก 2 นาที แตะเพื่อปิดได้ตลอดเวลา",
+    live_ok:"รับทราบ", live_paused:"พักไว้ชั่วคราว (ไม่ได้เปิดหน้านี้อยู่)",
+    stale_hdr:"ข้อมูลเก่ากว่าปกติ", stale_age:"รอบประมวลผลล่าสุดเมื่อ",
+    stale_why:"ตัวประมวลผลทำงานทุก 15 นาที และอาจช้าได้ 5-20 นาที",
+    sheet_more:"ดูเพิ่มเติม", sheet_less:"ย่อ" },
   en:{ base:"BASEMAP", sat:"Satellite", dark:"Dark", light:"Light",
     over:"LAYERS", prov:"Province risk", stat:"Gauges", tide:"Tide points",
     camnote:"No CCTV layer: no public camera feed has been found to build on.",
@@ -418,7 +623,37 @@ const I18N={
     alert:"alert", kind:"type", country:"country",
     notbank:"This network publishes no bank level, so no overtopping forecast is made.",
     terrain:"Low ground", terrain_s:"where water would go, not how deep",
-    below:"below the gauge", nearstn:"near", tcav:"relative terrain only, not a flood model" }
+    below:"below the gauge", nearstn:"near", tcav:"relative terrain only, not a flood model",
+    fh:"FLOOD HISTORY", fh_none:"history has not been computed for this area yet",
+    fh_pct:"today's flow vs its record", fh_prone:"how often it runs high",
+    fh_prone0:"rarely", fh_prone1:"occasionally", fh_prone2:"often", fh_prone3:"very often",
+    fh_days_hi:"days a year running high", fh_growth:"rare vs ordinary flood",
+    fh_last:"last high-flow episode", fh_worst:"highest on record",
+    fh_season:"usual high-water season", fh_return:"level reached every", fh_yr:"yr",
+    fh_years:"from", fh_outlook:"forecast to reach its",
+    fh_in_days:"in", fh_days:"days", fh_top:"as high as anything in 12 years",
+    fh_note:"Modelled river flow (GloFAS) against this location's own record. It is not a measurement of flooded ground and says nothing about depth.",
+    floodprone:"Flood-prone ground", floodprone_s:"from past frequency, not today",
+    fp_predicted:"Flood-prone, predicted", fp_predicted_s:"forecast to reach a 2-5 year flow",
+    pastfloods:"Past floods", pastfloods_s:"reported events (GDACS)",
+    pf_when:"when", pf_days:"lasted", pf_where:"countries affected",
+    pf_note:"The point marks where the event was reported, not the area that flooded.",
+    pf_report:"full report",
+    gfh:"Google Flood Hub", gfh_s:"Google's own severity forecast",
+    gfh_sev:"severity", gfh_trend:"trend", gfh_issued:"issued",
+    gfh_window:"forecast window", gfh_change:"forecast change",
+    gfh_inund:"inundation maps modelled", gfh_maps:"layers",
+    gfh_verified:"quality-verified", gfh_unverified:"lower confidence",
+    gfh_note:"Google's own forecast, independent of this project's gauge readings. Shown beside them so the two can be compared, never merged into one number.",
+    gfh_nokey:"No Google Flood Hub layer: an API key is not configured.",
+    gfh_nolevel:"Carries no water level: severity and trend only.",
+    loading:"Loading data", dismiss:"Dismiss", tl_play:"Play the forecast", tl_pause:"Pause",
+    live_first:"Live data is on. Your browser contacts",
+    live_first2:"directly every 2 minutes. Tap to turn it off at any time.",
+    live_ok:"Got it", live_paused:"paused while this tab is in the background",
+    stale_hdr:"Data is older than usual", stale_age:"last build was",
+    stale_why:"The builder runs every 15 minutes and can drift 5-20 minutes.",
+    sheet_more:"More", sheet_less:"Less" }
 };
 let LANG = localStorage.getItem("seraphim_lang")
   || ((navigator.language||"").toLowerCase().startsWith("th") ? "th" : "en");
@@ -429,13 +664,36 @@ const loc=(o,base)=> LANG==="th" ? (o[base+"_th"] ?? o[base] ?? "") : (o[base] ?
 /* ------------------------------------------------------------------ data */
 const BASE=(window.SERAPHIM&&window.SERAPHIM.dataBase)||"../data/out";
 const RISK={1:"#2f81f7",2:"#d99e0b",3:"#e8590c",4:"#e5484d",5:"#ff2d55"};
-let gj=null, meta=null, tide=null, areas=null, provinces=null, quakes=null, fires=null, events=null, terrain=null, dams=null;
+let gj=null, meta=null, tide=null, areas=null, provinces=null, quakes=null, fires=null, events=null, terrain=null, dams=null, pastFloods=null, gfh=null;
 let radarFrames=[], radarIdx=0, radarTimer=null;
 let radioAll=[], radioNear=[], radioIdx=0, audio=null;
 let map=null, mode="risk", basemap="satellite";
-const shown={provinces:true, stations:true, tide:true,
+/** Which overlays start on.
+ *
+ *  `dams` is on by default: a reservoir above its normal full level is upstream of
+ *  everybody downstream of it, so it belongs in the first thing a visitor sees rather
+ *  than behind a menu they have to discover. It is Thai data today, and the layer
+ *  simply does not appear where there is none.
+ *
+ *  `floodprone` is off by default on purpose, even though it is new. It is about
+ *  history, not about today, and a permanent wash of colour over the places that
+ *  always flood would compete with the gauges that are flooding now. */
+const shown={provinces:true, stations:true, tide:true, dams:true,
              radar:false, quakes:false, fires:false, radio:false, events:false,
-             terrain:false, dams:false, d3:false};
+             terrain:false, floodprone:false, pastfloods:false, gfh:false, d3:false};
+// Layer visibility is remembered, so a reader who turns the dams off does not get them
+// back on every visit. Defaults above apply only on a first visit.
+try{
+  const saved=JSON.parse(localStorage.getItem("seraphim_layers")||"null");
+  if(saved&&typeof saved==="object")
+    for(const k of Object.keys(shown))
+      // d3 is excluded: it is the map's terrain rather than a data layer, it has its
+      // own key, and restoring it here ticked the box without applying the terrain.
+      if(k!=="d3" && typeof saved[k]==="boolean") shown[k]=saved[k];
+}catch{}
+function saveLayers(){
+  try{ localStorage.setItem("seraphim_layers", JSON.stringify(shown)); }catch{}
+}
 
 const OSM="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const SAT="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
@@ -468,6 +726,9 @@ const LAYERS=[
   {id:"stations",  label:"stat",   sub:null,        colour:"#2f81f7"},
   {id:"tide",      label:"tide",   sub:null,        colour:"#22d3ee"},
   {id:"dams",      label:"dams",   sub:"dams_s",    colour:"#14b8a6", optional:true},
+  {id:"floodprone",label:"floodprone", sub:"floodprone_s", colour:"#f97316", optional:true},
+  {id:"pastfloods",label:"pastfloods", sub:"pastfloods_s", colour:"#c084fc", optional:true},
+  {id:"gfh",       label:"gfh",    sub:"gfh_s",     colour:"#4285f4", optional:true},
   {id:"radar",     label:"radar",  sub:"radar_s",   colour:"#38bdf8"},
   {id:"quakes",    label:"quakes", sub:"quakes_s",  colour:"#f59e0b"},
   {id:"fires",     label:"fires",  sub:"fires_s",   colour:"#f97316", optional:true},
@@ -486,6 +747,44 @@ const VIEWS={
   us:    {center:[-98.0, 39.5], zoom:3.4},
   world: {center:[20, 20],      zoom:1.7},
 };
+
+/* ------------------------------------------------------------------ toasts
+ * Watch alerts used to be written into #degraded. renderAge() rewrites that element
+ * every 60 seconds from the snapshot's health, so a level-5 alert could be wiped by a
+ * routine freshness check seconds after it appeared, and nothing would say it had ever
+ * happened. Alerts now own a surface nothing else writes to.
+ *
+ * `key` makes a toast idempotent: the same gauge escalating twice replaces its own
+ * message instead of stacking a second copy of it.
+ */
+const toastTimers=new Map();
+function toast({title, body, kind="info", key=null, timeout=0, action=null}){
+  const host=$("toasts"); if(!host) return;
+  const id=key||("t"+Math.random().toString(36).slice(2));
+  let el=host.querySelector(`[data-toast="${CSS.escape(id)}"]`);
+  if(!el){
+    el=document.createElement("div");
+    el.dataset.toast=id;
+    host.appendChild(el);
+  }
+  el.className="toast "+kind;
+  el.innerHTML=`<div class="tbody">${title?`<b>${esc(title)}</b>`:""}${esc(body||"")}</div>
+    <button type="button" data-close>${esc(action?action.label:t("dismiss"))}</button>`;
+  const btn=el.querySelector("[data-close]");
+  btn.onclick=()=>{ if(action&&action.run) action.run(); dismissToast(id); };
+  clearTimeout(toastTimers.get(id));
+  if(timeout>0) toastTimers.set(id, setTimeout(()=>dismissToast(id), timeout));
+  return id;
+}
+function dismissToast(id){
+  const el=$("toasts")?.querySelector(`[data-toast="${CSS.escape(id)}"]`);
+  if(!el) return;
+  clearTimeout(toastTimers.get(id));
+  toastTimers.delete(id);
+  el.classList.add("leaving");
+  // Matches the leaving animation; a reduced-motion user gets ~0s and it simply goes.
+  setTimeout(()=>el.remove(), 260);
+}
 
 function ageText(min){
   if(min==null||isNaN(min)) return "-";
@@ -535,9 +834,18 @@ function mergedAreas(){
  * asks the agency directly, exactly as it already does for rain radar. Our origin
  * still serves nothing but files.
  *
- * Off by default and opt-in, because turning it on means this visitor's browser (and
- * IP) contacts a foreign government API, and spends a few hundred KB per refresh.
- * Nobody should pay either cost without choosing to.
+ * **On by default, as of 2026-09-16, at the owner's explicit request.** It was opt-in
+ * before, because turning it on means this visitor's browser (and IP) contacts a
+ * foreign government API and spends a few hundred KB per refresh, and nobody should
+ * pay either cost unknowingly. That reasoning has not gone away, so the disclosure
+ * stayed and moved to the front: the first time the page runs it, a notice names the
+ * agency being contacted and offers a one-tap off, and the choice is remembered. What
+ * changed is the default, not the reader's ability to see it or refuse it.
+ *
+ * It also now pauses while the tab is in the background. On by default plus a 2-minute
+ * timer meant a forgotten tab pulling 1.8 MB from a government API every 2 minutes
+ * indefinitely, which is a cost to them and to the reader's data plan for a map nobody
+ * is looking at.
  *
  * What a live reading may and may not change:
  *   - it replaces the LEVEL and its measured time, and recomputes freeboard, which is
@@ -632,14 +940,36 @@ async function fetchLive(src){
   return src.parse(await r.json());
 }
 
-let liveOn = localStorage.getItem("seraphim_live")==="1";
+//: Live is on unless this visitor has turned it off. `null` in storage means they have
+//: never expressed a preference, which is now a yes plus a disclosure.
+const LIVE_PREF=localStorage.getItem("seraphim_live");
+let liveOn = LIVE_PREF===null ? true : LIVE_PREF==="1";
 let liveAt = null, liveFail = false, liveCount = 0, liveTimer = null;
+//: Set while the tab is hidden. Refreshes are skipped rather than the timer cancelled,
+//: so coming back to the tab gets fresh data on the next tick without re-arming.
+let livePaused = false;
+//: Live refresh interval, ms. 2 minutes, matching the fastest gauge network's own
+//: reporting cadence; refreshing faster returns the same numbers.
+const LIVE_EVERY = 120000;
 
 function liveSource(){ return LIVE_SOURCES[country] || null; }
 
+/** Tell a first-time visitor who their browser is about to talk to, once. */
+function liveDisclosure(){
+  if(LIVE_PREF!==null) return;                 // they have already chosen
+  const src=liveSource(); if(!src) return;
+  try{ localStorage.setItem("seraphim_live","1"); }catch{}
+  toast({
+    kind:"info", key:"live-first", timeout:16000,
+    title:t("live_on"),
+    body:`${t("live_first")} ${src.label} ${t("live_first2")}`,
+    action:{label:t("live_ok")},
+  });
+}
+
 async function refreshLive(){
   const src=liveSource();
-  if(!liveOn||!src||!map){ return; }
+  if(!liveOn||!src||!map||livePaused){ return; }
   let readings=null;
   try{ readings=await fetchLive(src); }catch{ readings=null; }
   if(!readings||!Object.keys(readings).length){
@@ -700,15 +1030,31 @@ function clearLive(){
 
 function setLive(on){
   liveOn=on;
-  localStorage.setItem("seraphim_live", on?"1":"0");
+  try{ localStorage.setItem("seraphim_live", on?"1":"0"); }catch{}
   if(liveTimer){ clearInterval(liveTimer); liveTimer=null; }
   if(on){
     refreshLive();
-    liveTimer=setInterval(refreshLive, 120000);
+    liveTimer=setInterval(refreshLive, LIVE_EVERY);
   } else {
     clearLive();
+    dismissToast("live-first");
   }
   renderChrome();
+}
+
+/** Stop talking to the agency while nobody is looking at the map.
+ *
+ *  Without this, live-on-by-default means every abandoned tab keeps pulling a
+ *  multi-megabyte national feed every two minutes forever. Coming back refreshes
+ *  immediately, so returning to the tab never shows a stale "live" badge. */
+function watchVisibility(){
+  document.addEventListener("visibilitychange",()=>{
+    livePaused=document.hidden;
+    if(document.hidden){ renderChrome(); return; }
+    if(liveOn) refreshLive();
+    renderAge();
+    renderChrome();
+  });
 }
 
 function renderWatchList(){
@@ -751,10 +1097,12 @@ function renderLiveBar(){
   }
   const sub = !liveOn ? t("live_hint")
     : liveFail ? t("live_fail")
+    : livePaused ? t("live_paused")
     : `${t("live_src")}: ${src.label}`
       + (liveAt?` · ${ageText((Date.now()-liveAt)/60000)} ${t("ago")}`:"")
       + (liveCount?` · ${liveCount} ${t("gauges")}`:"");
-  el.innerHTML=`<button id="livebtn" class="${liveOn?"on":"off"}">
+  el.innerHTML=`<button id="livebtn" class="${liveOn?"on":"off"}${
+      liveOn&&livePaused?" paused":""}" type="button">
     <span class="box">✓</span><span class="pulse"></span>
     <span>${esc(liveOn?t("live_on"):t("live_off"))}<small>${esc(sub)}</small></span>
   </button>`;
@@ -770,9 +1118,10 @@ async function load(){
   areas = mergedAreas();
   // Province shapes and tide points exist only for Thailand, so they are not part of
   // what every visitor pays for.
-  [meta,quakes,fires,events,terrain,dams]=await Promise.all([
+  [meta,quakes,fires,events,terrain,dams,pastFloods]=await Promise.all([
     j("meta.json"), j("quakes.geojson"), j("fires.geojson"), j("events.geojson"),
-    j("terrain.geojson"), j("dams.geojson")]);
+    j("terrain.geojson"), j("dams.geojson"), j("floods-past.geojson")]);
+  gfh = await j("floods-google.geojson");
   if(country==="th"||loaded.th){
     [tide,provinces]=await Promise.all([j("tide.json"), j("provinces.geojson")]);
   }
@@ -801,7 +1150,19 @@ function addLayers(){
       "circle-color":modeColor(),"circle-blur":1,
       "circle-radius":["interpolate",["linear"],["zoom"],4,["case",modeBig(),9,3],
         9,["case",modeBig(),20,7],13,["case",modeBig(),32,13]],
+      // Static. The breathing moved to st-alert below; animating this one meant
+      // re-evaluating paint for every gauge on the map fourteen times a second.
       "circle-opacity":["case",["get","stale"],.18,.45]}});
+    // The pulsing ring, and the only layer that animates. Filtered to level 4+, so the
+    // animation touches a few dozen features instead of the whole network.
+    map.addLayer({id:"st-alert",type:"circle",source:"st",
+      filter:[">=",["coalesce",["get","risk_level"],0],4],
+      paint:{
+        "circle-color":"rgba(0,0,0,0)",
+        "circle-radius":["interpolate",["linear"],["zoom"],4,7,9,17,13,30],
+        "circle-stroke-width":2,
+        "circle-stroke-color":["case",["==",["get","risk_level"],5],RISK[5],RISK[4]],
+        "circle-opacity":.4,"circle-stroke-opacity":.9}});
     map.addLayer({id:"st-core",type:"circle",source:"st",paint:{
       "circle-color":modeColor(),
       "circle-radius":["interpolate",["linear"],["zoom"],4,["case",modeBig(),3.6,2.1],
@@ -910,7 +1271,6 @@ function addHazardLayers(){
       new maplibregl.Popup({maxWidth:"290px"}).setLngLat(e.lngLat).setHTML(
         `<div class="pt" style="background:${col}">${esc(t("dam_"+(p.status==="spilling"?"spilling":p.status==="high"?"high":"normal")))}</div>
          <div class="ph">${esc(p.name)||"-"}</div>
-    ${hours>0?`<div class="conf">${esc(t("tl_viewing"))} +${hours} h</div>`:""}
          <div class="psub">${esc(p.province)||""} ${esc(p.basin)||""} · ${esc(t(p.size==="large"?"dam_large":"dam_medium"))}</div>
          ${row(t("dam_pct"), pct==null?null:pct+"%")}
          ${row(t("dam_lvl"), n("level_msl")==null?null:n("level_msl")+" m")}
@@ -924,6 +1284,98 @@ function addHazardLayers(){
     map.on("mouseenter","dams-c",()=>map.getCanvas().style.cursor="pointer");
     map.on("mouseleave","dams-c",()=>map.getCanvas().style.cursor="");
   }
+  // --- flood-prone ground -------------------------------------------------
+  // Drawn from the gauge layer's own source, filtered to cells that run high often.
+  // Underneath the gauges, and deliberately soft and wide: this is a statement about
+  // decades, and it must not compete with a dot that is over its bank this morning.
+  if(!map.getLayer("prone-c") && map.getSource("st")){
+    const under = map.getLayer("st-glow") ? "st-glow" : undefined;
+    map.addLayer({id:"prone-c",type:"circle",source:"st",
+      filter:[">=",["coalesce",["get","flood_prone"],0],1],
+      paint:{
+        "circle-color":["match",["coalesce",["get","flood_prone"],0],
+          3,"#b91c1c",2,"#f97316","#fbbf24"],
+        "circle-blur":.75,
+        "circle-radius":["interpolate",["linear"],["zoom"],
+          5,["match",["coalesce",["get","flood_prone"],0],3,7,2,5,3],
+          9,["match",["coalesce",["get","flood_prone"],0],3,20,2,14,9],
+          13,["match",["coalesce",["get","flood_prone"],0],3,40,2,28,18]],
+        "circle-opacity":.3}}, under);
+    // A separate, harder ring for the predicted half: ground that is flood-prone AND
+    // forecast to reach a 2- or 5-year flow. The two say different things and a reader
+    // has to be able to tell which one they are looking at.
+    map.addLayer({id:"prone-pred",type:"circle",source:"st",
+      filter:["all",["has","flood_outlook_day"],
+              ["<=",["coalesce",["get","flood_outlook_day"],99],14]],
+      paint:{
+        "circle-color":"rgba(0,0,0,0)",
+        "circle-radius":["interpolate",["linear"],["zoom"],5,6,9,15,13,26],
+        "circle-stroke-width":2,
+        "circle-stroke-color":["case",
+          ["==",["coalesce",["get","flood_outlook_period_y"],2],5],"#b91c1c","#f97316"],
+        "circle-stroke-opacity":.85}}, under);
+  }
+
+  // --- past floods ---------------------------------------------------------
+  if(pastFloods?.features?.length && !map.getSource("pastfloods")){
+    map.addSource("pastfloods",{type:"geojson",data:pastFloods});
+    map.addLayer({id:"past-c",type:"circle",source:"pastfloods",paint:{
+      "circle-color":["match",["get","alert"],"red","#dc2626","#c084fc"],
+      // Longer floods draw bigger. A 158-day event and a 1-day one are not the same
+      // thing and a reader should be able to see which is which before clicking.
+      "circle-radius":["interpolate",["linear"],["zoom"],
+        1,["interpolate",["linear"],["coalesce",["get","days"],1],1,3,30,6,150,10],
+        6,["interpolate",["linear"],["coalesce",["get","days"],1],1,7,30,15,150,26]],
+      "circle-opacity":.3,"circle-stroke-width":1.4,
+      "circle-stroke-color":["match",["get","alert"],"red","#dc2626","#c084fc"],
+      "circle-stroke-opacity":.85}});
+    map.on("click","past-c",e=>{
+      const p=e.features[0].properties;
+      const red=p.alert==="red";
+      new maplibregl.Popup({maxWidth:"300px"}).setLngLat(e.lngLat).setHTML(
+        `<div class="pt" style="background:${red?"#dc2626":"#c084fc"}">${esc(t("pastfloods"))}</div>
+         <div class="ph">${esc(p.name)||esc(t("pastfloods"))}</div>
+         <div class="pr"><span>${esc(t("pf_when"))}</span><span class="num">${esc(p.from)}${
+           p.to&&p.to!==p.from?" → "+esc(p.to):""}</span></div>
+         ${p.days?`<div class="pr"><span>${esc(t("pf_days"))}</span><span class="num">${esc(p.days)} ${esc(t("day"))}</span></div>`:""}
+         <div class="pr"><span>${esc(t("pf_where"))}</span><span>${esc(p.countries||p.country||"-")}</span></div>
+         <div class="pr"><span>${esc(t("alert"))}</span><span>${esc(p.alert)}</span></div>
+         ${p.url?`<div class="conf" style="margin-top:6px"><a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">${esc(t("pf_report"))} ↗</a></div>`:""}
+         <div class="conf">${esc(t("pf_note"))}</div>`).addTo(map);
+    });
+    map.on("mouseenter","past-c",()=>map.getCanvas().style.cursor="pointer");
+    map.on("mouseleave","past-c",()=>map.getCanvas().style.cursor="");
+  }
+
+  // --- Google Flood Hub -----------------------------------------------------
+  // Drawn as a hollow diamond-ish ring rather than a filled dot, so it never reads as
+  // one of our own gauges. This is somebody else's forecast about the same rivers, and
+  // the whole value of having it is being able to see where it disagrees with us.
+  if(gfh?.features?.length && !map.getSource("gfh")){
+    map.addSource("gfh",{type:"geojson",data:gfh});
+    map.addLayer({id:"gfh-ring",type:"circle",source:"gfh",paint:{
+      "circle-color":"rgba(0,0,0,0)",
+      "circle-radius":["interpolate",["linear"],["zoom"],
+        3,["match",["get","level"],5,7,4,6,4],
+        8,["match",["get","level"],5,17,4,14,10],
+        13,["match",["get","level"],5,30,4,25,18]],
+      "circle-stroke-width":2.4,
+      "circle-stroke-color":["match",["get","level"],
+        5,RISK[5],4,RISK[4],3,RISK[3],"#4285f4"],
+      // A lower-confidence point is drawn fainter rather than hidden or made equal.
+      // Google flags ~240,000 of these against ~5,000 verified; the flag is the
+      // difference between a forecast and a guess and it must survive to the screen.
+      "circle-stroke-opacity":["case",["get","quality_verified"],.95,.4]}});
+    map.addLayer({id:"gfh-c",type:"circle",source:"gfh",paint:{
+      "circle-color":["match",["get","level"],5,RISK[5],4,RISK[4],3,RISK[3],"#4285f4"],
+      "circle-radius":["interpolate",["linear"],["zoom"],3,1.6,8,3.4,13,5],
+      "circle-opacity":["case",["get","quality_verified"],.9,.35]}});
+    map.on("click","gfh-c",e=>gfhPopup(e));
+    map.on("click","gfh-ring",e=>gfhPopup(e));
+    map.on("mouseenter","gfh-ring",()=>map.getCanvas().style.cursor="pointer");
+    map.on("mouseleave","gfh-ring",()=>map.getCanvas().style.cursor="");
+  }
+
   if(terrain && !map.getSource("terrain")){
     map.addSource("terrain",{type:"geojson",data:terrain});
     // Under the gauges: this is context for a spilling channel, not the alert itself.
@@ -1004,15 +1456,56 @@ function repaint(){
   map.setPaintProperty("st-core","circle-radius",["interpolate",["linear"],["zoom"],
     4,["case",modeBig(),3.6,2.1],9,["case",modeBig(),7.5,4.4],13,["case",modeBig(),12,8]]);
 }
-/** Slow breathing on the glow. Draws the eye to the worst places without motion sickness. */
+/* ---------------------------------------------------------------- the pulse
+ * Slow breathing to draw the eye to the worst places. The mechanism matters more than
+ * it looks:
+ *
+ * The first version ran `setPaintProperty` on the 16,000-feature gauge layer every
+ * 70 ms, from a `setInterval`, for the lifetime of the page. That is ~14 full paint
+ * re-evaluations of every gauge on the map per second, whether or not anything was at
+ * risk, whether or not the layer was even visible, and whether or not the tab was in
+ * front. It is the single largest reason panning and zooming stuttered, and on a phone
+ * it is a battery drain running against a map somebody may need later.
+ *
+ * Three changes:
+ *   - it animates a SEPARATE layer filtered to level 4 and above, which is a few dozen
+ *     features rather than sixteen thousand;
+ *   - requestAnimationFrame instead of setInterval, so the browser stops it outright
+ *     when the tab is in the background, and throttled to ~20 fps because a breathing
+ *     halo does not need 60;
+ *   - it stops entirely when nothing is at level 4+, when the layer is hidden, or when
+ *     the reader has asked for reduced motion. A static ring still marks the place.
+ */
+const REDUCED_MOTION = window.matchMedia
+  && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+let pulseRAF=null, pulseK=0, pulseLast=0, pulseWanted=false;
+
+function pulseFrame(now){
+  pulseRAF=null;
+  if(!pulseWanted) return;
+  if(now-pulseLast >= 50){                       // ~20 fps is plenty for a slow breath
+    pulseLast=now;
+    pulseK+=0.13;
+    if(map.getLayer("st-alert"))
+      map.setPaintProperty("st-alert","circle-opacity", 0.30+Math.sin(pulseK)*0.22);
+  }
+  pulseRAF=requestAnimationFrame(pulseFrame);
+}
+
+/** Start or stop the pulse based on whether anything actually warrants it. */
 function pulse(){
-  let k=0;
-  setInterval(()=>{
-    if(!map.getLayer("st-glow")||!shown.stations) return;
-    k+=0.045;
-    const o=.34+Math.sin(k)*0.16;
-    map.setPaintProperty("st-glow","circle-opacity",["case",["get","stale"],.15,o]);
-  },70);
+  if(!map) return;
+  const any = !REDUCED_MOTION && shown.stations
+    && (gj?.features||[]).some(f=>Number(f.properties.risk_level)>=4);
+  if(any===pulseWanted) return;
+  pulseWanted=any;
+  if(any && pulseRAF===null) pulseRAF=requestAnimationFrame(pulseFrame);
+  if(!any){
+    if(pulseRAF!==null){ cancelAnimationFrame(pulseRAF); pulseRAF=null; }
+    // Leave the ring visible and still, rather than mid-fade at whatever opacity the
+    // last frame happened to land on.
+    if(map.getLayer("st-alert")) map.setPaintProperty("st-alert","circle-opacity",.4);
+  }
 }
 /* ---------- geolocated world radio, with an analog tuner ----------
  * Idea borrowed from bilawalsidhu/gods-eye-view (MIT), which pairs Radio Browser with
@@ -1109,6 +1602,7 @@ function applyVisibility(){
   const set=(id,on)=>{ if(map.getLayer(id)) map.setLayoutProperty(id,"visibility",on?"visible":"none"); };
   set("prov-fill",shown.provinces); set("prov-line",shown.provinces);
   set("st-glow",shown.stations); set("st-core",shown.stations);
+  set("st-alert",shown.stations);
   set("tide-c",shown.tide);
   set("radar-r",shown.radar);
   set("quake-c",shown.quakes);
@@ -1117,6 +1611,11 @@ function applyVisibility(){
   set("event-c",shown.events);
   set("terrain-c",shown.terrain);
   set("dams-c",shown.dams);
+  set("prone-c",shown.floodprone);
+  set("prone-pred",shown.floodprone);
+  set("past-c",shown.pastfloods);
+  set("gfh-c",shown.gfh);
+  set("gfh-ring",shown.gfh);
   $("radio").classList.toggle("show",shown.radio);
   if(shown.radio&&!radioNear.length) refreshDial();
   if(!shown.radio&&audio){ audio.pause(); $("rplay").textContent="▶";
@@ -1250,32 +1749,76 @@ function applyTimeline(){
     }
   }
   map.getSource("st").setData(gj);
+  pulse();
+  renderTimeline();
+}
+
+/* Playing the timeline. Scrubbing by hand means nine deliberate taps, and most people
+ * tap once and stop, so the shape of what is coming never gets seen. Play walks the
+ * steps on a timer and stops at the end rather than looping, because a looping map of
+ * a flood forecast is a screensaver. */
+let tlTimer=null;
+const TL_STEP_MS=1100;
+
+function tlPlay(on){
+  clearInterval(tlTimer); tlTimer=null;
+  if(!on){ renderTimeline(); return; }
+  tlTimer=setInterval(()=>{
+    if(timeIndex>=TIMELINE.length-1){ tlPlay(false); return; }
+    timeIndex++; applyTimeline();
+  }, TL_STEP_MS);
   renderTimeline();
 }
 
 function renderTimeline(){
   const el=$("timeline"); if(!el) return;
   const st=TIMELINE[timeIndex];
-  let n=0, counted=0;
+  let n=0, counted=0, predicted=0;
   for(const f of (gj?.features||[])){
     const p=f.properties;
     if(st.mode==="level"){
       const fb=st.h===0?p.freeboard_m:p.t_fb;
       if(fb!=null){ counted++; if(fb<=0) n++; }
     } else if(p.t_flow!=null){ counted++; if(p.t_flow>=FLOW_WATCH) n++; }
+    // Gauges whose outlook reaches a 2- or 5-year flow inside this step's horizon.
+    // Only meaningful on the day steps: the level steps run out at 12 hours and the
+    // outlook is a daily product.
+    const d=p.flood_outlook_day;
+    if(st.mode==="flow" && d!=null && Number(d)<=st.d) predicted++;
   }
   const readout = st.mode==="level"
     ? `${esc(t("tl_over"))}: <b>${n}</b> / ${counted} · ${esc(t("tl_note"))}`
     : `${esc(t("tl_rising"))}: <b>${n}</b> / ${counted} · ${esc(t("tl_flownote"))}`;
+  // Flood-prone-when-predicted, stated as its own sentence rather than blended into
+  // the flow count: reaching a level this river hits every two years is a different
+  // claim from flow going up by a multiple.
+  const pred = predicted
+    ? `<div class="fhout" style="margin-top:6px">⚠ <b>${predicted}</b> ${
+        esc(t("fp_predicted_s"))}</div>`
+    : "";
+  const frac=100/TIMELINE.length;
   el.innerHTML=`<div class="tlhead"><b>${esc(t("tl_title"))}</b>
       <span>${esc(stepLabel(st))} · ${esc(st.mode==="level"?t("tl_level"):t("tl_flow"))}</span></div>
-    <div class="tlbtns">${TIMELINE.map((x,i)=>
-      `<button data-t="${i}" class="${i===timeIndex?"on":""}${x.mode==="flow"?" flow":""}">${
-        esc(stepLabel(x))}</button>`).join("")}</div>
-    <div class="conf">${readout}</div>`;
+    <div class="tlrow">
+      <button id="tlplay" type="button" class="${tlTimer?"on":""}"
+        title="${esc(tlTimer?t("tl_pause"):t("tl_play"))}"
+        aria-label="${esc(tlTimer?t("tl_pause"):t("tl_play"))}">${tlTimer?"❚❚":"▶"}</button>
+      <div class="tlbtns" style="flex:1">${TIMELINE.map((x,i)=>
+        `<button type="button" data-t="${i}" class="${i===timeIndex?"on":""}${
+          x.mode==="flow"?" flow":""}">${esc(stepLabel(x))}</button>`).join("")}</div>
+    </div>
+    <div class="tltrack"><i style="left:${(timeIndex*frac).toFixed(2)}%;width:${frac.toFixed(2)}%"></i></div>
+    <div class="conf" style="margin-top:6px">${readout}</div>${pred}`;
   el.querySelectorAll("[data-t]").forEach(b=>b.onclick=()=>{
+    if(tlTimer) tlPlay(false);
     timeIndex=+b.dataset.t; applyTimeline();
   });
+  const pb=$("tlplay");
+  if(pb) pb.onclick=()=>{
+    if(tlTimer){ tlPlay(false); return; }
+    if(timeIndex>=TIMELINE.length-1){ timeIndex=0; applyTimeline(); }
+    tlPlay(true);
+  };
 }
 
 /* ------------------------------------------------------- watched gauges
@@ -1351,20 +1894,24 @@ function alertWatched(p, level){
   const body=`${t("r"+level)} · ${p.freeboard_m!=null&&p.freeboard_m<=0
     ? t("above")+" "+Math.abs(p.freeboard_m).toFixed(2)+" m"
     : t("fb")+" "+(p.freeboard_m==null?"-":p.freeboard_m.toFixed(2)+" m")}`;
-  let shown=false;
+  let delivered=false;              // not `shown`: that is the layer-visibility map
   try{
     if("Notification" in window && Notification.permission==="granted"){
       const n=new Notification(title,{body, tag:"seraphim-"+p.id, renotify:false});
       n.onclick=()=>{ window.focus(); openStationById(p.id); };
-      shown=true;
+      delivered=true;
     }
   }catch{}
   // Denied, unsupported, or the tab is focused anyway: say it in the page instead of
   // swallowing it. An alert nobody can receive is worse than no alert feature.
-  if(!shown){
-    const el=$("degraded");
-    el.classList.add("show");
-    el.innerHTML=`<b>⚠ ${esc(title)}</b><br>${esc(body)}`;
+  //
+  // This used to be written into #degraded, which renderAge() rewrites from the
+  // snapshot's health every 60 seconds, so a level-5 alert could be erased by a
+  // routine freshness check before it was read. It gets its own toast now, it does
+  // not time out, and tapping it goes to the gauge.
+  if(!delivered){
+    toast({kind:"alert", key:"watch-"+p.id, title, body,
+           action:{label:t("dismiss")}});
   }
 }
 
@@ -1375,8 +1922,18 @@ function openStationById(id){
   const f=(gj?.features||[]).find(x=>x.properties.id===id);
   if(!f) return false;
   const [lon,lat]=f.geometry.coordinates;
-  map.flyTo({center:[lon,lat], zoom:Math.max(map.getZoom(),11)});
-  map.once("moveend",()=>stationPopup({features:[f], lngLat:{lng:lon,lat:lat}}));
+  const open=()=>stationPopup({features:[f], lngLat:{lng:lon,lat:lat}});
+  const zoom=Math.max(map.getZoom(),11);
+  const here=map.getCenter();
+  // flyTo does nothing at all when it is already there, so `moveend` never fires and
+  // the popup never opens. That is exactly the case for a watch-list row you have just
+  // flown to, or a ?station= link you reload. Open it directly instead of waiting for
+  // a move that is not going to happen.
+  const moving = Math.abs(here.lng-lon)>1e-6 || Math.abs(here.lat-lat)>1e-6
+    || Math.abs(map.getZoom()-zoom)>1e-6;
+  if(!moving){ open(); return true; }
+  map.flyTo({center:[lon,lat], zoom});
+  map.once("moveend", open);
   return true;
 }
 
@@ -1384,6 +1941,110 @@ function stationLink(id){
   const u=new URL(location.href);
   u.searchParams.set("station", id);
   return u.toString();
+}
+
+/** A small chart of the projected level, with the bank drawn across it.
+ *
+ *  The numbers were already in the popup as a row of figures. A row of figures does
+ *  not answer the question people actually ask it, which is "does that line cross the
+ *  bank, and roughly when". The chart is the same published numbers, nothing new: the
+ *  damped projection at +1/3/6/12 h, so it can never disagree with time-to-bank.
+ */
+function forecastSpark(p){
+  let fc=p.level_forecast;
+  if(typeof fc==="string"){ try{fc=JSON.parse(fc);}catch{fc=null;} }
+  if(!Array.isArray(fc)||!fc.length) return "";
+  const now=p.level_msl==null?null:Number(p.level_msl);
+  if(now===null||!isFinite(now)) return "";
+  const pts=[{h:0,v:now}].concat(fc.map(f=>({h:Number(f.in_hours),v:Number(f.level_msl)})))
+    .filter(x=>isFinite(x.h)&&isFinite(x.v));
+  if(pts.length<2) return "";
+  const bank=p.bank_msl==null?null:Number(p.bank_msl);
+  const W=252,H=46,PAD=3;
+  const vs=pts.map(x=>x.v).concat(bank!=null&&isFinite(bank)?[bank]:[]);
+  let lo=Math.min(...vs), hi=Math.max(...vs);
+  if(hi-lo<0.05){ const mid=(hi+lo)/2; lo=mid-0.05; hi=mid+0.05; }   // a flat river
+  const maxH=pts[pts.length-1].h||1;
+  const X=(h)=>PAD+(h/maxH)*(W-2*PAD);
+  const Y=(v)=>H-PAD-((v-lo)/(hi-lo))*(H-2*PAD);
+  const line=pts.map((x,i)=>`${i?"L":"M"}${X(x.h).toFixed(1)},${Y(x.v).toFixed(1)}`).join("");
+  const area=`${line}L${X(maxH).toFixed(1)},${(H-PAD).toFixed(1)}L${X(0).toFixed(1)},${(H-PAD).toFixed(1)}Z`;
+  const bankY=bank!=null&&isFinite(bank)?Y(bank):null;
+  const last=pts[pts.length-1];
+  return `<div class="spark"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"
+      role="img" aria-label="${esc(t("f_hours"))}">
+    <path class="sband" d="${area}"/>
+    ${bankY!==null&&bankY>=0&&bankY<=H
+      ? `<line class="sbank" x1="0" y1="${bankY.toFixed(1)}" x2="${W}" y2="${bankY.toFixed(1)}"/>
+         <text class="stxt" x="2" y="${Math.max(8,bankY-3).toFixed(1)}">${esc(thresholdLabel(p))}</text>`
+      : ""}
+    <path class="sline" d="${line}"/>
+    <circle class="sdot" cx="${X(last.h).toFixed(1)}" cy="${Y(last.v).toFixed(1)}" r="2.6"/>
+    <text class="stxt" x="${X(0).toFixed(1)}" y="${H-0.5}">${esc(t("tl_now"))}</text>
+    <text class="stxt" x="${W-2}" y="${H-0.5}" text-anchor="end">+${last.h}h</text>
+  </svg></div>`;
+}
+
+/** What this river's own past says about it, and what the outlook says next.
+ *
+ *  Three things kept carefully apart, because they answer different questions and
+ *  conflating them is how a history becomes a warning:
+ *    - how often this place runs high (decades, unchanged by today's weather)
+ *    - where today's flow sits in that record (now)
+ *    - whether the outlook reaches a level it only reaches every 2-5 years (predicted)
+ *
+ *  All of it is modelled river flow, so the block says so at the bottom, every time.
+ */
+function floodHistory(p){
+  const n=k=>(p[k]==null||p[k]==="")?null:Number(p[k]);
+  const prone=n("flood_prone"), pct=n("flood_percentile");
+  const worst=n("flood_worst_cms"), r2=n("flood_return_2y_cms"), r5=n("flood_return_5y_cms");
+  const years=n("flood_years");
+  // Days a year above the 2-year level, and how much worse a rare flood is than an
+  // ordinary one. Episode COUNT is deliberately not shown: a 2-year return level is
+  // exceeded about five times a decade by definition, so it reads the same for every
+  // river and tells a reader nothing. See floodhist.STATS_SCHEMA.
+  const hiDays=n("flood_high_days_per_year"), growth=n("flood_growth_ratio");
+  const day=n("flood_outlook_day"), period=n("flood_outlook_period_y");
+  if(prone===null&&pct===null&&worst===null) return "";
+  const row=(lbl,val)=>val==null?"":
+    `<div class="pr"><span>${esc(lbl)}</span><span class="num">${esc(val)}</span></div>`;
+  const PRONE=["#6b7280","var(--fp1)","var(--fp2)","var(--fp3)"];
+
+  let bar="";
+  if(pct!==null){
+    // Where today sits in twelve years of this river's own flow. A bar lands before
+    // a number does; "92%" alone is a figure people skim past.
+    bar=`<div class="fhbar"><i style="width:${Math.max(2,Math.min(100,pct))}%"></i></div>
+      <div class="fhscale"><span>${esc(t("fh_pct"))}</span>
+        <span class="num">${pct.toFixed(0)}%</span></div>`;
+  }
+  const day5=n("flood_outlook_5y_day");
+  // The soonest crossing leads, because that is the part anyone can act on. The rarer
+  // level is a second clause, not a replacement for the first.
+  const out = day!==null
+    ? `<div class="fhout">⚠ <b>${esc(t("fh_outlook"))} 2-${esc(t("fh_yr"))}</b>
+        ${esc(t("fh_in_days"))} ${day} ${esc(t("fh_days"))}${
+        day5!==null&&period===5
+          ? ` · <b>5-${esc(t("fh_yr"))}</b> ${esc(t("fh_in_days"))} ${day5} ${esc(t("fh_days"))}`
+          : ""}</div>`
+    : "";
+  return `<div class="fh">
+    <b class="fhh">${esc(t("fh"))}${years?` · ${esc(t("fh_years"))} ${years} ${esc(t("fh_yr"))}`:""}</b>
+    ${bar}
+    ${prone===null?"":`<div class="pr"><span>${esc(t("fh_prone"))}</span><span>
+      <span class="fhpill" style="background:${PRONE[prone]||PRONE[0]};color:#fff">${
+        esc(t("fh_prone"+prone))}</span></span></div>`}
+    ${row(t("fh_days_hi"), hiDays==null?null:hiDays.toFixed(0))}
+    ${row(t("fh_growth"), growth==null?null:growth.toFixed(1)+"x")}
+    ${row(t("fh_last"), p.flood_last_episode_on)}
+    ${row(t("fh_worst"), worst==null?null:`${worst.toLocaleString()} m³/s · ${p.flood_worst_on||""}`)}
+    ${row(t("fh_season"), p.flood_season_months)}
+    ${row(`${t("fh_return")} 2 ${t("fh_yr")}`, r2==null?null:r2.toLocaleString()+" m³/s")}
+    ${row(`${t("fh_return")} 5 ${t("fh_yr")}`, r5==null?null:r5.toLocaleString()+" m³/s")}
+    ${out}
+    <div class="conf">${esc(t("fh_note"))}</div>
+  </div>`;
 }
 
 function stationPopup(e){
@@ -1419,7 +2080,9 @@ function stationPopup(e){
     ${why}
     ${n("bank_msl")===null?`<div class="conf">${esc(t("notbank"))}</div>`:""}
     ${p.risk_confidence?`<div class="conf">${esc(t("conf"))}: ${esc(p.risk_confidence)}</div>`:""}
+    ${forecastSpark(p)}
     ${forecastRows(p)}
+    ${floodHistory(p)}
     ${p.live_over_bank?`<div class="pttb">⚠ ${esc(t("live_new"))}</div>`:""}
     ${p.live?`<div class="conf">${esc(t("live_note"))}</div>`:""}
     <button class="sharebtn" data-watch="${esc(p.id)}">${
@@ -1455,6 +2118,41 @@ function forecastRows(p){
   return out;
 }
 
+/** Google's forecast for one point. Deliberately never shows a water level, because
+ *  the API does not publish one here and inventing one is how this project's worst
+ *  possible bug would look. */
+function gfhPopup(e){
+  const p=e.features[0].properties;
+  const lv=Number(p.level)||null;
+  const col=lv?RISK[lv]:"#4285f4";
+  const sev=LANG==="th" ? (p.severity_th||p.severity) : p.severity;
+  const trend=LANG==="th" ? (p.trend_th||p.trend) : p.trend;
+  const when=(iso)=>iso?new Date(iso).toLocaleString(LANG==="th"?"th-TH":"en-GB",
+    {day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}):null;
+  const row=(lbl,val)=>val==null||val===""?"":
+    `<div class="pr"><span>${esc(lbl)}</span><span class="num">${esc(val)}</span></div>`;
+  const lo=p.change_low==null?null:Number(p.change_low);
+  const hi=p.change_high==null?null:Number(p.change_high);
+  new maplibregl.Popup({maxWidth:"300px"}).setLngLat(e.lngLat).setHTML(`
+    <div class="pt" style="background:${col}">${esc(t("gfh"))}</div>
+    <div class="ph">${esc(sev)||"-"}</div>
+    <div class="psub">${esc(p.gauge_id)||""} · ${esc(
+      p.quality_verified===true||p.quality_verified==="true"
+        ? t("gfh_verified") : t("gfh_unverified"))}</div>
+    ${row(t("gfh_trend"), trend)}
+    ${row(t("gfh_issued"), when(p.issued_at))}
+    ${row(t("gfh_window"), p.forecast_from
+       ? `${when(p.forecast_from)} → ${when(p.forecast_to)||"?"}` : null)}
+    ${/* A change, not a level, and labelled so. Its unit lives on Google's gauge
+          model, which this layer deliberately does not fetch, so no unit is claimed. */""}
+    ${row(t("gfh_change"), lo==null&&hi==null ? null
+       : `${lo==null?"?":(lo>0?"+":"")+lo.toFixed(2)} … ${hi==null?"?":(hi>0?"+":"")+hi.toFixed(2)}`)}
+    ${Number(p.inundation_maps)>0
+      ? row(t("gfh_inund"), `${p.inundation_maps} ${t("gfh_maps")}`) : ""}
+    <div class="conf">${esc(t("gfh_nolevel"))}</div>
+    <div class="conf">${esc(t("gfh_note"))}</div>`).addTo(map);
+}
+
 function tidePopup(e){
   const p=e.features[0].properties;
   let next=[]; try{ next=JSON.parse(p.next||"[]"); }catch{}
@@ -1471,46 +2169,82 @@ function tidePopup(e){
 }
 
 /* ------------------------------------------------------------------ chrome */
+//: Last rendered headline figures, so a change can be animated rather than swapped in
+//: silently. Keyed by stat, not by index, so reordering the tiles cannot mis-attribute.
+const lastStats={};
+
 function renderChrome(){
   document.documentElement.lang=LANG;
   $("h-base").textContent=t("base"); $("h-over").textContent=t("over");
   $("o-sat").textContent=t("sat"); $("o-dark").textContent=t("dark");
   $("o-light").textContent=t("light"); $("o-osm").textContent=t("osm");
-  $("camnote").textContent=t("camnote")+(fires?"":" "+t("nofires"));
+  $("camnote").textContent=t("camnote")+(fires?"":" "+t("nofires"))
+    +(gfh?"":" "+t("gfh_nokey"));
   $("credit").textContent=t("credit");
   $("rtip").textContent=t("tune");
 
   // Tick boxes rather than pills: the user asked to "tick to show and unshow", and a
   // checkbox says what it does without having to be learned.
-  const have={fires:!!fires, terrain:!!terrain, dams:!!dams};
+  const have={fires:!!fires, terrain:!!terrain, dams:!!dams,
+              pastfloods:!!pastFloods?.features?.length,
+              gfh:!!gfh?.features?.length,
+              // Offered only where history actually exists *for the country on screen*.
+              // A global check would put a toggle in front of an American reader that
+              // draws nothing, which reads as "no flood-prone ground here" rather than
+              // "not computed here yet". Same reasoning as the accuracy figure.
+              floodprone:!!(meta?.flood_history?.by_country
+                || {})[(country||"").toUpperCase()]?.with_history};
   $("layerlist").innerHTML=LAYERS.filter(l=>!l.optional||have[l.id]).map(l=>`
-    <div class="chk${shown[l.id]?" on":" off"}" data-layer="${l.id}">
+    <div class="chk${shown[l.id]?" on":" off"}" data-layer="${l.id}" role="checkbox"
+         tabindex="0" aria-checked="${shown[l.id]?"true":"false"}">
       <span class="box">✓</span>
       <span>${esc(t(l.label))}${l.sub?`<small>${esc(t(l.sub))}</small>`:""}</span>
       <span class="dotc" style="background:${l.colour}"></span>
     </div>`).join("");
-  document.querySelectorAll("[data-layer]").forEach(el=>el.onclick=()=>{
+  const toggleLayer=(el)=>{
     const id=el.dataset.layer;
     shown[id]=!shown[id];
+    saveLayers();
     // 3D is the map's terrain, not a data layer, so it takes a different path.
-    if(id==="d3") setTerrain3D(shown.d3); else { applyVisibility(); renderChrome(); }
+    if(id==="d3") setTerrain3D(shown.d3);
+    else { applyVisibility(); pulse(); renderChrome(); }
+  };
+  document.querySelectorAll("[data-layer]").forEach(el=>{
+    el.onclick=()=>toggleLayer(el);
+    // Reachable from a keyboard: these are role="checkbox", so space and enter must
+    // work or the role is a lie to a screen reader.
+    el.onkeydown=(e)=>{ if(e.key===" "||e.key==="Enter"){ e.preventDefault(); toggleLayer(el); } };
   });
   $("h-legend").textContent=t("legend"); $("h-worst").textContent=t("worst");
   $("h-acc").textContent=t("acc");
   renderAccuracy();
+  renderFloodSummary();
   renderLiveBar();
   renderTimeline();
   renderWatchList();
   document.querySelectorAll("#lang button").forEach(b=>b.classList.toggle("on",b.dataset.l===LANG));
   document.querySelectorAll("#view button").forEach(b=>b.classList.toggle("on",b.dataset.v===country));
-  $("o-osm") && null;
   document.querySelectorAll("[data-base]").forEach(el=>el.classList.toggle("on",el.dataset.base===basemap));
 
   const c=meta?.counts??{}, r=meta?.risk??{};
-  $("stats").innerHTML=`
-    <div class="stat"><b class="num">${c.stations??"-"}</b><i>${esc(t("total"))}</i></div>
-    <div class="stat"><b class="num" style="color:${RISK[5]}">${c.at_or_over_bank??"-"}</b><i>${esc(t("over_bank"))}</i></div>
-    <div class="stat"><b class="num" style="color:${RISK[4]}">${r.soonest_to_bank_hr!=null?r.soonest_to_bank_hr+t("hr"):"-"}</b><i>${esc(t("soon"))}</i></div>`;
+  const stats=[
+    ["stations", c.stations??"-", t("total"), ""],
+    ["overbank", c.at_or_over_bank??"-", t("over_bank"), RISK[5]],
+    ["soon", r.soonest_to_bank_hr!=null?r.soonest_to_bank_hr+t("hr"):"-", t("soon"), RISK[4]],
+  ];
+  $("stats").innerHTML=stats.map(([k,v,label,col])=>
+    `<div class="stat"><b class="num" data-stat="${k}"${col?` style="color:${col}"`:""}>${
+      esc(v)}</b><i>${esc(label)}</i></div>`).join("");
+  // A number that has changed since the last render gets one beat of animation. A phone
+  // left on a windowsill can go from 12 over bank to 40 with nothing on screen moving,
+  // and "nothing moved" is how a reader concludes nothing happened.
+  for(const [k,v] of stats.map(s=>[s[0],String(s[1])])){
+    if(lastStats[k]!==undefined && lastStats[k]!==v){
+      const el=document.querySelector(`[data-stat="${k}"]`);
+      if(el&&!REDUCED_MOTION){ el.classList.add("bump"); setTimeout(()=>el.classList.remove("bump"),450); }
+    }
+    lastStats[k]=v;
+  }
 
   $("modes").innerHTML=[["risk","m_risk"],["level","m_level"],["rain","m_rain"],["discharge","m_dis"]]
     .map(([k,l])=>`<button class="btn${mode===k?" on":""}" data-mode="${k}">${esc(t(l))}</button>`).join("");
@@ -1559,11 +2293,13 @@ function renderAccuracy(){
       (measured?` ${esc(t("acc_only"))} ${esc(measured)}.`:"")+`</div>`;
     return;
   }
-  const shown=per||v;
-  const skill=shown.skill_vs_persistence;
+  // Not `shown`: that is the module-level layer-visibility map, and shadowing it here
+  // is a live grenade for the next person who adds a line to this function.
+  const figures=per||v;
+  const skill=figures.skill_vs_persistence;
   const good=skill!=null&&skill>0;
   const pct=skill==null?null:Math.round(Math.abs(skill)*100);
-  const medErr=shown.median_error_m;
+  const medErr=figures.median_error_m;
   el.innerHTML=`
     <div class="legend" style="margin-bottom:4px">
       <div><span class="d" style="background:${good?"#3fb950":"#e5484d"}"></span>
@@ -1576,6 +2312,65 @@ function renderAccuracy(){
     <div style="font-size:10px;color:var(--faint);line-height:1.4">${esc(v.note)} · n=${v.samples}</div>`;
 }
 
+/* The staleness banner had three problems, and all of them taught people to ignore it:
+ *
+ *   1. It said "Data may be out of date" and nothing else, so there was no way to tell
+ *      a two-minute cron delay from a feed that died overnight.
+ *   2. It could not be dismissed, so once it appeared it sat over the top of the map
+ *      permanently, covering the thing the reader came for.
+ *   3. It fired on ordinary cron drift. The builder runs every 15 minutes and Actions
+ *      drift 5-20, so a 90-minute threshold is right, but it was being crossed on
+ *      normal slow days and saying something alarming about it.
+ *
+ * Now it states the actual age, explains the cadence, and can be dismissed until the
+ * situation changes: `staleDismissed` records WHAT was dismissed, so a banner about a
+ * 40-minute delay does not suppress a later one about a dead feed. */
+let staleDismissed=null;
+
+function staleState(){
+  const gen=meta?.generated_at?new Date(meta.generated_at):null;
+  const mins=gen?(Date.now()-gen.getTime())/60000:null;
+  if(!navigator.onLine) return {key:"offline", mins};
+  const failed=(meta?.health?.checks||[]).filter(c=>c.status!=="pass");
+  if(meta?.health?.status && meta.health.status!=="pass")
+    return {key:"health:"+failed.map(c=>c.check).join(","), mins, failed};
+  const limit=meta?.health?.snapshot_stale_after_minutes??90;
+  if(mins!=null&&mins>limit)
+    // Bucketed, so the banner does not re-appear every minute as the age ticks up.
+    return {key:"old:"+Math.floor(mins/30), mins, limit};
+  return null;
+}
+
+/* How much of the country on screen actually has flood history behind it.
+ *
+ * Coverage is filled in a few hundred grid cells at a time, so for a while most of the
+ * world has none. The failure to avoid is a reader seeing an empty flood-prone layer
+ * and concluding there is no flood-prone ground here, when the truth is that nobody has
+ * computed it yet. Same reasoning as the per-country accuracy figure above. */
+function renderFloodSummary(){
+  const el=$("fhsum"); if(!el) return;
+  $("h-fh").textContent=t("fh");
+  const fh=meta?.flood_history;
+  const cc=(country||"").toUpperCase();
+  const per=fh?.by_country?.[cc];
+  if(!fh||!fh.gauges_with_history||(cc&&cc!=="WORLD"&&!per)){
+    const done=(fh?.measured_countries||[]).join(", ");
+    el.innerHTML=`<div style="font-size:11.5px;color:var(--faint)">${esc(t("fh_none"))}`
+      +(done?` ${esc(t("acc_only"))} ${esc(done)}.`:"")+`</div>`;
+    return;
+  }
+  const pct=per.gauges?Math.round(per.with_history/per.gauges*100):0;
+  el.innerHTML=`<div class="legend" style="margin-bottom:4px">
+      <div><span class="d" style="background:#38bdf8"></span>${per.with_history.toLocaleString()} ${
+        esc(t("gauges"))} · ${pct}%</div>
+      <div><span class="d" style="background:var(--fp2)"></span>${per.prone.toLocaleString()} ${
+        esc(t("floodprone"))}</div>
+      ${per.predicted?`<div><span class="d" style="background:var(--fp3)"></span>${
+        per.predicted.toLocaleString()} ${esc(t("fp_predicted"))}</div>`:""}
+    </div>
+    <div style="font-size:10px;color:var(--faint);line-height:1.4">${esc(t("fh_note"))}</div>`;
+}
+
 function renderAge(){
   const gen=meta?.generated_at?new Date(meta.generated_at):null;
   const mins=gen?(Date.now()-gen.getTime())/60000:null;
@@ -1586,17 +2381,20 @@ function renderAge(){
     ? `${t("updated")} ${ageText(mins)} ${t("ago")} · ${t("median")} ${ageText(med)}`
     : t("nodata");
 
-  const limit=meta?.health?.snapshot_stale_after_minutes??90;
-  const bad=!navigator.onLine||(mins!=null&&mins>limit)||(meta?.health?.status&&meta.health.status!=="pass");
+  const bad=staleState();
   const el=$("degraded");
-  el.classList.toggle("show",!!bad);
-  if(bad){
-    const why = !navigator.onLine
-      ? t("offline")
-      : (meta?.health?.checks||[]).filter(c=>c.status!=="pass")
-          .map(c=>c.detail).join(" · ");
-    el.innerHTML=`<b>⚠ ${esc(t("degraded"))}</b>` + (why?`<br>${esc(why)}`:"");
-  }
+  if(!bad || bad.key===staleDismissed){ el.classList.remove("show"); return; }
+  const why = bad.key==="offline" ? t("offline")
+    : bad.failed ? bad.failed.map(c=>c.detail).join(" · ")
+    : `${t("stale_age")} ${ageText(bad.mins)} ${t("ago")}. ${t("stale_why")}`;
+  el.classList.add("show");
+  el.innerHTML=`<div class="drow"><div style="flex:1">
+      <b>⚠ ${esc(bad.key==="offline"?t("degraded"):t("stale_hdr"))}</b><br>${esc(why)}
+    </div><button class="dsm" type="button" aria-label="${esc(t("dismiss"))}">✕</button></div>`;
+  el.querySelector(".dsm").onclick=()=>{
+    staleDismissed=bad.key;
+    el.classList.remove("show");
+  };
 }
 
 /* ------------------------------------------------------------------ boot */
@@ -1609,7 +2407,9 @@ function setBasemap(name){
 }
 
 (async function(){
+  $("bootmsg").textContent=t("loading")+"…";
   if(!(await load())){
+    $("boot").classList.add("gone");
     $("degraded").classList.add("show");
     $("degraded").innerHTML=`<b>⚠ ${esc(t("degraded"))}</b>`;
     return;
@@ -1617,10 +2417,17 @@ function setBasemap(name){
   const v0=VIEWS[country]||VIEWS.th;
   map=new maplibregl.Map({container:"map",style:satelliteStyle(),
     center:v0.center,zoom:v0.zoom,attributionControl:false,
-    maxZoom:16,minZoom:3});
+    maxZoom:16,minZoom:3,
+    // Tuned for a phone on a bad connection rather than a demo on a desktop GPU.
+    // antialias off is the big one: with 16,000 circles, MSAA costs real frames and
+    // buys almost nothing on dots this small.
+    antialias:false,
+    fadeDuration:120,
+    refreshExpiredTiles:false});
   map.addControl(new maplibregl.AttributionControl({compact:true,
     customAttribution:"ThaiWater (HII) · UK Environment Agency (OGL) · "
       +"Rijkswaterstaat · NOAA/NWS · Open-Meteo (CC-BY 4.0) · USGS · RainViewer · Radio Browser · "
+      +"Google Flood Hub (CC-BY 4.0) · GDACS · "
       +"layers inspired by gods-eye-view (MIT) · SeRAPHIM AGPL-3.0"}));
   map.addControl(new maplibregl.NavigationControl({showCompass:false}),"bottom-right");
   map.addControl(new maplibregl.GeolocateControl({trackUserLocation:true}),"bottom-right");
@@ -1631,14 +2438,82 @@ function setBasemap(name){
     if(want) openStationById(want);
     applyTimeline();
     checkWatches();
+    pulse();
     try{ if(localStorage.getItem("seraphim_3d")==="1"){ shown.d3=true; setTerrain3D(true); } }catch{}
+    // The map has pixels on it; get the splash out of the way. `idle` rather than
+    // `load` so the first tiles are actually painted, otherwise the splash fades to
+    // reveal a grey rectangle, which is the thing it exists to avoid.
+    map.once("idle",()=>$("boot").classList.add("gone"));
+    // ...but never hang on a basemap that will not load. The gauges are the point and
+    // they are already here.
+    setTimeout(()=>$("boot").classList.add("gone"), 2500);
+    liveDisclosure();
   });
 
-  $("grab").onclick=()=>$("sheet").classList.toggle("open");
-  $("stats").onclick=()=>$("sheet").classList.toggle("open");
+  /* The sheet opens by tap, and now also by drag.
+   *
+   * A bottom sheet that only responds to a tap on a 34px handle is a sheet most people
+   * never open, and everything below the fold (the forecast timeline, the watch list,
+   * the legend, the worst districts) was below that fold. Dragging tracks the finger
+   * directly and snaps to the nearest of three heights on release. */
+  const sheet=$("sheet");
+  const SNAP_COLLAPSED=74;
+  const snapHeights=()=>[SNAP_COLLAPSED,
+    Math.min(innerHeight*0.62,520), Math.min(innerHeight*0.88,760)];
+  // Snap to whichever of the three heights the finger stopped nearest.
+  const classFor=(h)=>{
+    const [collapsed, open, full]=snapHeights();
+    if(h<=(collapsed+open)/2) return "";
+    return h<=(open+full)/2 ? "open" : "full";
+  };
+  let dragY=null, dragH=0, dragMoved=false;
+
+  const onDown=(e)=>{
+    dragY=e.clientY; dragH=sheet.getBoundingClientRect().height; dragMoved=false;
+    sheet.classList.add("dragging");
+    $("grab").setPointerCapture?.(e.pointerId);
+  };
+  const onMove=(e)=>{
+    if(dragY===null) return;
+    const dy=dragY-e.clientY;
+    if(Math.abs(dy)>4) dragMoved=true;
+    const [minH,,maxH]=snapHeights();
+    sheet.style.height=Math.max(minH,Math.min(maxH,dragH+dy))+"px";
+  };
+  const onUp=()=>{
+    if(dragY===null) return;
+    const h=sheet.getBoundingClientRect().height;
+    dragY=null;
+    sheet.classList.remove("dragging");
+    sheet.style.height="";                      // hand control back to the CSS classes
+    if(!dragMoved){                             // a tap, not a drag
+      sheet.classList.toggle("open");
+      sheet.classList.remove("full");
+      return;
+    }
+    sheet.classList.remove("open","full");
+    const c=classFor(h);
+    if(c) sheet.classList.add(c);
+  };
+  $("grab").addEventListener("pointerdown",onDown);
+  $("grab").addEventListener("pointermove",onMove);
+  $("grab").addEventListener("pointerup",onUp);
+  $("grab").addEventListener("pointercancel",onUp);
+  $("stats").onclick=()=>{ sheet.classList.remove("full"); sheet.classList.toggle("open"); };
+
   $("layersbtn").onclick=e=>{ e.stopPropagation(); $("layers").classList.toggle("show"); };
   document.addEventListener("click",e=>{
     if(!$("layers").contains(e.target)&&e.target!==$("layersbtn")) $("layers").classList.remove("show");
+  });
+  // Escape backs out of whatever is open, innermost first. Without it the only way out
+  // of the layers drawer on a desktop is to find somewhere neutral to click.
+  document.addEventListener("keydown",e=>{
+    if(e.key!=="Escape") return;
+    if($("layers").classList.contains("show")){ $("layers").classList.remove("show"); return; }
+    if(shown.radio){ shown.radio=false; saveLayers(); applyVisibility(); renderChrome(); return; }
+    if(sheet.classList.contains("open")||sheet.classList.contains("full")){
+      sheet.classList.remove("open","full");
+    }
   });
   document.querySelectorAll("#lang button").forEach(b=>b.onclick=()=>{
     LANG=b.dataset.l; localStorage.setItem("seraphim_lang",LANG); renderChrome();
@@ -1661,7 +2536,10 @@ function setBasemap(name){
     // The world view is about events, not gauges, so it turns the right things on.
     if(b.dataset.v==="world"){ shown.events=true; shown.quakes=true; shown.provinces=false; }
     else { shown.provinces = b.dataset.v==="th"; }
+    saveLayers();
+    addLayers();          // a country loaded later may bring layers that did not exist
     applyVisibility();
+    pulse();
     map.flyTo({center:v.center, zoom:v.zoom});
     $("sheet").classList.remove("open");
     // Each country is live against a different agency, and one of them (NL) has none.
@@ -1670,7 +2548,7 @@ function setBasemap(name){
   });
   document.querySelectorAll("[data-base]").forEach(el=>el.onclick=()=>setBasemap(el.dataset.base));
 
-  $("rclose").onclick=()=>{ shown.radio=false; applyVisibility(); renderChrome(); };
+  $("rclose").onclick=()=>{ shown.radio=false; saveLayers(); applyVisibility(); renderChrome(); };
   $("rplay").onclick=()=>{
     if(!radioNear.length) refreshDial();
     if(audio&&!audio.paused){ audio.pause(); $("rplay").textContent="▶";
@@ -1696,10 +2574,12 @@ function setBasemap(name){
       window.__liveMove=setTimeout(refreshLive, 1200);
     }
   });
-  // Resume only if this visitor turned it on before. The default stays off.
+  // Live is on unless this visitor turned it off; the disclosure above names who is
+  // contacted the first time it runs.
   if(liveOn) setLive(true); else renderLiveBar();
+  watchVisibility();
   window.addEventListener("resize",()=>{ if(shown.radio) drawDial(); });
-  window.addEventListener("online",renderAge);
+  window.addEventListener("online",()=>{ renderAge(); if(liveOn) refreshLive(); });
   window.addEventListener("offline",renderAge);
 
   // Poll for a newer snapshot and swap the data in place, so a phone left open on a
@@ -1720,6 +2600,13 @@ function setBasemap(name){
       if(map.getSource("events")&&events) map.getSource("events").setData(events);
       if(map.getSource("terrain")&&terrain) map.getSource("terrain").setData(terrain);
       if(map.getSource("dams")&&dams) map.getSource("dams").setData(dams);
+      if(map.getSource("pastfloods")&&pastFloods) map.getSource("pastfloods").setData(pastFloods);
+      if(map.getSource("gfh")&&gfh) map.getSource("gfh").setData(gfh);
+      // Layers whose data only arrived on a later build (flood history is filled in a
+      // few hundred cells at a time) have to be created now, or they never appear
+      // until someone reloads.
+      addLayers();
+      pulse();
       renderChrome();
     } else { renderAge(); }
   },60000);

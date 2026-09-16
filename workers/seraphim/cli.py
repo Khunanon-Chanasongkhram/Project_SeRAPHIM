@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from seraphim import cache
+from seraphim import floodhist
 
 #: Forecast sampling grid, in degrees. About 22 km, close to GloFAS's own resolution.
 FORECAST_GRID_DEG = 0.2
@@ -15,8 +16,10 @@ from seraphim.adapters import forecast_registry, registry
 from seraphim.adapters.marine import TideAdapter, summarise
 from seraphim.models import Forecast, SourceHealth, StationState
 from seraphim.history import fit_trend, load_history, merge_current
-from seraphim.adapters.hazards import fetch_earthquakes, fetch_events, fetch_fires
+from seraphim.adapters.hazards import (
+    fetch_earthquakes, fetch_events, fetch_fires, fetch_past_floods)
 from seraphim.adapters.thaidam import fetch_dams
+from seraphim.adapters.googlefloods import fetch_google_floods
 from seraphim.adapters.spots import all_spots, fetch_weather
 from seraphim.fishing import build_fishing
 from seraphim.publish import (
@@ -34,6 +37,128 @@ from seraphim.publish import (
 from seraphim.risk import assess, rollup
 from seraphim import terrain as terrain_mod
 from seraphim.validate import backtest, format_report
+
+
+def _grid_cells(stations) -> tuple[dict[tuple[int, int], list[str]], list[tuple[str, float, float]]]:
+    """Collapse stations onto the shared forecast grid.
+
+    Returns the cell -> station ids map and the cell centroids as fetchable points.
+    Shared by the forecast fetch and the flood climatology so the two can never end up
+    comparing a forecast from one cell against a history from another, which would
+    produce a percentile that looks authoritative and means nothing.
+    """
+    cells: dict[tuple[int, int], list[str]] = {}
+    for st in stations:
+        key = (round(st.lat / FORECAST_GRID_DEG), round(st.lon / FORECAST_GRID_DEG))
+        cells.setdefault(key, []).append(st.id)
+    points = [(f"cell:{a}:{b}", a * FORECAST_GRID_DEG, b * FORECAST_GRID_DEG)
+              for (a, b) in cells]
+    return cells, points
+
+
+def _flood_history(stations, data_root: Path, forecast_fields: dict[str, dict]) -> dict:
+    """Join the cached flood climatology onto stations, and read today against it.
+
+    Purely local: this never fetches. The climatology is filled in by the separate
+    `floodhist` command, because it costs a rate-limited multi-megabyte request per 50
+    cells and has no business inside a 15-minute build. Cells not yet fetched simply
+    carry no flood history, and the UI says so rather than guessing.
+    """
+    hit = cache.load(floodhist.cache_root(data_root),
+                     floodhist.CACHE_KEY, floodhist.CACHE_HOURS)
+    clim = (hit or {}).get("data") or {}
+    if not clim:
+        return {"cells": 0, "stations": 0}
+
+    cells, _ = _grid_cells(stations)
+    joined = 0
+    prone_counts: dict[int, int] = {}
+    predicted = 0
+    skipped_old = 0
+    for (a, b), ids in cells.items():
+        stats = clim.get(f"cell:{a}:{b}")
+        if not stats or stats.get("no_river"):
+            continue
+        # A summary at an older version is skipped whole, not read in part. Most of its
+        # fields are still valid, but `prone_level` refuses it, and publishing a popup
+        # full of history beside a panel reporting no history measured here is a worse
+        # state than reporting none consistently until the top-up re-fetches the cell.
+        if stats.get("v") != floodhist.STATS_SCHEMA:
+            skipped_old += 1
+            continue
+        prone = floodhist.prone_level(stats)
+        for sid in ids:
+            fields = forecast_fields.setdefault(sid, {})
+            fields["flood_years"] = stats.get("years")
+            fields["flood_worst_cms"] = stats.get("max_cms")
+            fields["flood_worst_on"] = stats.get("max_on")
+            fields["flood_high_days_per_year"] = stats.get("high_days_per_year")
+            fields["flood_growth_ratio"] = stats.get("growth_ratio")
+            fields["flood_last_episode_on"] = stats.get("last_episode_on")
+            fields["flood_return_2y_cms"] = stats.get("return_2y_cms")
+            fields["flood_return_5y_cms"] = stats.get("return_5y_cms")
+            fields["flood_season_months"] = _flood_season(stats.get("by_month_cms"))
+            if prone is not None:
+                fields["flood_prone"] = prone
+                prone_counts[prone] = prone_counts.get(prone, 0) + 1
+
+            # Where today's modelled flow sits in this cell's own record.
+            now = fields.get("discharge_now_cms")
+            pct = floodhist.percentile_of(stats, now)
+            if pct is not None:
+                fields["flood_percentile"] = pct
+
+            # The predicted half: does the outlook reach a level this river only
+            # reaches every couple of years?
+            ex = floodhist.forecast_exceedance(stats, fields.get("discharge_outlook_cms"))
+            if ex:
+                # The SOONEST meaningful crossing, not the most severe one. Publishing
+                # only the 5-year day threw away the fact that the 2-year level might
+                # be reached a fortnight earlier, which is the part anyone can act on,
+                # and it could push a gauge out of the map's 14-day highlight while
+                # still being days away from unusual water.
+                fields["flood_outlook_day"] = ex["day_2y"]
+                fields["flood_outlook_5y_day"] = ex.get("day_5y")
+                # The strongest level the outlook reaches at all, for the label.
+                fields["flood_outlook_period_y"] = 5 if ex.get("day_5y") is not None else 2
+                fields["flood_outlook_peak_vs_2y"] = ex.get("peak_vs_2y")
+                predicted += 1
+            joined += 1
+    return {"cells": sum(1 for v in clim.values()
+                        if not v.get("no_river") and v.get("v") == floodhist.STATS_SCHEMA),
+            "stations": joined, "prone": prone_counts, "predicted": predicted,
+            "skipped_old": skipped_old}
+
+
+def _flood_season(by_month: list | None) -> str | None:
+    """The months this river usually runs highest, as "Jul-Oct", or None.
+
+    Months carrying at least 70% of the peak month's mean flow. Answers "when does
+    this place normally flood", which is the question behind most of the history."""
+    if not by_month or len(by_month) != 12:
+        return None
+    vals = [v for v in by_month if v is not None]
+    if not vals or max(vals) <= 0:
+        return None
+    cut = max(vals) * 0.7
+    hot = [i for i, v in enumerate(by_month) if v is not None and v >= cut]
+    if not hot or len(hot) == 12:
+        return None
+    names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+             "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    # Wrap a season that straddles the new year (Nov-Feb) instead of printing "Jan-Dec".
+    runs, run = [], [hot[0]]
+    for m in hot[1:]:
+        if m == run[-1] + 1:
+            run.append(m)
+        else:
+            runs.append(run)
+            run = [m]
+    runs.append(run)
+    if len(runs) > 1 and runs[0][0] == 0 and runs[-1][-1] == 11:
+        runs = [runs[-1] + runs[0]] + runs[1:-1]
+    best = max(runs, key=len)
+    return names[best[0]] if len(best) == 1 else f"{names[best[0]]}-{names[best[-1]]}"
 
 
 def _forecasts(
@@ -55,12 +180,7 @@ def _forecasts(
     # proxy for gauges NOAA already runs a hydrological model on.
     gridded = [st for st in stations
                if getattr(registry.get(st.source), "shared_forecast_grid", True)]
-    cells: dict[tuple[int, int], list[str]] = {}
-    for st in gridded:
-        key = (round(st.lat / FORECAST_GRID_DEG), round(st.lon / FORECAST_GRID_DEG))
-        cells.setdefault(key, []).append(st.id)
-    points = [(f"cell:{a}:{b}", a * FORECAST_GRID_DEG, b * FORECAST_GRID_DEG)
-              for (a, b) in cells]
+    cells, points = _grid_cells(gridded)
     opted_out = len(stations) - len(gridded)
     print(f"[forecast] {len(gridded)} gauges collapse to {len(points)} grid cells "
           f"at {FORECAST_GRID_DEG} deg"
@@ -188,6 +308,22 @@ def build(
         forecast_fields, forecast_fetched_at = _forecasts(
             all_stations, cache_root, generated_at, health, refresh_scale
         )
+        # Flood history is a local join over an already-cached climatology, so it costs
+        # no upstream call and adds no build time. `floodhist` fills the cache.
+        fh = _flood_history(all_stations, out_root, forecast_fields)
+        if fh["stations"]:
+            prone = fh.get("prone") or {}
+            print(f"[floodhist] {fh['cells']} cells of history joined to "
+                  f"{fh['stations']} gauges | flood-prone 3={prone.get(3,0)} "
+                  f"2={prone.get(2,0)} 1={prone.get(1,0)} 0={prone.get(0,0)} | "
+                  f"{fh['predicted']} with a high-flow outlook")
+        elif fh.get("skipped_old"):
+            print(f"[floodhist] {fh['skipped_old']} cells are cached at an older summary "
+                  f"version and were skipped; run `python -m seraphim.cli floodhist "
+                  f"--budget 300` to re-fetch them")
+        else:
+            print("[floodhist] no climatology cached yet; "
+                  "run `python -m seraphim.cli floodhist --budget 300`")
         tide_points = _tide(cache_root, generated_at, health, refresh_scale)
 
     states: list[StationState] = []
@@ -277,6 +413,26 @@ def build(
             else:
                 print(f"[dams] FAILED: {dh.error}", file=sys.stderr)
 
+        # Past floods. A 21-year archive changes only when a new flood ends, so it is
+        # cached for a week; the per-year fetch is 22 requests and has no business
+        # running on the 15-minute cadence.
+        hit = cache.load(cache_root, "floods_past", 168.0 * refresh_scale)
+        if hit:
+            extra["floods-past.geojson"] = hit["data"]
+            print("[floods-past] cache hit")
+        else:
+            past, ph = fetch_past_floods()
+            health.append(ph)
+            for w in ph.warnings:
+                print(f"[floods-past] warning: {w}", file=sys.stderr)
+            if past:
+                extra["floods-past.geojson"] = past
+                cache.save(cache_root, "floods_past", past)
+                print(f"[floods-past] {ph.stations} orange/red floods, "
+                      f"{past['years'][0]}-{past['years'][1]}")
+            else:
+                print(f"[floods-past] FAILED: {ph.error}", file=sys.stderr)
+
         hit = cache.load(cache_root, "events", 3.0 * refresh_scale)
         if hit:
             extra["events.geojson"] = hit["data"]
@@ -292,6 +448,25 @@ def build(
                 print(f"[events] {eh.stations} worldwide: {dict(by)}")
             else:
                 print(f"[events] FAILED: {eh.error}", file=sys.stderr)
+
+        # Google Flood Hub. Status is refreshed "several times a day" upstream, so a
+        # 3 h cache costs nothing. Absent entirely without a key, and that is not a
+        # failure: access is gated behind a pilot waitlist.
+        hit = cache.load(cache_root, "google_floods", 3.0 * refresh_scale)
+        if hit:
+            extra["floods-google.geojson"] = hit["data"]
+            print("[google-floods] cache hit")
+        else:
+            gdoc, gh = fetch_google_floods()
+            health.append(gh)
+            for w in gh.warnings:
+                print(f"[google-floods] warning: {w}", file=sys.stderr)
+            if gdoc:
+                extra["floods-google.geojson"] = gdoc
+                cache.save(cache_root, "google_floods", gdoc)
+                print(f"[google-floods] {gh.stations} flood-status points")
+            else:
+                print(f"[google-floods] skipped: {gh.error}")
 
         hit = cache.load(cache_root, "fires", 3.0 * refresh_scale)
         if hit:
@@ -417,6 +592,82 @@ def build(
     return 0
 
 
+def _floodhist(budget: int, out_root: Path, country: str | None) -> int:
+    """Top up the flood climatology, a grid cell at a time.
+
+    Separate from the build for the same reason `terrain` is: it costs a rate-limited
+    multi-megabyte request per 50 cells and takes minutes, and a build that sometimes
+    does that is a build that sometimes times out during a flood.
+
+    Incremental by design. Each run fetches up to `budget` cells that have no history
+    yet or whose history is older than REFRESH_DAYS, merges them into the cache, and
+    stops. An interrupted run costs progress, never data.
+    """
+    cache_root = out_root / "cache"
+    clim_root = floodhist.cache_root(out_root)
+    hit = cache.load(clim_root, floodhist.CACHE_KEY, floodhist.CACHE_HOURS)
+    clim: dict[str, dict] = dict((hit or {}).get("data") or {})
+    before = len(clim)
+
+    collected = []
+    for name, adapter in registry.items():
+        if country and adapter.country.lower() != country.lower():
+            continue
+        adapter.cache_root = cache_root
+        stations, _obs, health = adapter.fetch()
+        if not health.ok:
+            print(f"[{name}] FAILED: {health.error}", file=sys.stderr)
+            continue
+        collected += stations
+    if not collected:
+        print("no stations available", file=sys.stderr)
+        return 1
+
+    cells, points = _grid_cells(collected)
+    # Busiest cells first: a cell holding forty gauges answers the question for forty
+    # places, and the budget runs out long before the world does.
+    weight = {f"cell:{a}:{b}": len(ids) for (a, b), ids in cells.items()}
+
+    def needs(cid: str) -> bool:
+        have = clim.get(cid)
+        if have is None:
+            return True
+        # Summaries computed by an older version are re-fetched: a statistic that was
+        # never computed cannot be recovered from the summary it is missing from, and
+        # the alternative is a map showing two incompatible definitions of flood-prone
+        # side by side with nothing to tell them apart.
+        return have.get("v") != floodhist.STATS_SCHEMA and not have.get("no_river")
+
+    todo = [p for p in points if needs(p[0])]
+    todo.sort(key=lambda p: -weight.get(p[0], 0))
+    if not todo:
+        print(f"[floodhist] all {len(points)} cells covered at v{floodhist.STATS_SCHEMA}"
+              f"{f' in {country.upper()}' if country else ''}; nothing due")
+        return 0
+
+    stale = sum(1 for p in todo if p[0] in clim)
+    print(f"[floodhist] {len(clim)} cells cached, {len(todo)} to fetch "
+          f"({stale} at an older summary version)"
+          f"{f' in {country.upper()}' if country else ''}; "
+          f"fetching up to {budget} at {floodhist.BATCH}/request, "
+          f"~{floodhist.PACE_SECONDS}s apart", flush=True)
+
+    health = SourceHealth(source=floodhist.CACHE_KEY, ok=False)
+    fetched = floodhist.fetch_climatology(todo, health, budget=budget)
+    for w in health.warnings:
+        print(f"[floodhist] warning: {w}", file=sys.stderr)
+    if not fetched:
+        print(f"[floodhist] FAILED: {health.error}", file=sys.stderr)
+        return 1
+
+    clim.update(fetched)
+    cache.save(clim_root, floodhist.CACHE_KEY, clim)
+    rivers = sum(1 for v in clim.values() if not v.get("no_river"))
+    print(f"[floodhist] {before} -> {len(clim)} cells ({rivers} with a river), "
+          f"{len(points) - len(clim)} still missing")
+    return 0
+
+
 def _terrain(budget: int) -> int:
     """Top up terrain profiles, worst-risk gauges first.
 
@@ -482,9 +733,45 @@ def main(argv: list[str] | None = None) -> int:
                     help="gauges to sample this run (default 60)")
     tp.add_argument("--out", type=Path, default=Path("../data"))
 
+    gp = sub.add_parser(
+        "googlefloods",
+        help="check the Google Flood Hub schema against a live response (needs a key)")
+    gp.add_argument("--probe", action="store_true",
+                    help="talk to Google: dump one live row and check every field the "
+                         "adapter reads. Without it, just prints local status.")
+    gp.add_argument("--region", default="TH", help="region code to probe (default TH)")
+
+    fh = sub.add_parser(
+        "floodhist",
+        help="top up the flood climatology (run daily; 12 years of history per cell)")
+    fh.add_argument("--budget", type=int, default=300,
+                    help="grid cells to fetch this run (default 300, ~6 min)")
+    fh.add_argument("--country", help="limit to one adapter country, e.g. TH")
+    fh.add_argument("--out", type=Path, default=Path("../data"))
+
     args = parser.parse_args(argv)
     if args.command == "terrain":
         return _terrain(args.budget)
+    if args.command == "floodhist":
+        return _floodhist(args.budget, args.out.resolve(), args.country)
+    if args.command == "googlefloods":
+        from seraphim.adapters import googlefloods as _gf
+        if args.probe:
+            return _gf.probe(region=args.region)
+        # Bare command: say where things stand without spending a request. `--probe` is
+        # the one that talks to Google, and it should be a deliberate act rather than
+        # something a status check does behind your back.
+        key = _gf.api_key()
+        print(f"key: {'configured' if key else 'NOT configured'}"
+              + ("" if key else " (set GOOGLE_FLOOD_API_KEY; access is waitlisted at "
+                               "https://developers.google.com/flood-forecasting)"))
+        print(f"regions fetched by the build: {', '.join(_gf.DEFAULT_REGIONS)}")
+        print("severity mapping: " + ", ".join(
+            f"{k}->{v}" for k, v in _gf.SEVERITY_LEVEL.items())
+            + " (UNKNOWN is dropped, never mapped to 'no flooding')")
+        print("\nField names come from Google's published reference, NOT from a live "
+              "response.\nRun with --probe once a key exists, before trusting the layer.")
+        return 0 if key else 2
     if args.command == "sources":
         for name, a in sorted(registry.items()):
             print(f"  level    {name:<18} {a.country:<3} {a.attribution}")

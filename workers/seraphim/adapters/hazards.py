@@ -180,3 +180,110 @@ def fetch_fires(map_key: str | None = None) -> tuple[dict | None, SourceHealth]:
         "window": f"past {FIRMS_DAYS} days, Thailand region",
         "features": features,
     }, health)
+
+
+#: Past floods, from the same GDACS catalogue as the live event layer.
+#:
+#: Queried one year at a time on purpose. The SEARCH endpoint caps a response at 100
+#: features with no paging parameter, so a single 2005-2026 request silently returns
+#: the most recent 100 events and looks like a complete archive. Verified 2026-09-16:
+#: the unscoped 21-year query returned exactly 100, all from 2021 onward, while a
+#: scoped 2011 query returns the Thailand flood of August 2011 that the wide one
+#: dropped. Per-year keeps every response well inside the cap (the busiest year here
+#: held 26 orange/red floods worldwide).
+GDACS_PAST_URL = ("https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH"
+                  "?eventlist=FL&fromDate={frm}&toDate={to}&alertlevel=Orange;Red")
+
+#: How far back to build the flood archive. 2005 is early enough to include the events
+#: people remember by name, and GDACS coverage before it is patchy.
+PAST_FLOOD_FROM_YEAR = 2005
+
+
+def fetch_past_floods(
+    from_year: int = PAST_FLOOD_FROM_YEAR,
+    to_year: int | None = None,
+    years: list[int] | None = None,
+) -> tuple[dict | None, SourceHealth]:
+    """Historical orange/red floods, one request per year.
+
+    Only orange and red are kept. GDACS raises a green alert for a great many events
+    that never produced anything a person would call a flood, and a map covered in
+    them teaches the reader to ignore the layer.
+
+    A year that fails is skipped with a warning rather than aborting: a partial archive
+    is still a useful archive, and the caller caches and merges across runs.
+    """
+    health = SourceHealth(source="gdacs_past", ok=False)
+    now = datetime.now(timezone.utc)
+    to_year = to_year or now.year
+    wanted = years if years is not None else list(range(from_year, to_year + 1))
+
+    features = []
+    seen: set = set()
+    failed = 0
+    for year in wanted:
+        url = GDACS_PAST_URL.format(frm=f"{year}-01-01", to=f"{year}-12-31")
+        try:
+            payload = fetch_json(url, timeout=60)
+        except Exception as exc:  # noqa: BLE001
+            failed += 1
+            health.warnings.append(f"{year}: {exc}")
+            continue
+        rows = (payload or {}).get("features") or []
+        if len(rows) >= 100:
+            # The cap again. Say so rather than publish a year that is quietly clipped.
+            health.warnings.append(
+                f"{year}: hit the 100-event response cap, that year is incomplete")
+        for f in rows:
+            p = f.get("properties") or {}
+            coords = (f.get("geometry") or {}).get("coordinates") or []
+            eid = p.get("eventid")
+            if len(coords) < 2 or eid is None or eid in seen:
+                continue
+            seen.add(eid)
+            frm = str(p.get("fromdate") or "")
+            to = str(p.get("todate") or "")
+            countries = [c.get("countryname") for c in (p.get("affectedcountries") or [])
+                         if isinstance(c, dict) and c.get("countryname")]
+            days = None
+            try:
+                days = (datetime.fromisoformat(to) - datetime.fromisoformat(frm)).days + 1
+            except ValueError:
+                pass
+            features.append({
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [coords[0], coords[1]]},
+                "properties": {
+                    "id": eid,
+                    "alert": (p.get("alertlevel") or "").lower(),
+                    "name": p.get("eventname") or p.get("name"),
+                    "country": p.get("country"),
+                    "countries": ", ".join(countries[:6]) or None,
+                    "iso3": p.get("iso3"),
+                    "from": frm[:10] or None,
+                    "to": to[:10] or None,
+                    "days": days,
+                    "year": year,
+                    "url": (p.get("url") or {}).get("report"),
+                },
+            })
+
+    if not features:
+        health.error = "no historical floods returned"
+        return None, health
+    # Newest first: the recent ones are the ones people are checking against.
+    features.sort(key=lambda f: (f["properties"]["from"] or ""), reverse=True)
+    health.ok = True
+    health.stations = len(features)
+    if failed:
+        health.warnings.append(f"{failed} of {len(wanted)} years could not be fetched")
+    return ({
+        "type": "FeatureCollection",
+        "generated_at": now.isoformat(),
+        "attribution": "GDACS (Global Disaster Alert and Coordination System)",
+        "window": f"orange and red floods, {min(wanted)}-{max(wanted)}",
+        "note": ("Reported flood events with their GDACS alert level. A point marks "
+                 "where the event was located, not the area that flooded."),
+        "years": [min(wanted), max(wanted)],
+        "features": features,
+    }, health)

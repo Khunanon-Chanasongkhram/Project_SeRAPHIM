@@ -476,9 +476,25 @@ def rollup(states: list[StationState], risks: dict[str, Risk]) -> list[dict]:
                 "worst_station": None,
                 "worst_ttb_hr": None,
                 "reasons": [],
+                # Flood history, rolled up the same way as risk: the worst gauge in the
+                # district, never an average. Deliberately separate from `level`, which
+                # is about today. A district can be highly flood-prone and perfectly
+                # calm this morning, and saying both at once is the point.
+                "flood_prone": None,
+                "flood_outlook_day": None,
             },
         )
         b["stations"] += 1
+        fc = s.forecast
+        if fc is not None:
+            if fc.flood_prone is not None:
+                cur = b["flood_prone"]
+                b["flood_prone"] = fc.flood_prone if cur is None else max(cur, fc.flood_prone)
+            if fc.flood_outlook_day is not None:
+                cur = b["flood_outlook_day"]
+                # Soonest, not worst: the question is how long anyone has.
+                b["flood_outlook_day"] = (fc.flood_outlook_day if cur is None
+                                          else min(cur, fc.flood_outlook_day))
         if (s.freeboard_m or 1) <= 0:
             b["over_bank"] += 1
         if risk.level > b["level"]:

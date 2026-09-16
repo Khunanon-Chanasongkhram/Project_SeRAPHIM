@@ -55,6 +55,19 @@ jobs:
           restore-keys: |
             seraphim-state-
 
+      # The flood climatology lives in its own cache, under its own directory, written
+      # by the floodhist workflow on a daily schedule. Restore-only here: this job must
+      # never save it, or a 15-minute build would overwrite ten minutes of a top-up run
+      # with whatever it happened to restore. Read separately for the same reason the
+      # directories are separate.
+      - name: Restore flood climatology
+        uses: actions/cache/restore@v4
+        with:
+          path: data/climate
+          key: seraphim-floodclim-
+          restore-keys: |
+            seraphim-floodclim-
+
       # No pip install: the project is stdlib-only by design. Nothing to cache and
       # no supply chain.
       - name: Tests
@@ -68,11 +81,12 @@ jobs:
 
       - name: Build snapshot
         working-directory: workers
-        # FIRMS_MAP_KEY is optional. With it, an active-fire layer is published; without
-        # it the layer is simply absent and the UI says why. The key is used here in CI
-        # and never reaches a browser.
+        # Both keys are optional, and both work the same way: with one, an extra layer
+        # is published; without it the layer is simply absent and the UI says why. They
+        # are used here in CI and never reach a browser.
         env:
           FIRMS_MAP_KEY: ${{ secrets.FIRMS_MAP_KEY }}
+          GOOGLE_FLOOD_API_KEY: ${{ secrets.GOOGLE_FLOOD_API_KEY }}
         run: python -m seraphim.cli build --out ../data --archive-keep-hours 48
 
       # The site and its data ship together, from the same origin. That removes CORS

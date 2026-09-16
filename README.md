@@ -118,6 +118,35 @@ Bangkok floods the way it does.
 Every score comes with the reasons behind it, in Thai and English, so you can disagree
 with it.
 
+**Flood history, and ground that floods again and again.** Every gauge can tell you how
+unusual today is *for that particular river*: where its flow sits in twelve years of its
+own record, how many days a year it normally runs high, when its worst year was, which
+months are its flood season, and how much bigger a rare flood is than an ordinary one.
+There is also a layer of **reported past floods** — 445 of them, 2005 to 2026, including
+the Thailand flood of 2011 that ran for 158 days.
+
+**And when it is predicted.** Where the 30-day outlook reaches a flow this river only
+reaches about once every two or five years, the gauge gets a ring and the panel says how
+many of them there are and how many days away. That is the difference between "flow is
+going up" and "flow is heading for a level this place sees once every five years".
+
+**This is flow, not flooding, and the distinction is the whole point.** It is a modelled
+river flow (GloFAS, ~5 km) compared against its own past. It is not a measurement that
+anywhere flooded, it carries no flood outline, and it says nothing about depth. It is
+being filled in a few hundred grid cells at a time and currently covers part of Thailand;
+everywhere else says so plainly rather than showing you an empty map and letting you
+conclude there is nothing there.
+
+**A second opinion, from Google.** Google's Flood Hub publishes its own flood severity
+forecast for points across 150-odd countries. Where it is available it is drawn as
+hollow rings beside our gauges — deliberately *beside*, not merged in, so where Google
+and this map disagree you can see that they disagree instead of getting one blended
+number that hides it. It carries severity, trend and a forecast change range, and no
+water level, so none is shown.
+
+This layer needs an API key and Google's access is currently waitlisted, so unless one
+is configured the layer is simply absent and the map says so.
+
 **Fish.** A **7-day** planner for 40 spots, sea and reservoir and river. Each day shows
 its best hours and its peak score on the button, so you can see which day to go without
 tapping through the week. Alongside the score: wind and gusts, wind direction, cloud,
@@ -128,17 +157,18 @@ have installed when you need it.
 
 ## Live mode
 
-The map rebuilds itself every 15 minutes, and that is what you get by default. If you
-want the newest readings there is a **Live** switch in the bottom panel.
+The map rebuilds itself every 15 minutes. On top of that, **Live is on by default**: your
+browser fetches gauge readings **straight from the agency** every two minutes, instead of
+waiting for the next rebuild. There is a switch in the bottom panel to turn it off, and
+the first time it runs it tells you which agency it is talking to.
 
-Turning it on makes your browser fetch gauge readings **straight from the agency**,
-every two minutes, instead of waiting for the next rebuild. It is off until you turn it
-on, for two reasons worth knowing before you do:
+Two things worth knowing, which is why you are told rather than left to find out:
 
 * Your browser talks directly to a foreign government's servers, so they see your
-  IP address. That should be your choice, not mine.
+  IP address.
 * It costs you data. Roughly 300 KB per refresh for Thailand, 90 KB for the US,
-  350 KB for the UK.
+  350 KB for the UK. It pauses while the tab is in the background, so a forgotten tab
+  is not quietly downloading a national feed all week.
 
 Live mode works for Thailand, the UK and the US. **It cannot work for the Netherlands**,
 because Rijkswaterstaat's servers refuse requests from web pages. The switch says so
@@ -153,8 +183,7 @@ into one number you cannot take apart.
 
 ## What it will not tell you
 
-Three limits that are easy to miss, and worth knowing before you read anything off the
-map.
+Limits that are easy to miss, and worth knowing before you read anything off the map.
 
 **It will not tell you how deep the water will be.** There is a layer showing low ground
 near gauges that are spilling. It shows **where** water would go, never how deep it would
@@ -184,6 +213,22 @@ say nothing than say a number that is out by most of a day.
 figures come from replaying our own archive, and that archive only really covers Thailand
 so far. Where a country has not been measured, the panel says so instead of showing you a
 number earned on Thai rivers.
+
+**Flood history is a record of high *flow*, not of floods.** The history behind each
+gauge is a modelled river discharge compared against its own twelve-year record. It can
+tell you this river is carrying more water than it usually does in a given year, which is
+a real thing to know. It cannot tell you that anywhere flooded, where the water went, or
+how deep it got. "Past floods" is a separate layer of events somebody actually reported,
+and each of those is a point saying *reported here*, not an outline of what flooded.
+
+**Flood-prone is about decades, not about today.** A place is flood-prone in the dry
+season too. The layer ranks ground by how long its river spends unusually high across
+twelve years; it is deliberately drawn soft and wide and sits underneath the gauges, so
+it cannot be mistaken for something happening this morning.
+
+**Google's forecast is Google's, and it may disagree with this one.** That is the
+reason it is there. It is not a check that this map is right, and where the two differ
+neither is automatically the correct one.
 
 **A quiet gauge is not a safe gauge.** If a gauge stops reporting it is marked stale
 rather than dropped, because a gauge that goes silent during a flood is telling you

@@ -13,7 +13,7 @@ const SHELL = ["./index.html", "./fish.html"];
 // Snapshots are cached too, so a failed origin degrades to last-known data rather
 // than a blank page. During a flood, yesterday's water levels clearly labelled as
 // old beat nothing at all.
-const DATA = /\/(index\.json|stations-[a-z]{2}\.geojson|areas-[a-z]{2}\.json|stations\.geojson|meta\.json|tide\.json|areas\.json|fishing\.json|provinces\.geojson|quakes\.geojson|fires\.geojson|validation\.json|events\.geojson|terrain\.geojson|dams\.geojson)$/;
+const DATA = /\/(index\.json|stations-[a-z]{2}\.geojson|areas-[a-z]{2}\.json|stations\.geojson|meta\.json|tide\.json|areas\.json|fishing\.json|provinces\.geojson|quakes\.geojson|fires\.geojson|validation\.json|events\.geojson|terrain\.geojson|dams\.geojson|floods-past\.geojson|floods-google\.geojson)$/;
 
 self.addEventListener("install", (e) => {
   // Cache what we can; a single failed asset must not abort the whole install and

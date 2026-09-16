@@ -33,4 +33,31 @@ No runtime database anywhere. The SOS component was removed before deploy; see
 9. **Build behind `SourceAdapter`** even with one implementation, so Phase 7 (global) isn't a rewrite.
 
 ## Commands
-(filled in as Phase 0 lands)
+Python is stdlib-only by design: no install step, nothing to cache, no supply chain.
+
+```bash
+cd workers
+python3 -m unittest discover -s tests -q        # 322 tests, ~0.2 s
+python3 -m seraphim.cli build --out ../data --archive-keep-hours 48
+python3 -m seraphim.cli sources                 # what is registered
+
+# Occasional, budgeted, rate-limited. NOT part of the build, and each has its own
+# cache that the build only ever reads.
+python3 -m seraphim.cli terrain   --budget 60           # ground around gauges
+python3 -m seraphim.cli floodhist --budget 300          # 12-year flow climatology
+python3 -m seraphim.cli floodhist --budget 300 --country TH
+
+# Google Flood Hub is gated behind a pilot waitlist. Its field names come from Google's
+# docs, not a response anyone here has seen, so verify before trusting the layer:
+GOOGLE_FLOOD_API_KEY=... python3 -m seraphim.cli googlefloods --probe --region TH
+```
+
+```bash
+python3 scripts/check_js.py web/*.html web/*.js   # inline JS + both i18n languages
+cd web && python3 -m http.server                  # falls back to ../data/out
+```
+
+There is **no Node and no browser on this machine**, so `check_js.py` is the only thing
+that executes the client code before a user does. It balances braces and template
+literals and checks every `t()` key exists in both `th` and `en`. It is a scanner, not a
+parser: it cannot catch a logic error, so client changes want reading twice.

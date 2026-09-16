@@ -170,6 +170,27 @@ def build_geojson(states: list[StationState], risks: dict | None = None,
                     "discharge_peak_day": fc.discharge_peak_day if fc else None,
                     "discharge_outlook_ratio": fc.discharge_outlook_ratio if fc else None,
                     "discharge_outlook_spread": fc.discharge_outlook_spread if fc else None,
+                    # Flood history for this gauge's own grid cell. Modelled river
+                    # flow against its own twelve-year record, never an observation
+                    # that anywhere flooded: every label the UI puts on these says
+                    # "high flow", and the popup repeats the distinction in full.
+                    "flood_years": fc.flood_years if fc else None,
+                    "flood_percentile": fc.flood_percentile if fc else None,
+                    "flood_prone": fc.flood_prone if fc else None,
+                    "flood_high_days_per_year": (
+                        fc.flood_high_days_per_year if fc else None),
+                    "flood_growth_ratio": fc.flood_growth_ratio if fc else None,
+                    "flood_last_episode_on": fc.flood_last_episode_on if fc else None,
+                    "flood_worst_cms": fc.flood_worst_cms if fc else None,
+                    "flood_worst_on": fc.flood_worst_on if fc else None,
+                    "flood_return_2y_cms": fc.flood_return_2y_cms if fc else None,
+                    "flood_return_5y_cms": fc.flood_return_5y_cms if fc else None,
+                    "flood_outlook_day": fc.flood_outlook_day if fc else None,
+                    "flood_outlook_5y_day": fc.flood_outlook_5y_day if fc else None,
+                    "flood_outlook_period_y": fc.flood_outlook_period_y if fc else None,
+                    "flood_outlook_peak_vs_2y": (
+                        fc.flood_outlook_peak_vs_2y if fc else None),
+                    "flood_season_months": fc.flood_season_months if fc else None,
                     "forecast_age_min": (
                         round((s.generated_at - fc.fetched_at).total_seconds() / 60, 1)
                         if fc else None
@@ -394,6 +415,7 @@ def build_meta(
             "tide_points": tide_points,
         },
         "risk": _risk_counts(risks or {}),
+        "flood_history": _flood_history_headline(states),
         "validation": _validation_headline(validation),
         "health": build_health(states, health, {
             "stations": len(states),
@@ -415,6 +437,42 @@ def build_meta(
         "disclaimer": (
             "SeRAPHIM is not an official emergency channel. In an emergency in Thailand "
             "call 1784 (DDPM) or 191."
+        ),
+    }
+
+
+def _flood_history_headline(states) -> dict:
+    """How much of the map actually has flood history behind it, per country.
+
+    Published for the same reason the per-country accuracy figure is: coverage is
+    filled in a few hundred grid cells at a time, so for a while most countries have
+    none. A UI that cannot tell "no history" from "no floods here" would turn an
+    unfetched cell into a reassuring green one, which is the wrong direction to be
+    wrong in.
+    """
+    by_country: dict[str, dict] = {}
+    for s in states:
+        cc = (s.station.admin.country if s.station.admin else None) or "XX"
+        row = by_country.setdefault(cc, {"gauges": 0, "with_history": 0,
+                                         "prone": 0, "predicted": 0})
+        row["gauges"] += 1
+        fc = s.forecast
+        if fc is None or fc.flood_prone is None:
+            continue
+        row["with_history"] += 1
+        if fc.flood_prone >= 2:
+            row["prone"] += 1
+        if fc.flood_outlook_day is not None:
+            row["predicted"] += 1
+    total = sum(r["with_history"] for r in by_country.values())
+    return {
+        "gauges_with_history": total,
+        "by_country": {k: v for k, v in sorted(by_country.items()) if v["with_history"]},
+        "measured_countries": sorted(k for k, v in by_country.items() if v["with_history"]),
+        "method": (
+            "Modelled river flow (GloFAS) at each gauge's own grid cell, compared with "
+            "12 years of that same cell's record. High flow, not observed flooding: it "
+            "carries no flood extent and no depth."
         ),
     }
 

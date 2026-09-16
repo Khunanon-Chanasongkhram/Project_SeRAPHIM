@@ -1,0 +1,99 @@
+name: flood history
+
+# Tops up the twelve-year flood climatology, a few hundred grid cells at a time.
+#
+# Why this is not part of `ingest`:
+#   * Open-Meteo prices a request by locations x timesteps, not by request count. Fifty
+#     cells x twelve years is one 4 MB response and roughly the entire 600/minute
+#     allowance, so this job spends most of its wall clock asleep between requests. A
+#     15-minute build cannot carry that.
+#   * A climatology does not change. Once a cell is fetched it is good for months, so
+#     this is a backfill that finishes rather than a feed that repeats.
+#
+# It is incremental: each run fetches cells that have none yet, writes them to the
+# cache, and stops. Interrupted runs cost progress, never data. Coverage grows by ~300
+# cells a day until it is complete, and the map says which countries have history yet.
+
+on:
+  schedule:
+    # Once a day, offset from the quarter hour so it does not start alongside an ingest
+    # run and compete with it for the same Open-Meteo minute budget.
+    - cron: "37 3 * * *"
+  workflow_dispatch:
+    inputs:
+      budget:
+        description: "Grid cells to fetch this run"
+        default: "300"
+      country:
+        description: "Limit to one country code (e.g. TH), or blank for all"
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  # Two of these at once would both restore the same cache, fetch overlapping cells and
+  # race to save, and the loser's work would be discarded.
+  group: floodhist
+  cancel-in-progress: false
+
+jobs:
+  topup:
+    runs-on: ubuntu-latest
+    # Generous: the job is mostly sleeping between rate-limited requests. 300 cells is
+    # 6 requests about 65 s apart, plus the gauge fetch that tells it which cells exist.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore flood climatology
+        uses: actions/cache/restore@v4
+        with:
+          path: data/climate
+          key: seraphim-floodclim-${{ github.run_id }}
+          restore-keys: |
+            seraphim-floodclim-
+
+      - name: Top up
+        working-directory: workers
+        run: |
+          python -m seraphim.cli floodhist \
+            --out ../data \
+            --budget "${{ github.event.inputs.budget || '300' }}" \
+            ${{ github.event.inputs.country && format('--country {0}', github.event.inputs.country) || '' }}
+
+      # Saved under a fresh key every run; restore-keys above picks the newest. Cache
+      # entries are immutable, so this is the only way to grow one.
+      - name: Save flood climatology
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: data/climate
+          key: seraphim-floodclim-${{ github.run_id }}
+
+      - name: Summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os, pathlib
+          p = pathlib.Path("data/climate/flood_climatology.json")
+          out = pathlib.Path(os.environ["GITHUB_STEP_SUMMARY"])
+          if not p.exists():
+              out.write_text("### Flood climatology\n\nNo cache written this run.\n")
+              raise SystemExit
+          d = json.loads(p.read_text(encoding="utf-8"))["data"]
+          rivers = [v for v in d.values() if not v.get("no_river")]
+          prone = sum(1 for v in rivers if (v.get("episodes_per_decade") or 0) >= 6)
+          out.write_text(
+              "### Flood climatology\n\n"
+              f"- cells cached: **{len(d)}** ({len(rivers)} with a resolvable river)\n"
+              f"- cells that run high 6+ times a decade: **{prone}**\n"
+              f"- window: {min((v.get('from','') for v in rivers), default='?')} "
+              f"to {max((v.get('to','') for v in rivers), default='?')}\n",
+              encoding="utf-8",
+          )
+          PY

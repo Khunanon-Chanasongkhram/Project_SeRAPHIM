@@ -335,6 +335,185 @@ discharge into metres needs a rating curve per gauge, which nobody publishes and
 our archive is far too short to fit. A level weeks out would be the most confident wrong
 number in the project.
 
+## Tier 2e, Flood history (verified 2026-09-16)
+
+Two independent things, kept apart on purpose: a **modelled flow climatology** per grid
+cell, and a list of **reported flood events**. Neither is a flood extent. Nothing here
+measures how deep any water got, and the UI says so on every surface that shows it.
+
+### Open-Meteo Flood, historical river discharge ✅
+Same endpoint as the forecast: `https://flood-api.open-meteo.com/v1/flood`, with
+`start_date` / `end_date` instead of `forecast_days`.
+
+**The property this feature rests on, and it was measured, not assumed:** the archive
+and the forecast resolve to the **same grid cell** and agree in magnitude. Probed at six
+points 2026-09-16:
+
+| Point | Historical max | Forecast today |
+|---|---|---|
+| 13.72, 100.50 (Bangkok, on-channel) | 7,429 m³/s | 4,275 m³/s |
+| 51.50, -0.10 (Thames, London) | 1,264 m³/s | 17 m³/s |
+| 15.67, 100.13 (off-channel) | 5.7 m³/s | 1.1 m³/s |
+
+Off-channel cells read tiny in **both**, which is the point: a percentile computed from
+a cell's own record and compared with that same cell's own forecast is self-consistent
+even where the cell is not the main channel. Absolute accuracy is not what is claimed.
+
+⚠️ **The rate limit is on data volume, not request count**, and this is the constraint
+that shaped the whole design. Measured:
+
+| Request | Result |
+|---|---|
+| 100 cells x 20 years | ❌ `"Your API call requests too much data"` (HTTP 400) |
+| 50 cells x 12 years | ✅ 4.24 MB in 2.6 s |
+| 25 cells x 20 years | ✅ 3.46 MB in 3.4 s |
+| two 50-cell requests inside one minute | ❌ HTTP 429, minutely limit |
+
+So: **50 cells per request, one request per ~65 s**. That is ~600 weighted calls against
+a 600/minute allowance, which is why a single 50-cell request very nearly exhausts the
+minute on its own. A full build already spends ~5,600 of the 10,000 daily calls, so this
+runs as a **separate, budgeted, daily command** (`seraphim.cli floodhist --budget 300`)
+and never inside the 15-minute build. Cached for 180 days: a twelve-year climatology
+does not move.
+
+Real run, 2026-09-16: 246 of 300 requested Thai cells fetched, one batch of 50 lost to a
+429 that survived its retry. The remaining cells are simply picked up by the next run.
+
+**Window:** 2014-01-01 to yesterday (today's value in this endpoint is a forecast, not a
+reanalysis). ~4,300 days/cell, ~85 KB/cell.
+
+**Derived per cell, and stored instead of the series:** median / p90 / p95 / p99 / max
+with its date, a monthly mean profile, Gumbel-fitted 2-, 5- and 10-year return levels
+from annual maxima, and independent high-flow episodes above the 2-year level.
+
+⚠️ **Annual maxima use a water year whose boundary is the cell's own driest month,** not
+January. A calendar year splits a monsoon running October to January, which is exactly
+how Thailand's worst floods behave, and splitting one flood in two halves its apparent
+size. Picking the boundary from the data works in either hemisphere.
+
+⚠️ **A record that will not fit produces no episode count at all.** A river with an
+identical peak every year defeats the Gumbel fit (zero variance), and an earlier version
+fell through to "0 episodes", which the map reads as "not flood-prone". A failed
+measurement was rendering as a reassuring answer. Caught by a test, fixed, and the test
+kept.
+
+⚠️⚠️ **Episode FREQUENCY is a tautology and must not be used to rank anything.** A
+2-year return level is *defined* as the flow exceeded about once every two years, so
+episodes-per-decade is pinned near 5 for every river there is. Measured over the first
+246 real Thai cells: 2.4 to 11.0, **median 5.5**, i.e. scatter around the value the
+arithmetic forces. A flood-prone classification built on it was ranking rivers by
+fitting error. Flood exposure is derived from **duration** instead: days a year above
+the 2-year level, which over 31 cells with full daily series runs **0.7 to 11.3 (median
+2.6)**, a 16x spread, plus the flood growth ratio (10-year over 2-year level, 1.22-3.96
+over the same cells). Class boundaries 3/6/10 days sit near the 60th/85th/97th
+percentiles of that sample. **31 mostly-Thai cells is a thin calibration**, and it wants
+redoing once the climatology covers more of the world.
+
+### GDACS historical flood events ✅
+`https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH?eventlist=FL&fromDate=...&toDate=...&alertlevel=Orange;Red`
+
+⚠️ **The response is capped at 100 features and there is no paging parameter.** A single
+2005-2026 query returns exactly 100 events, all from 2021 onward, and looks for all the
+world like a complete archive. The 2011 Thailand flood is missing from it. Scoped to
+2011 alone, that event is returned normally. **So the archive is fetched one year at a
+time**, which keeps every response well inside the cap (the busiest year here held 26
+orange/red floods worldwide).
+
+Green is excluded: GDACS raises green for a great many events nobody would call a flood,
+and a map covered in them teaches the reader to ignore the layer.
+
+Verified 2026-09-16, querying 2011/2012/2025: 66 events, including the **2011 Thailand
+flood (05 Aug 2011 - 09 Jan 2012, 158 days, orange)** and the November-December 2025
+southern Thailand floods. Cached 7 days; published as `floods-past.geojson`.
+
+Each event carries a point, not a polygon. A footprint endpoint exists
+(`/api/polygons/getgeometry`) and is deliberately not used: it is one request per event
+per episode, and the popup says the point marks where the event was reported rather than
+the area that flooded.
+
+## Tier 2f, Google Flood Hub 🔑❓ (surface probed 2026-09-16, payload NOT seen)
+
+`https://floodforecasting.googleapis.com/v1`. **Read the two headings below carefully:
+half of this is verified and half of it is not, and the split is not the usual one.**
+
+### ✅ What WAS verified here, without a key
+Routing happens **before** key validation on this API, which makes the method surface
+probeable by anyone. A real method returns `400 INVALID_ARGUMENT` ("API key not valid");
+a made-up one returns `404`. Confirmed 2026-09-16:
+
+| Method | Verb | Result | Exists |
+|---|---|---|---|
+| `floodStatus:searchLatestFloodStatusByArea` | POST | 400 INVALID_ARGUMENT | ✅ |
+| `gauges:searchGaugesByArea` | POST | 400 INVALID_ARGUMENT | ✅ |
+| `gauges:batchGet` | **GET** | 400 INVALID_ARGUMENT | ✅ |
+| `gauges/{gaugeId}` | GET | 400 INVALID_ARGUMENT | ✅ |
+| `gaugeModels/{gaugeId}` | GET | 400 INVALID_ARGUMENT | ✅ |
+| `serializedPolygons/{id}` | GET | 400 INVALID_ARGUMENT | ✅ |
+| `gauges:batchGet` | POST | 404 | ❌ GET only |
+| `floodStatus:queryLatestFloodStatusByGaugeIds` | POST | 404 | ❌ does not exist |
+| `gaugeModels:batchGet`, `gauges:queryGaugeModels` | POST | 404 | ❌ do not exist |
+| `$discovery/rest?version=v1` | GET | 403 | needs a key too |
+
+### ❓ What was NOT verified: the response payload
+**No key could be obtained on the machine that built this.** Access is gated behind a
+pilot waitlist. So every *field name* in `adapters/googlefloods.py` comes from Google's
+published reference, **not from a live response**, which is a weaker footing than
+anything else in this file and is treated as such:
+
+- every field is read through `_pick()`, which accepts both `lowerCamelCase` (what REST
+  transcoding emits) and `snake_case` (what the reference documents)
+- anything unreadable is **dropped and counted** in `SourceHealth.warnings`, so the
+  first real run reports what the payload actually looked like instead of silently
+  publishing a third of it
+- **`python -m seraphim.cli googlefloods --probe` closes the gap in one command**: it
+  dumps a live row verbatim and prints pass/fail for every field the adapter reads.
+  Run it the first time a key exists, then change this heading to ✅.
+
+### Access, quota, licence
+- **API key required**, and access is **waitlisted** (pilot). Form and docs at
+  https://developers.google.com/flood-forecasting. Set `GOOGLE_FLOOD_API_KEY`; without
+  it the layer is absent and the UI says why, exactly like NASA FIRMS.
+- **200 requests/minute.** We use one request per region per 3 h, so this is not close.
+- **CC BY 4.0, attribution mandatory**, free tier **non-commercial** — the same terms as
+  Open-Meteo, which this project already redistributes as static JSON. Attribution is in
+  the layer file and the map credit line.
+- Coverage: **150+ countries**, ~5,000 quality-verified points and ~240,000
+  lower-confidence ones. Status refreshes several times a day; forecasts run 7 days.
+
+### ⚠️ It publishes NO water level, and that decided the architecture
+`FloodStatus` carries `severity`, `forecastTrend`, a `forecastTimeRange` and a
+`forecastChange.valueChange` **range** — and no current level. Every other source here
+produces a `Station` + `Observation` with a level that the risk engine works from.
+Forcing Google into that shape would mean **inventing a level**, so it is deliberately
+not a `SourceAdapter`: it publishes as its own layer, `floods-google.geojson`, shown
+beside our gauges and never merged into them.
+
+### ⚠️ Thresholds are deliberately not published (yet)
+`GaugeModel.thresholds` (warning / danger / extreme danger) come with a
+`gaugeValueUnit` of **`METERS` or `CUBIC_METERS_PER_SECOND`**. So "4.2" is a water level
+for one gauge and a discharge for the next, and where it is metres it is in the gauge's
+**own datum**, not m-MSL. Publishing a bare number beside Thai levels in m-MSL is
+exactly the failure this document opens with. Carrying it safely needs
+`gaugeModels/{id}` per gauge with the unit welded to the number and `datum: "local"` —
+all doable, none of it verifiable without a key. It is the obvious next step **after**
+`--probe` passes.
+
+### ⚠️ `UNKNOWN` severity is dropped, not drawn
+`Severity` is EXTREME / SEVERE / ABOVE_NORMAL / NO_FLOODING / UNKNOWN / UNSPECIFIED.
+Only the first four map to a level (5/4/3/1). UNKNOWN maps to **nothing** and the point
+is dropped with a count: "we do not know" and "there is no flooding" are different
+statements, and rendering the first as the second is the wrong direction to be wrong in.
+A severity value Google adds later is likewise dropped rather than coloured by accident.
+
+### Inundation polygons: available, not fetched
+`FloodStatus.inundationMapSet` lists `serializedPolygonId`s, and
+`serializedPolygons/{id}` exists. This is a real modelled flood **extent** — the thing
+this project has twice refused to fake from elevation. It is still not fetched: it is
+one request per polygon per point per refresh, and the payload and terms of caching a
+footprint are not something to guess at. The layer publishes **how many** inundation
+maps exist at a point, so the capability is visible without the map implying we have
+drawn one.
+
 ## Tier 2b, Astronomy (computed, not fetched)
 Sun and moon positions are computed locally (`workers/seraphim/astro.py`), so calm mode
 costs no API quota and works offline.

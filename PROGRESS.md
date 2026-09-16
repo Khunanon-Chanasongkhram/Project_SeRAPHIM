@@ -15,9 +15,22 @@ reservoirs**, all fetched live.
 Fixed 2026-09-16, see the session entry: `min_bank: 0` is ThaiWater's "not published"
 sentinel, not a bank at sea level. Anyone who saw the map before this fix saw a national
 emergency that was not happening.
-**272 tests.** Live: https://khunanon-chanasongkhram.github.io/Project_SeRAPHIM/
+**356 tests.** Live: https://khunanon-chanasongkhram.github.io/Project_SeRAPHIM/
 
-**Next action:** push. Pushing also triggers a deploy, which the site needs.
+**Flood history is live for Thailand only.** 246 of ~7,800 forecast grid cells carry a
+12-year GloFAS flow climatology. The rest of the world correctly says it has not been
+measured there yet. The `flood history` workflow tops up ~300 cells a day; Thailand
+finishes in about one more run, the world in about a month.
+
+**Next action:** push. Pushing also triggers a deploy, which the site needs. Then let
+the daily `flood history` workflow run at least once and check its step summary.
+
+**Google Flood Hub is built but dark.** It needs an API key and access is waitlisted
+(https://developers.google.com/flood-forecasting). Once you have one: set it as the
+repo secret `GOOGLE_FLOOD_API_KEY`, then run
+`cd workers && GOOGLE_FLOOD_API_KEY=... python3 -m seraphim.cli googlefloods --probe`
+**before trusting the layer** — the field names come from Google's docs, not from a
+response anyone has seen.
 
 ⚠️ **The CI test step could never have passed.** `unittest discover` dropped
 namespace-package support in Python 3.11, and `workers/tests/` had no `__init__.py`, so
@@ -58,10 +71,203 @@ account except GitHub. The SOS component was removed before deploy and lives on 
 | 5 | Terrain | ✅ built, 220/1,121 gauges profiled |
 | 6 | Harden / scale | ✅ deployed |
 | 7 | Global + multi-hazard | ✅ deployed, **4 countries** (TH, GB, NL, US) + GDACS |
-| 7b | Live refresh | ✅ built, opt-in client-side, TH/GB/US (NL blocked by CORS) |
+| 7b | Live refresh | ✅ **on by default** (2026-09-16), TH/GB/US (NL blocked by CORS) |
+| 8 | Flood history + flood-prone | ✅ built, TH 246/530 cells; past floods 2005-2026 |
+| 9 | Google Flood Hub | 🔑 built + tested, **dark until a key exists** (waitlisted) |
 
 Beyond the plan: validation/backtesting, per-country data splitting, world radio,
-rain radar, earthquakes, active fires, satellite imagery, TH/EN switch.
+rain radar, earthquakes, active fires, satellite imagery, TH/EN switch, flood
+climatology and reported past floods.
+
+---
+
+## 2026-09-16 - Session 24: Google Flood Hub, built but not yet seen
+
+He asked to add Google Flood Hub. It is built, tested and wired end to end, and it is
+**dark until somebody gets an API key**, because access is gated behind a pilot
+waitlist. Two things are worth knowing.
+
+**I verified more than I expected to, without a key.** Routing on
+`floodforecasting.googleapis.com` happens *before* key validation, so a real method
+returns `400 INVALID_ARGUMENT` ("API key not valid") while a made-up one returns `404`.
+That makes the whole method surface probeable by anyone. Confirmed to exist:
+`floodStatus:searchLatestFloodStatusByArea`, `gauges:searchGaugesByArea`,
+`gauges:batchGet` (**GET**, not POST), `gauges/{id}`, `gaugeModels/{id}`,
+`serializedPolygons/{id}`. Confirmed NOT to exist:
+`floodStatus:queryLatestFloodStatusByGaugeIds`, `gaugeModels:batchGet`,
+`gauges:queryGaugeModels`. So the URLs in the code are probed, per rule 1.
+
+**But the payload was never seen, and that is a weaker footing than anything else
+here.** Every field name comes from Google's published reference, not a live response.
+Handled by refusing rather than guessing: `_pick()` reads both camelCase and snake_case,
+everything unreadable is dropped and counted into `SourceHealth.warnings`, and
+`python -m seraphim.cli googlefloods --probe` dumps a live row and prints pass/fail per
+field. **Run it the first time a key exists**, then flip the ❓ in DATA_SOURCES.md.
+
+**It is NOT a SourceAdapter, and that was the main design decision.** `FloodStatus`
+carries a severity, a trend, a forecast window and a forecast *change range* — and **no
+current water level**. Every other source here yields a Station plus an Observation with
+a level the risk engine works from. Forcing Google into that shape would mean inventing
+a level, which is the single worst bug this codebase can have. So it publishes as its
+own layer, `floods-google.geojson`: Google's opinion drawn beside our gauges as hollow
+rings, never merged into our numbers. Where the two disagree, you can see it.
+
+**Three refusals worth keeping**
+- `UNKNOWN`/`SEVERITY_UNSPECIFIED` severity is **dropped and counted**, not mapped to
+  "no flooding". A severity Google adds later is dropped too rather than coloured by
+  accident.
+- **Thresholds are deliberately not published.** `GaugeModel.thresholds` come with a
+  `gaugeValueUnit` of METERS *or* CUBIC_METERS_PER_SECOND, and where it is metres it is
+  the gauge's own datum, not m-MSL. A bare "4.2" beside Thai m-MSL levels is the exact
+  failure DATA_SOURCES.md opens with. It is the obvious next step once `--probe` passes.
+- **Inundation polygons are available and not fetched.** `serializedPolygons/{id}`
+  exists and is a real modelled flood extent, the thing this project has twice refused
+  to fake from elevation. Not taken: one request per polygon per point per refresh, and
+  the caching terms for a footprint are not something to guess at. The layer publishes
+  how *many* inundation maps exist at a point, so the capability is visible without the
+  map implying we have drawn one.
+
+**Licence is fine.** CC BY 4.0, attribution mandatory, free tier non-commercial — the
+same terms as Open-Meteo, which this project already redistributes as static JSON.
+Attribution added to the map credit line and the layer file.
+
+Keyless behaviour verified on a real build: `[google-floods] skipped: no
+GOOGLE_FLOOD_API_KEY configured`, and the build carried on. `scripts/check_js.py` caught
+a mangled string literal in my attribution edit before it could ship as a blank page.
+
+356 tests.
+
+---
+
+## 2026-09-16 - Session 23: flood history, and a statistic that measured nothing
+
+He asked for nine things: responsiveness and fluidity, animation and a friendlier UI,
+live data on by default, better forecasting, dams on by default, API and staleness bug
+fixes, flood history, flood-prone areas, and flood-prone areas when predicted.
+
+**The thing worth reading first: I shipped a flood-prone classification, measured it
+against real data, and found it was measuring nothing.**
+
+The first version ranked places by how often their river crossed its own 2-year flow
+level. That sounds like exposure and is in fact a tautology: a 2-year return level is
+*defined* as the flow exceeded about once every two years, so episode frequency is
+pinned near five per decade for every river on Earth. Across the first 246 real Thai
+cells it ran 2.4 to 11.0 with a median of 5.5, which is scatter around the value the
+arithmetic forces. The classes built on it were sorting rivers by fitting error and
+presenting the result as flood risk.
+
+What actually discriminates is **how long** the river stays high. `prone_level` is now
+built on days-a-year above the 2-year level plus the steepness of the flood growth curve
+(10-year over 2-year). Cells cached under the old summary carry `v: 1` and are
+**re-fetched rather than read**, because a statistic that was never computed cannot be
+recovered from the summary it is missing from, and `prone_level` returns `None` for
+them: "not measured here" and "measured, and calm" must never render alike.
+
+**Then I got the calibration wrong too, and real data caught that as well.** I set the
+class boundaries at 7/21/45 days from `worst_episode_days`, which spans 2-161 days over
+twelve years. But that is the single worst episode, not an annual figure. Re-derived
+from 31 cells with full daily series: `high_days_per_year` runs **0.7 to 11.3, median
+2.6**. The 7/21/45 thresholds put 27 of the 31 cells in one class and left classes 2 and
+3 permanently empty, i.e. a classifier with three-quarters of its range unreachable.
+Boundaries are now 3/6/10, near the 60th/85th/97th percentiles, which spreads those same
+31 cells 18/8/3/2. ⚠️ 31 mostly-Thai cells is a thin basis and the code says so: this
+wants revisiting once coverage is wide, because a classifier calibrated on one country's
+rivers is exactly the thing that quietly stops meaning anything somewhere else.
+
+**Flood history, and what it is not.** For each of the forecast grid cells we already
+use, `floodhist.py` pulls the same cell's GloFAS daily discharge back to 2014 and
+reduces it to quantiles, Gumbel-fitted 2/5/10-year return levels from annual maxima, a
+monthly profile, and high-flow episodes. It is **modelled river flow against its own
+record**. It is not an observation that anywhere flooded, it carries no flood extent and
+no depth, and every label says "high flow". This project has already turned elevation
+into fake depth twice; a discharge percentile called a flood would be the third.
+
+Verified before building, not after: the archive and the forecast endpoints resolve to
+the **same grid cell** and agree in magnitude (Bangkok 7,429 m³/s historical peak vs
+4,275 today; an off-channel cell 5.7 vs 1.1). That self-consistency, not absolute
+accuracy, is what the percentile rests on.
+
+**Why it is a separate command, measured rather than assumed.** Open-Meteo prices a
+request by locations x timesteps. 100 cells x 20 years is refused outright; 50 x 12
+years succeeds at 4.2 MB; two of those inside one minute trip the 600/minute limit. So
+it runs at one request a minute and cannot live inside a 15-minute build. `seraphim.cli
+floodhist --budget 300` is budgeted and incremental exactly like `terrain`, on its own
+daily workflow, with its own cache directory. **The directory is separate on purpose:**
+sharing `data/cache` would mean the daily top-up and the 15-minute build overwrite each
+other's cache saves, and the likeliest casualty is `data/archive`, which every trend and
+every time-to-bank is fitted to.
+
+First real run: 246 of 300 Thai cells, one batch of 50 lost to a 429 that survived its
+retry. Joined to 779 gauges, 264 of them with a high-flow outlook.
+
+⚠️ **Those 246 cells are cached at summary v1, so the map currently shows no flood-prone
+data at all.** I burned the day's Open-Meteo quota on the probing and the first fetch,
+and the re-fetch at v2 got three straight 429s and correctly refused to write anything.
+This is the intended degradation (the UI says history has not been computed here) but it
+means the v2 numbers have not been seen on the live map. **The first `flood history`
+workflow run fixes it**: it re-fetches v1 cells before new ones. Check its step summary.
+
+**Past floods are a different dataset and kept separate.** GDACS orange/red flood events,
+2005-2026, 445 of them, including the 2011 Thailand flood (05 Aug 2011 - 09 Jan 2012,
+158 days). ⚠️ The SEARCH endpoint **caps a response at 100 features with no paging
+parameter**, so a single 21-year query returns the newest 100, looks complete, and is
+missing 2011 entirely. Fetched one year at a time instead.
+
+**Live data is on by default now**, as asked. The reasoning that made it opt-in has not
+gone away, so the disclosure moved to the front instead of disappearing: the first time
+it runs, a notice names the agency being contacted and offers one-tap off, and the
+choice is remembered. Two things that on-by-default made newly necessary: it now
+**pauses while the tab is in the background** (otherwise every abandoned tab pulls 1.8 MB
+from a government API every two minutes forever), and the CSP already had the hosts from
+last session.
+
+**Dams and reservoirs are on by default.** Layer visibility is now remembered, so a
+reader who turns them off does not get them back on every visit.
+
+**Fluidity: the pulse was the problem.** It ran `setPaintProperty` on the
+16,000-feature gauge layer every 70 ms from a `setInterval`, forever, whether or not
+anything was at risk and whether or not the tab was in front. That is ~14 full paint
+re-evaluations of every gauge per second. It now animates a **separate layer filtered to
+level 4+** (a few dozen features), on `requestAnimationFrame` (which the browser stops
+outright in a background tab), throttled to ~20 fps, and it stops entirely when nothing
+warrants it or the reader has asked for reduced motion. Map also runs with
+`antialias:false` and a shorter `fadeDuration`.
+
+**Bugs found and fixed**
+1. **Every dam popup threw.** `hours` was referenced in the dams popup template and is
+   not in scope there; it was a stray line from the timeline work. Clicking any
+   reservoir on the map raised a ReferenceError and showed nothing.
+2. **Watch alerts could be erased before being read.** They were written into
+   `#degraded`, which `renderAge()` rewrites from the snapshot's health every 60
+   seconds. A level-5 escalation could be wiped by a routine freshness check. Alerts now
+   own a toast surface nothing else writes to.
+3. **`?station=` links and watch-list taps silently did nothing** when the map was
+   already at that gauge: `flyTo` does not move, so `moveend` never fires, so the popup
+   never opened.
+4. **"Data may be out of date" was useless and permanent.** No age, no cause, no
+   dismiss, and it fired on ordinary cron drift. It now states the actual age, explains
+   the 15-minute cadence, and is dismissible per-cause, so dismissing a 40-minute delay
+   does not suppress a later banner about a dead feed.
+5. `shown` was shadowed by locals in two functions, one of them next to layer-visibility
+   code.
+
+**UI** Boot splash instead of a black rectangle while ~1 MB downloads; the bottom sheet
+drags with a finger and snaps to three heights (everything below the fold was previously
+behind a 34px tap target); toasts; a forecast sparkline with the bank drawn across it; a
+play button that walks the timeline; Escape backs out of panels; focus rings;
+`prefers-reduced-motion` honoured throughout; headline numbers animate when they change.
+
+**Not done**
+- Coverage is Thailand-first: 246 of ~7,800 cells worldwide. Other countries correctly
+  say history has not been computed there yet, the same way per-country accuracy does.
+- No flood *extent*. GDACS publishes footprint polygons (`/api/polygons/getgeometry`)
+  and they are deliberately unused: one request per event per episode, and a point that
+  says "reported here" is honest where a polygon would invite being read as a map of
+  what flooded.
+- None of the new client JS has run in a browser. There is still no Node and no browser
+  on this machine; `scripts/check_js.py` and 322 unit tests are what stands behind it.
+
+322 tests.
 
 ---
 
