@@ -8,8 +8,14 @@ Purpose: survive a closed terminal or an expired token with zero context loss.
 ## Current state
 
 **Four countries live: Thailand, United Kingdom, Netherlands, United States.**
-**16,237 gauges** (US 11,476 · GB 3,326 · TH 1,117 · NL 318), all four fetched live.
-**212 tests.** Live: https://khunanon-chanasongkhram.github.io/Project_SeRAPHIM/
+**16,243 gauges** (US 11,483 · GB 3,326 · TH 1,116 · NL 318) plus **493 Thai
+reservoirs**, all fetched live.
+
+⚠️ **Thailand was showing ~308 rivers over their banks. The real number is 12.**
+Fixed 2026-09-16, see the session entry: `min_bank: 0` is ThaiWater's "not published"
+sentinel, not a bank at sea level. Anyone who saw the map before this fix saw a national
+emergency that was not happening.
+**231 tests.** Live: https://khunanon-chanasongkhram.github.io/Project_SeRAPHIM/
 
 **Next action:** push. Pushing also triggers a deploy, which the site needs.
 
@@ -56,6 +62,74 @@ account except GitHub. The SOS component was removed before deploy and lives on 
 
 Beyond the plan: validation/backtesting, per-country data splitting, world radio,
 rain radar, earthquakes, active fires, satellite imagery, TH/EN switch.
+
+---
+
+## 2026-09-16 - Session 18: the sentinel that cried flood, and dams
+
+He said Thailand looked critical on our map and did not match thaiwater.net, and asked
+for reservoir levels. The first half turned out to be the worst bug this project has had.
+
+**`min_bank: 0` does not mean the bank is at sea level. It means there is no bank level.**
+318 of 1,118 Thai stations carry it. Taking it as a number meant every gauge above sea
+level had "positive overtopping": a station reading 164.89 m MSL was published as 164.89 m
+over its bank. **302 stations announced as overtopped for the offence of being inland.**
+
+We showed ~308 Thai rivers over bank. **The true number is 12.** That is the most
+dangerous direction to be wrong in, and it was live.
+
+**The cross-check that was supposed to catch this made it worse.** Session 3 recorded
+"sign agreement 1,121/1,121" against the source's own `diff_wl_bank_text` and treated
+that as validation. It was circular: that field is computed from the same `min_bank`, so
+the source makes the identical mistake, and the two wrong answers agreed perfectly. Its
+`diff_wl_bank` for those rows is literally the water level, which should have been the
+tell. **A cross-check against a field derived from the field you are validating proves
+nothing**, and I recorded it as proof for three sessions.
+
+The independent signal was there all along: the source **refuses to publish
+`storage_percent` for all 318**, because it knows it has no usable bank. That is now the
+cross-check, and it can actually disagree. Zero disagreements after the fix.
+
+Two more things fell out of looking properly:
+- **`left_bank`/`right_bank` are a real fallback.** 312 of the 318 publish them, in MSL,
+  consistent with their levels (median freeboard 3.3 m). Only 6 end up with no threshold.
+- **Impossible readings were being published as facts.** `วัดเสมาท่าค้อ` at -875.7 m MSL,
+  and four stations at exactly -9.99 m, one of them 23.4 m below its own surveyed bed.
+  Each produced a large fake freeboard, which reads as safe. Gated on Thai terrain
+  (-20..2600 m) and on the station's own bed (2 m allowance). The separation is clean:
+  sentinels sit 7.7-23.4 m below bed, the worst genuine one 1.84 m and the source marks
+  it with a negative `storage_percent` on purpose.
+
+**Dams, which he also asked for.** `analyst/dam`, found in thaiwater.net's own JS bundle
+because **there is no dam route in the `public/` namespace at all** - every `public/dam*`
+guess 404s. 493 reservoirs published: 50 large, 443 medium.
+
+It has the same two diseases:
+- **Zero is a sentinel again** (35 of 50 large dams report `dam_level: 0`).
+- **It mixes history with today, exactly like the Dutch feed.** 448 medium-dam rows from
+  the last day, then **nothing until a year out**, then 317 rows dated to the 1970 epoch
+  and 76 from 2021. My first working version sorted fullest-first and put a reservoir
+  **last read in 2021** at the top of the map, labelled as spilling today. Caught it only
+  because the dates were printed next to the names in my own check output. 7-day gate.
+- **`dam_storage_percent` is percent of USABLE capacity, so >100 is normal.** 59 dams are
+  over 100%, max 136%. It means above normal full level and likely spilling, **not a dam
+  failing**, and it is not the same quantity as the gauge feed's `storage_percent`. Every
+  dam popup says so.
+
+Dams are deliberately **not** modelled as gauges: no bank level, no time-to-bank, no risk
+score. A reservoir is a store, not a channel. Own layer, own colours, own popup.
+
+**Also fixed: deploys were invisible.** He pushed, the site deployed correctly, and he saw
+no change. Pages serves `cache-control: max-age=600` and the registered service worker
+re-served the previous worker script, which is subject to that same cache. The document
+now revalidates on every request and the page calls `registration.update()`. Assets and
+the offline fallback are unchanged.
+
+**README** rewritten for a reader rather than as a build log, at his request: the two
+"what I learned" sections are gone, their safety-relevant content kept as "What it will
+not tell you".
+
+231 tests.
 
 ---
 

@@ -71,7 +71,12 @@ gauges, rainfall, discharge forecasts, official US river forecasts, and tide pre
 plain map styles in the layers panel. Thai and English. It refreshes itself every 15
 minutes without a reload.
 
-**Layers you can tick on and off.** Province risk shading, gauges, tide points, animated
+**Reservoirs.** 493 Thai dams, large and medium, coloured by how full they are. Storage
+is a percentage of *usable* capacity, so above 100% is normal and common in the monsoon:
+it means the reservoir is above its normal full level and is probably spilling. It does
+not mean a dam is failing, and the popup says so every time.
+
+**Layers you can tick on and off.** Province risk shading, gauges, dams, tide points, animated
 rain radar, earthquakes from the past 24 hours, active fires, and geolocated world radio
 with a tuner dial you can sweep. The radio has nothing to do with floods. It is there
 because it is fun, and because this is a project for enjoying.
@@ -132,6 +137,12 @@ and not every country publishes one. Thailand and the United States do. The UK p
 only a "normal range", and the Netherlands publishes no threshold at all, so gauges there
 show a level and a trend and nothing more. The map says so in the popup instead of
 quietly showing you a smaller number and letting you assume it means the same thing.
+
+**Not every gauge has a bank level, even in Thailand.** 318 of the 1,118 Thai stations
+publish no overtopping threshold, and the feed marks that absence with a zero. Reading
+that zero as a real bank level is exactly the bug that once had this map showing 300-odd
+Thai rivers over their banks when almost none were. Those stations now show a level and a
+trend and nothing more.
 
 **A quiet gauge is not a safe gauge.** If a gauge stops reporting it is marked stale
 rather than dropped, because a gauge that goes silent during a flood is telling you

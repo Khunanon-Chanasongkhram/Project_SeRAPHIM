@@ -292,6 +292,13 @@ const I18N={
     live_na:"ยังไม่มีข้อมูลสดสำหรับประเทศนี้",
     live_fail:"ดึงข้อมูลสดไม่สำเร็จ กำลังแสดงค่าจากรอบประมวลผล",
     live_src:"ที่มาข้อมูลสด",
+    dams:"เขื่อน/อ่างเก็บน้ำ", dams_s:"ปริมาณน้ำกักเก็บ (ไทย)",
+    dam_pct:"ปริมาณน้ำกักเก็บ", dam_lvl:"ระดับกักเก็บ", dam_in:"น้ำไหลเข้า",
+    dam_out:"ระบายน้ำ", dam_spill:"น้ำล้นทางระบาย", dam_size:"ขนาด",
+    dam_large:"ขนาดใหญ่", dam_medium:"ขนาดกลาง",
+    dam_spilling:"สูงกว่าระดับเก็บกักปกติ", dam_high:"น้ำมาก", dam_normal:"ปกติ",
+    dam_note:"เปอร์เซ็นต์ของความจุใช้การ เกิน 100% หมายถึงสูงกว่าระดับเก็บกักปกติ ไม่ใช่เขื่อนแตก",
+    mcm:"ล้าน ลบ.ม.",
     alert:"ระดับเตือน", kind:"ประเภท", country:"ประเทศ",
     notbank:"เครือข่ายนี้ไม่ได้เผยแพร่ระดับตลิ่ง จึงไม่มีการคาดการณ์เวลาน้ำล้น",
     terrain:"พื้นที่ต่ำใกล้จุดน้ำล้น", terrain_s:"บอกทิศทางน้ำไป ไม่ได้บอกความลึก",
@@ -334,6 +341,13 @@ const I18N={
     live_na:"No live feed is available for this country",
     live_fail:"Live fetch failed, showing the last build",
     live_src:"Live source",
+    dams:"Dams & reservoirs", dams_s:"Stored water (Thailand)",
+    dam_pct:"Storage", dam_lvl:"Reservoir level", dam_in:"Inflow",
+    dam_out:"Released", dam_spill:"Spilled", dam_size:"Size",
+    dam_large:"Large", dam_medium:"Medium",
+    dam_spilling:"Above normal full level", dam_high:"High", dam_normal:"Normal",
+    dam_note:"Percent of USABLE capacity. Above 100% means the reservoir is above its normal full level and is likely spilling. It does not mean the dam is failing.",
+    mcm:"million m³",
     alert:"alert", kind:"type", country:"country",
     notbank:"This network publishes no bank level, so no overtopping forecast is made.",
     terrain:"Low ground", terrain_s:"where water would go, not how deep",
@@ -348,13 +362,13 @@ const loc=(o,base)=> LANG==="th" ? (o[base+"_th"] ?? o[base] ?? "") : (o[base] ?
 /* ------------------------------------------------------------------ data */
 const BASE=(window.SERAPHIM&&window.SERAPHIM.dataBase)||"../data/out";
 const RISK={1:"#2f81f7",2:"#d99e0b",3:"#e8590c",4:"#e5484d",5:"#ff2d55"};
-let gj=null, meta=null, tide=null, areas=null, provinces=null, quakes=null, fires=null, events=null, terrain=null;
+let gj=null, meta=null, tide=null, areas=null, provinces=null, quakes=null, fires=null, events=null, terrain=null, dams=null;
 let radarFrames=[], radarIdx=0, radarTimer=null;
 let radioAll=[], radioNear=[], radioIdx=0, audio=null;
 let map=null, mode="risk", basemap="satellite";
 const shown={provinces:true, stations:true, tide:true,
              radar:false, quakes:false, fires:false, radio:false, events:false,
-             terrain:false};
+             terrain:false, dams:false};
 
 const OSM="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const SAT="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
@@ -386,6 +400,7 @@ const LAYERS=[
   {id:"provinces", label:"prov",   sub:null,        colour:"#e5484d"},
   {id:"stations",  label:"stat",   sub:null,        colour:"#2f81f7"},
   {id:"tide",      label:"tide",   sub:null,        colour:"#22d3ee"},
+  {id:"dams",      label:"dams",   sub:"dams_s",    colour:"#14b8a6", optional:true},
   {id:"radar",     label:"radar",  sub:"radar_s",   colour:"#38bdf8"},
   {id:"quakes",    label:"quakes", sub:"quakes_s",  colour:"#f59e0b"},
   {id:"fires",     label:"fires",  sub:"fires_s",   colour:"#f97316", optional:true},
@@ -652,9 +667,9 @@ async function load(){
   areas = mergedAreas();
   // Province shapes and tide points exist only for Thailand, so they are not part of
   // what every visitor pays for.
-  [meta,quakes,fires,events,terrain]=await Promise.all([
+  [meta,quakes,fires,events,terrain,dams]=await Promise.all([
     j("meta.json"), j("quakes.geojson"), j("fires.geojson"), j("events.geojson"),
-    j("terrain.geojson")]);
+    j("terrain.geojson"), j("dams.geojson")]);
   if(country==="th"||loaded.th){
     [tide,provinces]=await Promise.all([j("tide.json"), j("provinces.geojson")]);
   }
@@ -767,6 +782,43 @@ function addHazardLayers(){
     });
     map.on("mouseenter","event-c",()=>map.getCanvas().style.cursor="pointer");
     map.on("mouseleave","event-c",()=>map.getCanvas().style.cursor="");
+  }
+  if(dams && !map.getSource("dams")){
+    map.addSource("dams",{type:"geojson",data:dams});
+    // A reservoir is a store, not a channel, so it is coloured by how full it is
+    // rather than by flood risk: teal normal, amber high, red once it is above its
+    // normal full level. Large dams are drawn bigger than medium ones.
+    map.addLayer({id:"dams-c",type:"circle",source:"dams",paint:{
+      "circle-color":["match",["get","status"],
+        "spilling","#e5484d","high","#f59e0b","normal","#14b8a6","#6b7280"],
+      "circle-stroke-color":"rgba(0,0,0,.55)","circle-stroke-width":1,
+      "circle-radius":["interpolate",["linear"],["zoom"],
+        4,["case",["==",["get","size"],"large"],5,3],
+        8,["case",["==",["get","size"],"large"],10,6],
+        13,["case",["==",["get","size"],"large"],18,11]],
+      "circle-opacity":.9}});
+    map.on("click","dams-c",e=>{
+      const p=e.features[0].properties;
+      const n=k=>(p[k]==null||p[k]==="")?null:Number(p[k]);
+      const pct=n("storage_percent");
+      const col=p.status==="spilling"?"#e5484d":p.status==="high"?"#f59e0b":"#14b8a6";
+      const row=(lbl,val)=>val==null?"":
+        `<div class="pr"><span>${esc(lbl)}</span><span class="num">${esc(val)}</span></div>`;
+      new maplibregl.Popup({maxWidth:"290px"}).setLngLat(e.lngLat).setHTML(
+        `<div class="pt" style="background:${col}">${esc(t("dam_"+(p.status==="spilling"?"spilling":p.status==="high"?"high":"normal")))}</div>
+         <div class="ph">${esc(p.name)||"-"}</div>
+         <div class="psub">${esc(p.province)||""} ${esc(p.basin)||""} · ${esc(t(p.size==="large"?"dam_large":"dam_medium"))}</div>
+         ${row(t("dam_pct"), pct==null?null:pct+"%")}
+         ${row(t("dam_lvl"), n("level_msl")==null?null:n("level_msl")+" m")}
+         ${row(t("dam_in"), n("inflow_mcm")==null?null:n("inflow_mcm")+" "+t("mcm"))}
+         ${row(t("dam_out"), n("released_mcm")==null?null:n("released_mcm")+" "+t("mcm"))}
+         ${row(t("dam_spill"), n("spilled_mcm")==null?null:n("spilled_mcm")+" "+t("mcm"))}
+         ${row(t("ageL"), ageText(n("age_hours")==null?null:n("age_hours")*60))}
+         ${row(t("agency"), p.agency)}
+         <div class="conf">${esc(t("dam_note"))}</div>`).addTo(map);
+    });
+    map.on("mouseenter","dams-c",()=>map.getCanvas().style.cursor="pointer");
+    map.on("mouseleave","dams-c",()=>map.getCanvas().style.cursor="");
   }
   if(terrain && !map.getSource("terrain")){
     map.addSource("terrain",{type:"geojson",data:terrain});
@@ -960,6 +1012,7 @@ function applyVisibility(){
   set("radio-c",shown.radio);
   set("event-c",shown.events);
   set("terrain-c",shown.terrain);
+  set("dams-c",shown.dams);
   $("radio").classList.toggle("show",shown.radio);
   if(shown.radio&&!radioNear.length) refreshDial();
   if(!shown.radio&&audio){ audio.pause(); $("rplay").textContent="▶";
@@ -1026,7 +1079,7 @@ function renderChrome(){
 
   // Tick boxes rather than pills: the user asked to "tick to show and unshow", and a
   // checkbox says what it does without having to be learned.
-  const have={fires:!!fires, terrain:!!terrain};
+  const have={fires:!!fires, terrain:!!terrain, dams:!!dams};
   $("layerlist").innerHTML=LAYERS.filter(l=>!l.optional||have[l.id]).map(l=>`
     <div class="chk${shown[l.id]?" on":" off"}" data-layer="${l.id}">
       <span class="box">✓</span>
@@ -1235,6 +1288,7 @@ function setBasemap(name){
       if(map.getSource("fires")&&fires) map.getSource("fires").setData(fires);
       if(map.getSource("events")&&events) map.getSource("events").setData(events);
       if(map.getSource("terrain")&&terrain) map.getSource("terrain").setData(terrain);
+      if(map.getSource("dams")&&dams) map.getSource("dams").setData(dams);
       renderChrome();
     } else { renderAge(); }
   },60000);

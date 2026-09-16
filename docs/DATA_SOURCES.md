@@ -39,6 +39,80 @@ every one of the 1,121 stations is `station_type: tele_waterlevel`.
 **Consequence:** reservoir drawdown is deliberately NOT modelled in the fishing planner.
 It needs a real dam dataset from RID or EGAT.
 
+### ⚠️⚠️ `min_bank == 0` means "no bank level", not "the bank is at 0 m MSL"
+**Found 2026-09-16, after it had been shipping wrong numbers for days.**
+
+318 of 1,118 stations carry `min_bank: 0`. It is a missing-value sentinel, and the
+source does not handle it either:
+
+- for those rows `diff_wl_bank` is simply the water level (a gauge at 164.89 m MSL gets
+  `diff_wl_bank: 164.89`)
+- `diff_wl_bank_text` therefore says **ล้นตลิ่ง** (overflowing) for **302** of them,
+  purely because their level is above zero
+- the source refuses to publish a `storage_percent` for any of the 318, which is the
+  tell: it knows it has no usable bank there
+
+**Consequence, before the fix:** this project showed **~308 Thai rivers over their banks**
+while thaiwater.net showed an ordinary monsoon. Of the 800 stations with a real bank
+level, **6** are actually over it (12 once `left_bank`/`right_bank` fallbacks are used).
+
+⚠️ **The 2026-09-15 "1,121/1,121 signs agreed" cross-check did not catch this, because
+it was circular.** Our freeboard and the source's `diff_wl_bank_text` are both computed
+from the same `min_bank`, so both were wrong in the same direction and agreed perfectly.
+A cross-check against a field derived from the field you are validating proves nothing.
+
+**The independent signal is `storage_percent`**, which is now cross-checked separately:
+if we call a station over bank, the source's own percentage must agree it is past 100.
+Verified after the fix: 0 disagreements.
+
+**`left_bank` / `right_bank` are a valid fallback.** 312 of the 318 zero-`min_bank`
+stations publish real left/right bank levels in MSL, consistent with their water levels
+(median freeboard 3.3 m). Only 6 stations end up with no threshold at all.
+
+### ⚠️ Impossible water levels are published as facts
+Measured 2026-09-16, 5 readings refused:
+- `วัดเสมาท่าค้อ` reported **-875.7 m MSL**
+- four stations reported exactly **-9.99 m**, one of them (`สถานีคลองหวะ`) sitting
+  **23.4 m below its own surveyed bed**
+
+Each produced a large fake freeboard, i.e. "safe". Gate: outside **-20..2600 m MSL**
+(Thai terrain, delta to Doi Inthanon), or more than **2 m below the station's own
+`ground_level`**. The separation is clean: the sentinels sit 7.7-23.4 m below bed, the
+worst genuine reading is 1.84 m below and comes with a negative `storage_percent`, which
+the source publishes deliberately for a channel drying below its surveyed bed.
+
+### ThaiWater dams / reservoirs ✅ (verified 2026-09-16)
+`https://api-v3.thaiwater.net/api/v1/thaiwater30/analyst/dam`, keyless, ~1 MB.
+
+❌ There is **no dam route in the `public/` namespace** — every `public/dam*` guess 404s.
+This path came out of thaiwater.net's own JS bundle, not from guessing.
+
+Four groups arrive together and they are not equivalent:
+
+| Group | Rows | Usable? |
+|---|---|---|
+| `dam_daily` | 50 large dams | ✅ all with coordinates, all current |
+| `dam_medium` | 862 medium dams | ✅ 857 with coordinates, **448 current** |
+| `dam_small_tele` | 60 | ❌ **no coordinates at all** |
+| `dam_hourly` | 17 | ❌ `dam_storage_percent` is 0 for every row |
+
+⚠️⚠️ **The same 1740 problem as the Dutch feed.** `dam_medium` mixes history in with
+today: 448 rows from the last day, then **nothing until a year out**, then 317 rows dated
+to the **1970 epoch** and 76 from around 2021. Sorting fullest-first without a recency
+gate put a reservoir last read in **2021** at the top of the map labelled as spilling
+today. Gate: **7 days**, which sits in the wide empty gap.
+
+⚠️ **Zero is a sentinel here too.** 35 of the 50 large dams report `dam_level: 0`, and
+every `dam_hourly` row reports `dam_storage_percent: 0` while carrying a real level.
+
+⚠️ **`dam_storage_percent` is percent of USABLE capacity, so >100 is normal and common.**
+59 reservoirs are above 100% (max 136%). It means the reservoir is above its normal full
+level and is likely spilling. **It does not mean a dam is failing**, and it is not
+comparable to the gauge feed's `storage_percent`, which is a bed-to-bank channel fill.
+The UI says so in every dam popup.
+
+Published: **493 reservoirs** (50 large + 443 medium), as `dams.geojson`.
+
 ### ThaiWater history, ❌ not available
 `public/waterlevel_graph` accepts `station_id` but returns a **Go panic** (`index out of range`)
 rather than data; other history paths 404. Probing stopped rather than hammer a government API.

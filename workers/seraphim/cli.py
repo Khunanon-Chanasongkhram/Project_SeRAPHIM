@@ -16,6 +16,7 @@ from seraphim.adapters.marine import TideAdapter, summarise
 from seraphim.models import Forecast, SourceHealth, StationState
 from seraphim.history import fit_trend, load_history, merge_current
 from seraphim.adapters.hazards import fetch_earthquakes, fetch_events, fetch_fires
+from seraphim.adapters.thaidam import fetch_dams
 from seraphim.adapters.spots import all_spots, fetch_weather
 from seraphim.fishing import build_fishing
 from seraphim.publish import (
@@ -257,6 +258,24 @@ def build(
                 print(f"[quakes] {qh.stations} in the past 24 h")
             else:
                 print(f"[quakes] FAILED: {qh.error}", file=sys.stderr)
+
+        # Reservoirs. A daily product, so a 3 h cache costs nothing and spares the
+        # source a 1 MB fetch every quarter hour.
+        hit = cache.load(cache_root, "dams", 3.0 * refresh_scale)
+        if hit:
+            extra["dams.geojson"] = hit["data"]
+            print("[dams] cache hit")
+        else:
+            dams, dh = fetch_dams()
+            health.append(dh)
+            for w in dh.warnings:
+                print(f"[dams] warning: {w}", file=sys.stderr)
+            if dams:
+                extra["dams.geojson"] = dams
+                cache.save(cache_root, "dams", dams)
+                print(f"[dams] {dh.stations} reservoirs")
+            else:
+                print(f"[dams] FAILED: {dh.error}", file=sys.stderr)
 
         hit = cache.load(cache_root, "events", 3.0 * refresh_scale)
         if hit:
