@@ -21,6 +21,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import NamedTuple
 
 from seraphim.history import Trend
 from seraphim.models import StationState
@@ -38,6 +39,11 @@ TTB_WARNING_HOURS = 24.0
 FREEBOARD_SEVERE_M = 0.30
 FREEBOARD_WARNING_M = 0.50
 FREEBOARD_WATCH_M = 1.50
+
+#: How close a forecast level must come to the bank before it counts as a warning.
+#: A national hydrological forecast that lands within this of overtopping is worth
+#: saying out loud even when it does not cross.
+FORECAST_NEAR_BANK_M = 0.30
 
 RAIN_HEAVY_MM = 50.0
 RAIN_EXTREME_MM = 90.0
@@ -165,6 +171,28 @@ def _tide_reason(
     return None
 
 
+class _When(NamedTuple):
+    th: str
+    en: str
+
+
+def _forecast_when(iso: str | None) -> _When:
+    """Render a forecast's valid time, or say nothing rather than imply a time.
+
+    A forecast with no stated valid time is still usable, but the UI must not invent
+    one, so both strings come back empty and the reason reads without a clause.
+    """
+    if not iso:
+        return _When("", "")
+    try:
+        at = datetime.fromisoformat(iso)
+    except ValueError:
+        return _When("", "")
+    if at.tzinfo is None:
+        return _When("", "")
+    return _When(f" ภายใน {at:%H:%M} UTC", f" by {at:%H:%M UTC on %d %b}")
+
+
 def assess(
     state: StationState,
     trend: Trend | None,
@@ -256,6 +284,41 @@ def assess(
         )
 
     # --- what is coming -----------------------------------------------------
+    # A forecast of THIS gauge's own level, where the national network runs one. It is
+    # a far stronger signal than rainfall over a grid cell, so it is read first, and it
+    # is compared only with this station's own bank level: both are in the station's
+    # own datum, which for the US is `local`.
+    bank = state.station.bank_msl
+    if fc and fc.forecast_level is not None and bank is not None:
+        margin = round(bank - fc.forecast_level, 3)
+        when = _forecast_when(fc.forecast_level_at)
+        who = fc.forecast_level_source or "forecast"
+        if margin <= 0:
+            # Capped below 5 for the same reason the tide bump is: level 5 means water
+            # is over the bank NOW, an observed fact. A forecast, however official,
+            # must not wear the same badge as a river that is already out.
+            level = max(level, MAX_FORECAST_LEVEL)
+            reasons.append(Reason(
+                "forecast_over_bank",
+                f"พยากรณ์ทางการ ({who}) คาดน้ำสูงกว่าตลิ่ง {abs(margin):.2f} ม."
+                f"{when.th} (เป็นการคาดการณ์)",
+                f"Official {who} forecast has this gauge {abs(margin):.2f} m ABOVE its "
+                f"flood stage{when.en} (a forecast, not an observation)"))
+        elif margin <= FORECAST_NEAR_BANK_M:
+            level = max(level, 3)
+            reasons.append(Reason(
+                "forecast_near_bank",
+                f"พยากรณ์ทางการ ({who}) คาดน้ำต่ำกว่าตลิ่งเพียง {margin:.2f} ม."
+                f"{when.th} (เป็นการคาดการณ์)",
+                f"Official {who} forecast comes within {margin:.2f} m of flood "
+                f"stage{when.en} (a forecast, not an observation)"))
+        else:
+            reasons.append(Reason(
+                "forecast_below_bank",
+                f"พยากรณ์ทางการ ({who}) คาดน้ำต่ำกว่าตลิ่ง {margin:.2f} ม.{when.th}",
+                f"Official {who} forecast stays {margin:.2f} m below flood "
+                f"stage{when.en}"))
+
     if fc and fc.rain_next_24h_mm is not None:
         rain = fc.rain_next_24h_mm
         if rain >= RAIN_EXTREME_MM:

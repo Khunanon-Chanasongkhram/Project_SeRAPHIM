@@ -7,25 +7,35 @@ Purpose: survive a closed terminal or an expired token with zero context loss.
 
 ## Current state
 
-**All seven phases are built, tested and deployed.** 168 tests.
-Live: https://khunanon-chanasongkhram.github.io/Project_SeRAPHIM/
+**Four countries live: Thailand, United Kingdom, Netherlands, United States.**
+**16,237 gauges** (US 11,476 · GB 3,326 · TH 1,117 · NL 318), all four fetched live.
+**212 tests.** Live: https://khunanon-chanasongkhram.github.io/Project_SeRAPHIM/
 
-**Next action:** push. 5 commits are local-only, and pushing also triggers a deploy,
-which the site needs: measured 2026-09-16 it was **3.8 hours stale**, about 15 missed
-cron runs. GitHub's scheduled workflows are best-effort; the UI shows data age and the
-degraded banner fires past 90 minutes, so it goes visibly stale rather than quietly wrong.
+**Next action:** push. Pushing also triggers a deploy, which the site needs.
+
+⚠️ **The CI test step could never have passed.** `unittest discover` dropped
+namespace-package support in Python 3.11, and `workers/tests/` had no `__init__.py`, so
+`python -m unittest discover -s tests` died with `ImportError: Start directory is not
+importable` before running a single test. CI pins Python 3.12, so the **Tests** step
+would have failed on the first push and the build job would never have reached deploy.
+Fixed by adding `workers/tests/__init__.py`; 203 tests now run in 0.12 s.
 
 **Open items**
-- **UK EA `/id/measures` is flapping (503).** GB has been absent from recent builds.
-  Per-country fail-soft is written and tested but cannot engage until one successful UK
-  build seeds its cache, so the first good build after they recover is the one that arms it.
-- **Terrain covers 220 of 1,121 Thai gauges** (worst-risk first). Top up occasionally:
-  `cd workers && python3 -m seraphim.cli terrain --budget 60`. It rate-limits, so it is a
-  deliberate command and never part of a build.
-- **ThaiWater terms of use still unconfirmed.** The repo is public now, so this matters
-  more than it did. Contact HII before promoting it anywhere.
-- Validation figures firm up as the archive grows; re-read `validation.json` after a few
-  days of cron.
+- **UK EA recovered mid-session.** It 503'd for most of it (GB rode the fail-soft cache,
+  which demonstrably worked), then came back: the final build fetched all four countries
+  live. Expect it to flap again; the cache path is now proven on real data.
+- **Live refresh cannot be end-to-end tested here.** There is no Node and no browser on
+  this machine, so the new client JS is syntax-checked by `scripts/check_js.py` only.
+  What *was* verified against live data is the part most likely to fail silently: the
+  station ids the live parsers build match the published ones (TH 1117/1117, US 37/37
+  in a test viewport). Open the map and toggle Live before trusting it.
+- **Netherlands has no live refresh** and never can from a browser: Rijkswaterstaat
+  sends no `Access-Control-Allow-Origin`. The UI says so instead of offering a dead toggle.
+- **Terrain covers 220 of 1,121 Thai gauges**, and 0 of the 11,467 US / 318 NL gauges.
+  Top up: `cd workers && python3 -m seraphim.cli terrain --budget 60`.
+- **ThaiWater terms of use still unconfirmed.** Contact HII before promoting it anywhere.
+- **US and NL licensing is clean**: NOAA is public domain, Rijkswaterstaat is Dutch open
+  data. Both are attributed in the map credit line.
 
 **Hosting:** GitHub Actions builds, GitHub Pages serves. No Cloudflare, no card, no
 account except GitHub. The SOS component was removed before deploy and lives on the
@@ -41,10 +51,144 @@ account except GitHub. The SOS component was removed before deploy and lives on 
 | 4 | Respond (SOS) | ❌ built, then removed before deploy (branch `sos-component`) |
 | 5 | Terrain | ✅ built, 220/1,121 gauges profiled |
 | 6 | Harden / scale | ✅ deployed |
-| 7 | Global + multi-hazard | ✅ built (UK + GDACS), GB pending an upstream fix |
+| 7 | Global + multi-hazard | ✅ deployed, **4 countries** (TH, GB, NL, US) + GDACS |
+| 7b | Live refresh | ✅ built, opt-in client-side, TH/GB/US (NL blocked by CORS) |
 
 Beyond the plan: validation/backtesting, per-country data splitting, world radio,
 rain radar, earthquakes, active fires, satellite imagery, TH/EN switch.
+
+---
+
+## 2026-09-16 - Session 17: the test suite that never ran, then two more countries
+
+He said the program still had an error, wanted real-time data, and wanted the
+Netherlands and the USA. All three landed; the error was not where I expected.
+
+**The error: 168 tests that could not be collected.** `python3 -m unittest discover -s
+tests` failed with `ImportError: Start directory is not importable` before running
+anything. Cause: unittest dropped implicit namespace-package discovery in Python 3.11,
+and `workers/tests/` has no `__init__.py`. **CI pins 3.12 and gates the build on that
+step**, so the first push would have failed the Tests step and never deployed. One empty
+file fixed it. The lesson is that "168 tests pass" was never actually observed on this
+machine, only believed.
+
+**"Real-time", without breaking the thing that makes this free.** Reads are static files
+on a CDN; that is the whole architecture. So live does not mean putting a server in
+front of the map, it means the browser asking the agency directly, exactly as it already
+does for rain radar. Our origin still serves nothing but files.
+
+CORS probed on all four: **ThaiWater and NOAA reflect the origin, UK EA sends `*`, and
+Rijkswaterstaat sends no CORS header at all.** So TH, GB and US refresh live; NL cannot
+from a browser, and the UI says so rather than offering a toggle that does nothing.
+
+**Opt-in, default off** — he chose this when I laid out the trade-off. Turning it on
+points a visitor's browser and IP at a foreign government API and costs them ~300 KB
+(TH) / ~89 KB (US continental) / ~357 KB (GB) per refresh. Nobody should pay either
+cost without choosing to, and PDPA is in scope.
+
+What a live reading may change is deliberately narrow: it replaces the level and
+recomputes freeboard (just bank minus level, honest to derive client-side), and it may
+**escalate** a gauge to 5, because 5 means "water is over the bank now", an observation.
+It may **never de-escalate**, because the snapshot's score can rest on a forecast, a tide
+window or a trend that one reading knows nothing about. The panel shows a live level
+beside a score stamped with the build it came from, rather than blending them.
+
+**The US publishes a flood stage, so it gets the full treatment.** This was the
+interesting difference from the UK. `flood` in NOAA's `riv_gauges` layer is the level at
+which water leaves the channel, the same kind of number as Thailand's `min_bank`, so US
+gauges earn freeboard, time-to-bank and level 5, which UK gauges deliberately cannot.
+**The risk engine needed no change for this**: its caps key on whether a threshold
+exists, not on which country a gauge is in. That is the Phase 0 seam paying out twice.
+
+Cross-checked before trusting it: **6,797 US gauges, 100.00% sign agreement** between
+our computed freeboard and NWS's own flood category, including all 10 then over flood
+stage. Same discipline as the ThaiWater check in Session 3.
+
+**Extremes checked, not clipped.** `MCCI2` reads -65.5 m and looked like a parse error;
+it is Chicago's Deep Tunnel, ~300 ft underground. The 2,654 m readings are Wyoming
+mountain reservoirs. Both real.
+
+**The Netherlands hands back readings from 1740.** `OphalenLaatsteWaarnemingen` means
+"the latest value of every series", not "current readings": of 2,244 series the oldest
+"latest" is dated **1740-01-01** and the median is ~27 years old. RWS keeps historical
+series in the same endpoint as live telemetry, distinguished only by timestamp.
+Unfiltered, that puts 286-year-old marks on a live flood map, each looking like an
+ordinary reading. A hard 24 h recency gate drops them. **After the gate: 318 locations,
+median age 22 minutes** — the freshest source in the project.
+
+Also: the old host is **decommissioned** (301 to a migration page that 404s), so this is
+DDAPI 2.0; levels are in **centimetres**; and there are **four datums** again, with TAW
+(Belgian, ~2.33 m below NAP) marked `local` rather than offset on an unverified constant.
+
+**A plausibility gate that nearly deleted real data.** Dutch values reach 11,968 cm NAP,
+which looks absurd in a famously flat country. `epen.geul.cottessen` gauges the Geul in
+South Limburg, where the valley floor genuinely sits above 100 m. The gate is set
+against Dutch terrain (-7 m to 322 m), not against the stereotype. I nearly shipped the
+stereotype.
+
+**The quota bomb the USA set off, and the better answer.** 11,467 American gauges took
+the shared 0.2 degree forecast grid from 1,029 cells to **7,284**, about **36,000
+Open-Meteo location-calls a day against a 10,000 allowance**. Coarsening the grid enough
+to fit meant degrading Thailand and the UK to pay for the US.
+
+The real answer was that Open-Meteo is the *downgrade* for America. NOAA publishes a
+**per-gauge 24-hour river stage forecast** on layer 1 of the same service we already
+call. So US gauges leave the shared grid entirely and use it instead: **two calls
+regardless of gauge count**. Grid back to ~644 cells, and 2,299 US gauges now carry an
+official hydrological forecast rather than a rainfall proxy over a 22 km cell. The
+forecast can escalate to 4 and is capped below 5, for the same reason the tide bump is.
+
+**Timestamps verified, not assumed**, twice. Neither `obstime` nor `fcsttime` carries an
+offset. Both cross-checked against the NWPS API's explicit `validTime`: AACS2 reads
+`2026-09-16 00:15:00` here and `...T00:15:00Z` there; ABBG1's forecast matches to the
+value. Reading them as local would have shifted every US reading by up to 10 hours.
+
+**A bug my own new tests caught.** The forecast scoring I added to `risk.py` referenced
+`st.bank_msl`, but `assess()` names it `state.station`. It imported fine and the build
+before the edit was green, so only the tests found it. Worth noting because the previous
+two sessions both lost time to edits that silently did nothing.
+
+**A second user-visible bug, found while checking the build was clean.** Every snapshot
+was publishing `health: fail`, and the only failing check was `nasa_firms`. The fire
+layer is optional and has no API key here, but `fetch_fires` returns `ok=False` for
+"no key configured", which the health roll-up counted as a source failure. Consequence:
+**the "data may be out of date" banner would have been pinned on permanently**, on a site
+whose whole discipline is that the banner means something. A warning that is always
+showing is one nobody reads on the day it matters.
+
+Fixed with a distinction the model was missing: `SourceHealth.optional` separates
+"absent because nobody configured it" from "broken". The optional one is still *named* in
+the health detail, it just does not condemn the snapshot. A key that is present but
+rejected still fails, because that is something going wrong.
+
+**Payload, the same problem the second country caused.** Adding the US took a country
+file to 834 KB gzipped. Fixed the same way Phase 7 fixed it: stop shipping fields that
+say nothing. Null properties are dropped, and `name_en` goes when it just repeats `name`
+(true for every US and Dutch gauge). US 834 -> 689 KB, TH 125 -> 116 KB, NL 14.3 -> 11.4 KB.
+The trim keeps four station properties even when null, because the MapLibre paint
+expressions read them and a null where a style wants a boolean takes the layer down.
+There is a test asserting exactly those four survive, and writing it caught me listing
+four more that belong to the province, quake, event and terrain layers instead.
+
+**Not done / limits**
+- No browser and no Node here, so the live JS is syntax-checked only. Station-id matching
+  *was* verified against live data (TH 1117/1117, US 37/37) because that is the part that
+  fails silently. **Open the map and toggle Live before trusting it.**
+- Terrain still covers only Thai gauges: 220 of 1,117, and none of the 11,476 US or
+  318 NL gauges.
+- Time-to-bank now produces values again (`soonest to bank: 2.1 h`) once the archive had
+  enough recent history; it was empty earlier in the session purely from the cron gap.
+
+**Two follow-ups he asked for at the end.**
+- **README "Status" no longer mentions SOS.** It was describing a feature that was
+  removed and is not done, which read as if the project shipped something it does not.
+  It now lists what is actually built, and notes that terrain covers Thai gauges only.
+- **Removed the SAT/MAP flip button** from the bottom-right of the map. Basemap switching
+  is unchanged and still in the layers panel (satellite / dark / light / OSM), so this
+  removed a control, not a capability. Its two now-unused i18n keys went with it, from
+  both languages, so TH/EN stay in step: 111 keys -> 109.
+
+212 tests.
 
 ---
 

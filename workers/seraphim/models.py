@@ -113,6 +113,23 @@ class Forecast:
     #: GloFAS river discharge, m³/s.
     discharge_now_cms: float | None = None
     discharge_max_7d_cms: float | None = None
+    #: A forecast of the gauge's own level, where the national network publishes one.
+    #: This is a different and much stronger thing than rainfall: the US NWS runs a
+    #: hydrological model per gauge, so where it exists it beats inferring a rise from
+    #: precipitation over a grid cell.
+    #:
+    #: In the SAME datum and units as that station's observations (metres, and `local`
+    #: wherever the network publishes no national datum), so it is only ever compared
+    #: with thresholds from the same station.
+    forecast_level: float | None = None
+    #: Valid time of that forecast level, and who issued it. Both displayed: a forecast
+    #: for 06:00 tomorrow issued this morning is worth more than one issued two days ago.
+    #:
+    #: An ISO-8601 UTC string rather than a datetime, because forecast fields round-trip
+    #: through the on-disk JSON forecast cache between builds, and a datetime does not
+    #: survive that trip.
+    forecast_level_at: str | None = None
+    forecast_level_source: str | None = None
 
     @property
     def discharge_rise_ratio(self) -> float | None:
@@ -222,3 +239,8 @@ class SourceHealth:
     fetched_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     #: Non-fatal problems: unparseable rows, missing datums, cross-check disagreements.
     warnings: list[str] = field(default_factory=list)
+    #: True when this source is absent BY CONFIGURATION rather than broken, e.g. an
+    #: optional layer with no API key. A deliberate absence must not mark the whole
+    #: snapshot unhealthy: that pins the "data may be out of date" banner on for ever,
+    #: and a warning that is always showing is one nobody reads when it matters.
+    optional: bool = False

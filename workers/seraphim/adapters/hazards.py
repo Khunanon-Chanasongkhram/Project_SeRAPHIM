@@ -135,6 +135,9 @@ def fetch_fires(map_key: str | None = None) -> tuple[dict | None, SourceHealth]:
     key = map_key or os.environ.get("FIRMS_MAP_KEY") or ""
     if not key:
         health.error = "no FIRMS_MAP_KEY configured; fire layer omitted"
+        # Not a failure: nobody asked for this layer. A key that is present but
+        # rejected still fails, because that IS something going wrong.
+        health.optional = True
         return None, health
 
     url = FIRMS_URL.format(key=key, source=FIRMS_SOURCE, bbox=FIRMS_BBOX, days=FIRMS_DAYS)

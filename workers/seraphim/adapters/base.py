@@ -15,6 +15,7 @@ import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from seraphim.models import Observation, SourceHealth, Station
 
@@ -34,6 +35,21 @@ class SourceAdapter(ABC):
     attribution: str
     #: ISO-3166 alpha-2 of the country covered, or "*" for global sources.
     country: str = "*"
+    #: Set by the CLI before fetch(). Adapters whose *station metadata* is large and
+    #: near-static cache it here instead of refetching it every build. The Dutch
+    #: catalogue is 7.3 MB and lists gauges, not readings, so pulling it every 15
+    #: minutes would take ~700 MB a day off a government API to learn nothing new.
+    #: Levels themselves are never cached here: a stale reading is the one thing this
+    #: system must not serve as current.
+    cache_root: "Path | None" = None
+    #: Whether this source's gauges join the shared Open-Meteo forecast grid.
+    #:
+    #: Set False by a network that publishes its own, better forecast. The US does:
+    #: adding 11,467 American gauges to the shared grid took it from 1,029 cells to
+    #: 7,284, which is ~36,000 Open-Meteo location-calls a day against a 10,000
+    #: allowance, and it would have bought a coarse rainfall proxy for gauges that
+    #: NOAA already publishes a per-gauge hydrological forecast for.
+    shared_forecast_grid: bool = True
 
     @abstractmethod
     def fetch(self) -> tuple[list[Station], list[Observation], SourceHealth]:
@@ -55,6 +71,14 @@ class ForecastAdapter(ABC):
 
     id: str
     attribution: str
+    #: ISO-3166 alpha-2 this forecast applies to, or "*" for global sources.
+    country: str = "*"
+    #: True: this adapter is fed grid-cell centroids, and every gauge in a cell shares
+    #: the answer, which is how one call covers many gauges of a global weather model.
+    #: False: it is fed the real (station_id, lat, lon) triples for its own country,
+    #: because it forecasts each gauge individually and its cost does not scale with
+    #: how many we ask about.
+    grid: bool = True
     #: How long this source's output stays useful. Set per adapter because rainfall
     #: models, a daily discharge product and a harmonic tide prediction go stale at
     #: very different rates, and refetching the slow ones at the fast one's cadence
@@ -170,6 +194,35 @@ def fetch_json(url: str, timeout: int = 60) -> object:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.URLError as exc:
         raise RuntimeError(f"fetch failed for {url}: {exc}") from exc
+
+
+def post_json(url: str, body: object, timeout: int = 120) -> object:
+    """POST JSON and read JSON back. Raises on failure; callers convert to health.
+
+    Separate from fetch_json because some networks only expose a query API. The Dutch
+    service takes its whole location list in a POST body, which is what lets 690 gauges
+    arrive in one call instead of 690.
+    """
+    payload = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={
+            "User-Agent": USER_AGENT,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if resp.status == 204:
+                raise RuntimeError(f"no content from {url} (204)")
+            if resp.status != 200:
+                raise RuntimeError(f"HTTP {resp.status} from {url}")
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"post failed for {url}: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------

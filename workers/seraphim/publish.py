@@ -31,6 +31,36 @@ MAX_STALE_FRACTION = 0.60
 MAX_SNAPSHOT_AGE_MINUTES = 90.0    # cron is every 30 min; 3 misses is a real fault
 
 
+#: Station properties that must survive even when null, because the MapLibre *station*
+#: layers read them in paint expressions. A `["get"]` on a missing key returns null, and
+#: a null where the style expects a boolean or a number throws and takes the layer down.
+#:
+#: Only these four: the style's other `get` calls (`level`, `mag`, `alert`,
+#: `below_gauge_m`) read province, earthquake, event and terrain features, which are
+#: built elsewhere and never pass through here.
+#:
+#: Everything else is dropped when null. To the UI a missing key and a null key already
+#: mean the same thing, and across 11,476 US gauges the nulls alone cost ~78 KB gzipped.
+STYLE_CRITICAL = ("stale", "risk_level", "freeboard_m", "discharge_rise_ratio")
+
+
+def _trim(feature: dict) -> dict:
+    """Drop null properties the map style does not read, and a redundant English name.
+
+    Adding the United States took one country file from 122 KB to 834 KB gzipped, the
+    same problem a second country caused in Phase 7, and it deserves the same answer:
+    a visitor should not download fields that say nothing.
+    """
+    props = feature["properties"]
+    if props.get("name_en") == props.get("name"):
+        # True for every US and Dutch gauge: the source publishes one name, not two.
+        props.pop("name_en", None)
+    feature["properties"] = {
+        k: v for k, v in props.items() if v is not None or k in STYLE_CRITICAL
+    }
+    return feature
+
+
 def build_geojson(states: list[StationState], risks: dict | None = None) -> dict:
     """One feature per station, carrying its latest reading and derived freeboard.
 
@@ -44,7 +74,7 @@ def build_geojson(states: list[StationState], risks: dict | None = None) -> dict
         st, ob, fc = s.station, s.observation, s.forecast
         rk = risks.get(st.id)
         features.append(
-            {
+            _trim({
                 "type": "Feature",
                 "geometry": {"type": "Point", "coordinates": [round(st.lon, 6), round(st.lat, 6)]},
                 "properties": {
@@ -60,6 +90,11 @@ def build_geojson(states: list[StationState], risks: dict | None = None) -> dict
                     # Levels, all metres above MSL.
                     "level_msl": ob.level_msl,
                     "bank_msl": st.bank_msl,
+                    # Which datum those numbers are in. "MSL"/"NAP" compare between
+                    # stations; "local" compares only with this station's own
+                    # thresholds. Published so the UI can say so rather than implying
+                    # every gauge on the map shares one vertical reference.
+                    "datum": st.datum,
                     "freeboard_m": s.freeboard_m,
                     "discharge_cms": ob.discharge_cms,
                     "storage_percent": ob.storage_percent,
@@ -72,6 +107,12 @@ def build_geojson(states: list[StationState], risks: dict | None = None) -> dict
                     "discharge_now_cms": fc.discharge_now_cms if fc else None,
                     "discharge_max_7d_cms": fc.discharge_max_7d_cms if fc else None,
                     "discharge_rise_ratio": fc.discharge_rise_ratio if fc else None,
+                    # A forecast of this gauge's own level, where its national network
+                    # publishes one. Same datum and units as level_msl above, so the UI
+                    # can put them side by side; None everywhere else.
+                    "forecast_level": fc.forecast_level if fc else None,
+                    "forecast_level_at": fc.forecast_level_at if fc else None,
+                    "forecast_level_source": fc.forecast_level_source if fc else None,
                     "forecast_age_min": (
                         round((s.generated_at - fc.fetched_at).total_seconds() / 60, 1)
                         if fc else None
@@ -98,7 +139,7 @@ def build_geojson(states: list[StationState], risks: dict | None = None) -> dict
                     "data_age_min": s.data_age_minutes,
                     "stale": s.is_stale,
                 },
-            }
+            })
         )
     return {"type": "FeatureCollection", "features": features}
 
@@ -337,9 +378,14 @@ def build_health(states, health, meta_counts: dict) -> dict:
     check("station_count", total >= MIN_EXPECTED_STATIONS,
           f"{total} stations (expect >= {MIN_EXPECTED_STATIONS})")
 
-    failed = [h.source for h in health if not h.ok]
-    check("sources", not failed,
-          "all sources ok" if not failed else f"failed: {', '.join(failed)}")
+    failed = [h.source for h in health if not h.ok and not h.optional]
+    omitted = [h.source for h in health if not h.ok and h.optional]
+    detail = "all sources ok" if not failed else f"failed: {', '.join(failed)}"
+    if omitted:
+        # Named, not hidden: the layer really is missing and the UI should say so.
+        # It just does not make the snapshot unhealthy.
+        detail += f" (not configured: {', '.join(omitted)})"
+    check("sources", not failed, detail)
 
     ages = [s.data_age_minutes for s in states]
     median = sorted(ages)[len(ages) // 2] if ages else None

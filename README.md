@@ -2,7 +2,8 @@
 
 System for early Real-time Assessment & Predictive Hazard Incident Monitoring.
 
-A flood watching map. It reads **4,448 public river gauges across Thailand and the UK**,
+A flood watching map. It reads **~16,000 public river gauges across Thailand, the UK,
+the Netherlands and the United States**,
 mixes in rain and tide forecasts, and tries to answer one question: how long until this
 river comes over its bank?
 
@@ -65,7 +66,8 @@ question, since none of this has been tested where it counts.
 
 ## What it does
 
-**Watch.** 1,121 Thai and 3,327 British live river gauges, rainfall, discharge forecasts, and tide prediction at
+**Watch.** 1,117 Thai, 3,327 British, 11,467 American and 318 Dutch live river gauges,
+rainfall, discharge forecasts, official US river forecasts, and tide prediction at
 23 points along both coasts, on one map. Satellite imagery by default with a one tap flip
 to a street map, Thai and English, and it refreshes itself every 15 minutes without a
 reload.
@@ -108,13 +110,8 @@ Details, method and the bug I found in my own first attempt at measuring are in
 
 ## Status
 
-All seven phases are built and tested locally.
-
-There used to be an SOS side, where people could ask for help and responders could triage
-it. I built it, then took it out before deploying. Collecting someone's location, phone
-number and medical needs during an emergency is a serious thing to be responsible for,
-and a hobby project with nobody on call is the wrong place for it. The code is still in
-git history on the `sos-component` branch if it ever finds a proper home.
+Built, tested and deployed: ingest, the risk engine, calm mode, terrain, validation, and
+four countries with an opt-in live refresh. Terrain currently profiles Thai gauges only.
 
 `PROGRESS.md` has the full build log, including the bugs. I kept the mistakes in there on
 purpose, including a few where I broke something and my own test caught it.
@@ -187,20 +184,65 @@ So it makes no depth claim at all. It needed no DEM download and no raster libra
 matters because this machine has no numpy, no GDAL and no pip. Details, including the
 numbers that killed the first two versions, are in [`docs/TERRAIN.md`](docs/TERRAIN.md).
 
-## Two countries, and what the second one taught me
+## Four countries, and what each one taught me
 
-Thailand publishes a bank level for every gauge. The UK does not. It publishes a typical
-operating range, which is a different claim, and its levels come in four different datums
-in the same feed.
+**Thailand** publishes a bank level for every gauge. **The UK does not.** It publishes a
+typical operating range, which is a different claim, and its levels come in four
+different datums in the same feed.
 
 So UK stations get a weaker signal that says so: above or below typical range, capped
 below the levels that mean "the river is out", and **no time to bank at all**, because
 you cannot forecast reaching a threshold that nobody published. The map says this in the
 popup rather than quietly showing a lower number.
 
+**The United States does publish one.** NOAA's flood stage is the level at which water
+leaves the channel, the same kind of number as Thailand's bank level, so **US gauges get
+the full treatment**: freeboard, time to bank, and level 5. The risk engine needed no
+change for that, because its caps key on whether a threshold exists, not on which country
+a gauge is in. Before trusting it I checked our computed freeboard against NWS's own
+flood category across 6,797 gauges: **100.00% agreement**.
+
+America also broke the forecast budget. 11,467 gauges took the shared Open-Meteo grid
+from 1,029 cells to 7,284, roughly 36,000 calls a day against a 10,000 allowance. The
+fix was realising Open-Meteo is the *downgrade* there: NOAA publishes a per-gauge
+24-hour river forecast, which costs two calls no matter how many gauges you ask about.
+
+**The Netherlands tried to hand me readings from 1740.** Its "latest observations"
+endpoint returns the latest value of *every series it has ever held*, live telemetry and
+centuries-old archives together, distinguished only by a timestamp. Unfiltered, that puts
+286-year-old marks on a live flood map, each looking perfectly ordinary. A hard recency
+gate drops them; what remains is 318 gauges with a **median age of 22 minutes**, the
+freshest data in the project.
+
+It also nearly cost me real data the other way. Dutch gauges reading 119 m above datum
+look impossible in a country famous for being flat, until you find that the one doing it
+gauges a valley in South Limburg that genuinely sits that high. The plausibility check is
+built against Dutch terrain, not against the stereotype.
+
 That was the real test of the adapter design from day one, and the interesting part is
 that it held: the risk engine already treated a missing bank level as missing rather than
 zero, so nothing had to be unpicked.
+
+## Live data, without a server
+
+Reads are static files on a CDN, and that is what makes a million map views cost nothing.
+So "live" here does not mean putting a server in front of the map, it means **the browser
+asking the agency directly**, exactly as it already does for rain radar. The origin still
+serves nothing but files.
+
+It is **off by default and opt-in**, because turning it on points your browser and your
+IP at a foreign government API and costs you a few hundred KB per refresh. Neither should
+happen to you without your say-so.
+
+A live reading is allowed to do very little: it replaces the level and recomputes
+freeboard, and it may **escalate** a gauge to "over bank", because that is an observation.
+It may **never de-escalate**, because the published score can rest on a forecast, a tide
+window or a trend that one reading knows nothing about. The panel shows a live level
+beside a score stamped with the build it came from, rather than blending the two.
+
+Thailand, the UK and the US allow it. **Rijkswaterstaat sends no CORS header, so the
+Netherlands cannot be refreshed from a browser at all** — and the map says so, instead of
+offering a toggle that silently does nothing.
 
 ## Credit where it is due
 

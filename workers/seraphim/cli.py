@@ -48,18 +48,37 @@ def _forecasts(
     # 5 km discharge model do not vary meaningfully inside a 22 km cell, so gauges
     # sharing a cell share a forecast. That is ~1,000 calls instead of ~4,400, and the
     # accuracy lost is smaller than the model's own resolution.
+    # A source whose own network publishes a per-gauge forecast opts out of this grid.
+    # Without that, 11,467 US gauges took it from 1,029 cells to 7,284, about 36,000
+    # Open-Meteo location-calls a day against a 10,000 allowance, to buy a rainfall
+    # proxy for gauges NOAA already runs a hydrological model on.
+    gridded = [st for st in stations
+               if getattr(registry.get(st.source), "shared_forecast_grid", True)]
     cells: dict[tuple[int, int], list[str]] = {}
-    for st in stations:
+    for st in gridded:
         key = (round(st.lat / FORECAST_GRID_DEG), round(st.lon / FORECAST_GRID_DEG))
         cells.setdefault(key, []).append(st.id)
     points = [(f"cell:{a}:{b}", a * FORECAST_GRID_DEG, b * FORECAST_GRID_DEG)
               for (a, b) in cells]
-    print(f"[forecast] {len(stations)} gauges collapse to {len(points)} grid cells "
-          f"at {FORECAST_GRID_DEG} deg")
+    opted_out = len(stations) - len(gridded)
+    print(f"[forecast] {len(gridded)} gauges collapse to {len(points)} grid cells "
+          f"at {FORECAST_GRID_DEG} deg"
+          + (f"; {opted_out} use their own national forecast" if opted_out else ""))
+
     merged: dict[str, dict] = {}
     oldest = generated_at
 
     for name, adapter in forecast_registry.items():
+        # Grid adapters are fed cell centroids and their answer is shared by every gauge
+        # in the cell. Per-gauge adapters are fed the real stations of their own country.
+        if getattr(adapter, "grid", True):
+            asked = points
+        else:
+            asked = [(st.id, st.lat, st.lon) for st in stations
+                     if st.admin and st.admin.country == adapter.country]
+            if not asked:
+                continue
+
         max_age = adapter.refresh_hours * scale
         hit = cache.load(cache_root, name, max_age)
         if hit:
@@ -68,8 +87,8 @@ def _forecasts(
             age = (generated_at - fetched).total_seconds() / 3600
             print(f"[{name}] cache hit ({age:.1f} h old, limit {max_age:g} h)")
         else:
-            print(f"[{name}] refreshing {len(points)} points (limit {max_age:g} h)…", flush=True)
-            data, h = adapter.fetch_for(points)
+            print(f"[{name}] refreshing {len(asked)} points (limit {max_age:g} h)…", flush=True)
+            data, h = adapter.fetch_for(asked)
             health.append(h)
             for w in h.warnings:
                 print(f"[{name}] warning: {w}", file=sys.stderr)
@@ -80,6 +99,11 @@ def _forecasts(
             print(f"[{name}] {len(data)} points enriched", flush=True)
 
         oldest = min(oldest, fetched)
+        if not getattr(adapter, "grid", True):
+            # Already keyed by station id: nothing to spread.
+            for sid, fields in data.items():
+                merged.setdefault(sid, {}).update(fields)
+            continue
         # Spread each cell's forecast back over the gauges that share it.
         for cell_id, fields in data.items():
             try:
@@ -138,6 +162,10 @@ def build(
 
     for name, adapter in selected.items():
         print(f"[{name}] fetching…", flush=True)
+        # Station metadata only. Adapters that use this cache their gauge *list*, never
+        # a reading: the Dutch catalogue is 7.3 MB and changes far more slowly than the
+        # 15-minute build cadence.
+        adapter.cache_root = out_root / "cache"
         stations, observations, h = adapter.fetch()
         health.append(h)
         if not h.ok:
@@ -442,7 +470,7 @@ def main(argv: list[str] | None = None) -> int:
         for name, a in sorted(registry.items()):
             print(f"  level    {name:<18} {a.country:<3} {a.attribution}")
         for name, a in sorted(forecast_registry.items()):
-            print(f"  forecast {name:<18} *   {a.attribution}")
+            print(f"  forecast {name:<18} {getattr(a, 'country', '*'):<3} {a.attribution}")
         print(f"  tide     {TideAdapter.id:<18} TH  {TideAdapter.attribution}")
         return 0
     return build(

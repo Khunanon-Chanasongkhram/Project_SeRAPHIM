@@ -129,14 +129,6 @@
   .why ul{margin:0;padding-left:16px}
   .conf{font-size:10px;color:var(--faint);margin-top:6px}
 
-  /* quick basemap flip, always visible so it is not buried in a drawer */
-  #flip{position:absolute;z-index:5;right:10px;bottom:calc(var(--sheet-collapsed) + 14px);
-    width:52px;height:52px;border-radius:13px;border:1px solid var(--line-strong);
-    background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-    cursor:pointer;display:grid;place-items:center;font-size:19px;
-    box-shadow:0 6px 22px rgba(0,0,0,.5);color:var(--fg)}
-  #flip small{position:absolute;bottom:4px;font-size:7.5px;letter-spacing:.06em;color:var(--dim)}
-
   .chk{display:flex;align-items:center;gap:9px;padding:8px;border-radius:9px;cursor:pointer;
     font-size:12.5px;user-select:none}
   .chk:active{background:rgba(255,255,255,.07)}
@@ -184,6 +176,19 @@
     #sheet.open{height:calc(100vh - 86px)}
     #sheetbody{max-height:calc(100vh - 104px)}
   }
+  #livebar{margin:6px 0 2px}
+  #livebtn{display:flex;align-items:center;gap:8px;width:100%;cursor:pointer;
+    background:#171b21;border:1px solid #2a2f36;border-radius:8px;
+    padding:8px 10px;color:#e8edf3;font:inherit;font-size:12px;text-align:left}
+  #livebtn .box{width:15px;height:15px;border-radius:4px;border:1px solid #454c56;
+    display:grid;place-items:center;font-size:10px;color:transparent;flex:none}
+  #livebtn.on{border-color:#2f7d4a}
+  #livebtn.on .box{background:#2f7d4a;border-color:#2f7d4a;color:#fff}
+  #livebtn small{display:block;color:#8b949e;font-size:10.5px;line-height:1.35;margin-top:2px}
+  #livebtn .pulse{width:7px;height:7px;border-radius:50%;background:#3fb950;flex:none;
+    animation:lp 1.8s ease-in-out infinite}
+  #livebtn.off .pulse{display:none}
+  @keyframes lp{0%,100%{opacity:1}50%{opacity:.25}}
   [hidden]{display:none!important}
 </style>
 </head>
@@ -192,7 +197,7 @@
 
 <div id="top">
   <div class="brand"><span class="live" id="live"></span>SeRAPHIM</div>
-  <div class="seg" id="view"><button data-v="th">TH</button><button data-v="gb">GB</button><button data-v="world">🌏</button></div>
+  <div class="seg" id="view"><button data-v="th">TH</button><button data-v="gb">GB</button><button data-v="nl">NL</button><button data-v="us">US</button><button data-v="world">🌏</button></div>
   <div class="seg" id="lang"><button data-l="th">ไทย</button><button data-l="en">EN</button></div>
   <button class="btn" id="layersbtn">◈</button>
 </div>
@@ -210,8 +215,6 @@
   <div class="note" id="camnote"></div>
   <div class="note" id="credit"></div>
 </div>
-
-<button id="flip" title="basemap">🛰<small id="fliplbl"></small></button>
 
 <div id="radio">
   <div class="rhead">
@@ -231,6 +234,7 @@
   <div id="sheetbody">
     <div class="stats" id="stats"></div>
     <div class="age" id="age"></div>
+    <div id="livebar"></div>
     <div class="modes" id="modes"></div>
     <h5 id="h-legend"></h5>
     <div class="legend" id="legend"></div>
@@ -274,12 +278,20 @@ const I18N={
     tune:"ลากเพื่อหมุนหาคลื่น · แตะหมุดวิทยุบนแผนที่",
     mag:"ขนาด", depth:"ความลึก", when:"เมื่อ", frp:"ความแรง", conf:"ความเชื่อมั่น",
     nofires:"ไม่มีชั้นจุดความร้อน เพราะยังไม่ได้ตั้งค่าคีย์ NASA FIRMS",
-    credit:"แรงบันดาลใจชั้นข้อมูลจาก gods-eye-view (MIT)", sat_s:"ดาวเทียม", map_s:"แผนที่",
+    credit:"แรงบันดาลใจชั้นข้อมูลจาก gods-eye-view (MIT)",
     acc:"ความแม่นยำที่วัดได้", accnone:"ยังไม่มีข้อมูลพอจะวัด",
     acc_err:"คลาดเคลื่อนทั่วไป", acc_skill:"ดีกว่าการเดาว่าน้ำไม่เปลี่ยน",
     acc_hit:"คำเตือนที่เป็นจริง", acc_at:"ที่ระยะ", worse:"แย่กว่าการเดาว่าไม่เปลี่ยน",
     events:"ภัยพิบัติทั่วโลก", events_s:"จาก GDACS", view:"มุมมอง",
-    v_th:"ไทย", v_gb:"สหราชอาณาจักร", v_world:"ทั่วโลก",
+    v_th:"ไทย", v_gb:"สหราชอาณาจักร", v_nl:"เนเธอร์แลนด์", v_us:"สหรัฐอเมริกา", v_world:"ทั่วโลก",
+    live_on:"เชื่อมต่อสด", live_off:"ข้อมูลสด (ปิดอยู่)",
+    live_hint:"ดึงค่าระดับน้ำล่าสุดจากหน่วยงานต้นทางโดยตรงทุก 2 นาที เบราว์เซอร์ของคุณจะติดต่อกับหน่วยงานนั้นโดยตรง",
+    live_note:"ค่าระดับน้ำสด ส่วนคะแนนความเสี่ยงและเหตุผลมาจากรอบประมวลผลล่าสุด",
+    live_lvl:"ระดับน้ำ (สด)", live_at:"เวลาที่วัด (สด)",
+    live_new:"ล้นตลิ่งแล้วจากค่าสด (หลังรอบประมวลผลล่าสุด)",
+    live_na:"ยังไม่มีข้อมูลสดสำหรับประเทศนี้",
+    live_fail:"ดึงข้อมูลสดไม่สำเร็จ กำลังแสดงค่าจากรอบประมวลผล",
+    live_src:"ที่มาข้อมูลสด",
     alert:"ระดับเตือน", kind:"ประเภท", country:"ประเทศ",
     notbank:"เครือข่ายนี้ไม่ได้เผยแพร่ระดับตลิ่ง จึงไม่มีการคาดการณ์เวลาน้ำล้น",
     terrain:"พื้นที่ต่ำใกล้จุดน้ำล้น", terrain_s:"บอกทิศทางน้ำไป ไม่ได้บอกความลึก",
@@ -308,12 +320,20 @@ const I18N={
     tune:"drag to tune · or tap a radio pin on the map",
     mag:"magnitude", depth:"depth", when:"when", frp:"power", conf:"confidence",
     nofires:"No active-fire layer: a free NASA FIRMS key is not configured.",
-    credit:"Layer set inspired by gods-eye-view (MIT)", sat_s:"SAT", map_s:"MAP",
+    credit:"Layer set inspired by gods-eye-view (MIT)",
     acc:"MEASURED ACCURACY", accnone:"not enough history to measure yet",
     acc_err:"typical error", acc_skill:"better than assuming no change",
     acc_hit:"bank warnings that came true", acc_at:"at", worse:"worse than assuming no change",
     events:"Global disasters", events_s:"from GDACS", view:"VIEW",
-    v_th:"Thailand", v_gb:"United Kingdom", v_world:"World",
+    v_th:"Thailand", v_gb:"United Kingdom", v_nl:"Netherlands", v_us:"United States", v_world:"World",
+    live_on:"Live", live_off:"Live data (off)",
+    live_hint:"Pulls the newest gauge readings straight from the agency every 2 minutes. Your browser contacts that agency directly.",
+    live_note:"Level is live. The risk score and its reasoning are from the last build.",
+    live_lvl:"Level (live)", live_at:"Measured (live)",
+    live_new:"Over bank on the live reading (since the last build)",
+    live_na:"No live feed is available for this country",
+    live_fail:"Live fetch failed, showing the last build",
+    live_src:"Live source",
     alert:"alert", kind:"type", country:"country",
     notbank:"This network publishes no bank level, so no overtopping forecast is made.",
     terrain:"Low ground", terrain_s:"where water would go, not how deep",
@@ -379,6 +399,8 @@ const LAYERS=[
 const VIEWS={
   th:    {center:[100.9, 13.4], zoom:5.0},
   gb:    {center:[-2.0, 54.0],  zoom:5.0},
+  nl:    {center:[5.3, 52.2],   zoom:6.6},
+  us:    {center:[-98.0, 39.5], zoom:3.4},
   world: {center:[20, 20],      zoom:1.7},
 };
 
@@ -422,6 +444,204 @@ function mergedAreas(){
   out.sort((a,b)=>b.level-a.level
     || ((a.worst_ttb_hr??1e9)-(b.worst_ttb_hr??1e9)));
   return {areas:out};
+}
+
+/* ------------------------------------------------------- live refresh
+ * Reads are static files on a CDN, and that is what makes a million map views cost
+ * nothing. So "live" does NOT mean putting a server in front of the map: the browser
+ * asks the agency directly, exactly as it already does for rain radar. Our origin
+ * still serves nothing but files.
+ *
+ * Off by default and opt-in, because turning it on means this visitor's browser (and
+ * IP) contacts a foreign government API, and spends a few hundred KB per refresh.
+ * Nobody should pay either cost without choosing to.
+ *
+ * What a live reading may and may not change:
+ *   - it replaces the LEVEL and its measured time, and recomputes freeboard, which is
+ *     just bank minus level and therefore honest to derive in the browser;
+ *   - it may ESCALATE a gauge to 5, because 5 means "water is over the bank now" and
+ *     that is an observation, not a prediction;
+ *   - it may NEVER de-escalate, because the snapshot's score can rest on a forecast,
+ *     a tide window or a trend that this one reading knows nothing about;
+ *   - it never rewrites the reasoning. The panel shows a live level beside a score
+ *     stamped with the build it came from, rather than pretending they are one thing.
+ *
+ * The Netherlands is absent on purpose: Rijkswaterstaat sends no CORS header, so a
+ * browser cannot read it. Saying so is better than a toggle that silently does nothing.
+ */
+const LIVE_SOURCES={
+  th:{
+    label:"ThaiWater (HII)",
+    url:()=>"https://api-v3.thaiwater.net/api/v1/thaiwater30/public/waterlevel",
+    parse:(d)=>{
+      const out={};
+      for(const row of (d&&d.data)||[]){
+        const st=row.station||{};
+        const id=st.id==null?null:String(st.id);
+        const lv=Number(row.waterlevel_msl);
+        if(id==null||!isFinite(lv)) continue;
+        // Naive Bangkok wall-clock, exactly as the Python adapter treats it.
+        const at=row.waterlevel_datetime
+          ? Date.parse(String(row.waterlevel_datetime).replace(" ","T")+"+07:00") : NaN;
+        out["thaiwater:"+id]={level:lv, at:isFinite(at)?at:null};
+      }
+      return out;
+    }},
+  gb:{
+    label:"Environment Agency",
+    url:()=>"https://environment.data.gov.uk/flood-monitoring/id/measures"
+            +"?parameter=level&_limit=10000",
+    parse:(d)=>{
+      const UNITS={mASD:1,mAOD:1,m:1,mBDAT:1}, out={};
+      for(const m of (d&&d.items)||[]){
+        if(!UNITS[m.unitName]) continue;   // rainfall, flow and temperature are not levels
+        const r=m.latestReading;
+        if(!r||typeof r!=="object") continue;
+        const lv=Number(r.value);
+        let ref=m.stationReference;
+        if(!ref&&typeof m.station==="string") ref=m.station.replace(/\/+$/,"").split("/").pop();
+        if(!ref||!isFinite(lv)) continue;
+        const at=Date.parse(r.dateTime);
+        out["ukea:"+ref]={level:lv, at:isFinite(at)?at:null};
+      }
+      return out;
+    }},
+  us:{
+    label:"NOAA / NWS",
+    // Viewport-scoped: the US has 11,467 gauges and nobody is looking at all of them.
+    // Zoomed out over the whole country the service caps a response at 10,000 rows and
+    // flags `exceededTransferLimit`, so this pages rather than silently updating most
+    // of the gauges in view and quietly leaving the rest on build-time numbers.
+    fetch:async (b)=>{
+      const base="https://mapservices.weather.noaa.gov/eventdriven/rest/services"
+        +"/water/riv_gauges/MapServer/0/query?where=1%3D1"
+        +"&outFields=gaugelid,observed,obstime,units,pedts&returnGeometry=false&f=json"
+        +"&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects"
+        +"&geometry="+[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()]
+          .map(v=>v.toFixed(4)).join(",");
+      const out={}, FT=0.3048, PAGE=10000;
+      for(let page=0; page<3; page++){
+        const r=await fetch(`${base}&resultOffset=${page*PAGE}&resultRecordCount=${PAGE}`,
+          {cache:"no-store"});
+        if(!r.ok) break;
+        const d=await r.json();
+        const feats=(d&&d.features)||[];
+        for(const f of feats){
+          const a=f.attributes||{};
+          // Same refusal as the Python adapter: a height, in feet, or nothing.
+          if(a.units!=="ft"||!String(a.pedts||"").startsWith("H")) continue;
+          const lv=Number(a.observed);
+          if(!a.gaugelid||!isFinite(lv)) continue;
+          const at=a.obstime?Date.parse(String(a.obstime).replace(" ","T")+"Z"):NaN;
+          out["nwsriv:"+a.gaugelid]={level:+(lv*FT).toFixed(3), at:isFinite(at)?at:null};
+        }
+        if(!d.exceededTransferLimit||!feats.length) break;
+      }
+      return out;
+    }},
+};
+
+/** One reading set from whichever agency covers the country on screen. */
+async function fetchLive(src){
+  if(src.fetch) return await src.fetch(map.getBounds());
+  const r=await fetch(src.url(map.getBounds()),{cache:"no-store"});
+  if(!r.ok) return null;
+  return src.parse(await r.json());
+}
+
+let liveOn = localStorage.getItem("seraphim_live")==="1";
+let liveAt = null, liveFail = false, liveCount = 0, liveTimer = null;
+
+function liveSource(){ return LIVE_SOURCES[country] || null; }
+
+async function refreshLive(){
+  const src=liveSource();
+  if(!liveOn||!src||!map){ return; }
+  let readings=null;
+  try{ readings=await fetchLive(src); }catch{ readings=null; }
+  if(!readings||!Object.keys(readings).length){
+    // Keep the snapshot on screen and say the live fetch failed. Falling back quietly
+    // to build-time data while a "live" badge pulses would be a lie.
+    liveFail=true; renderChrome(); return;
+  }
+  liveFail=false; liveAt=Date.now(); liveCount=0;
+  for(const f of gj.features){
+    const hit=readings[f.properties.id];
+    if(!hit) continue;
+    const p=f.properties;
+    if(p.snap_level===undefined){         // remember the build's own numbers once
+      p.snap_level=p.level_msl; p.snap_level_at=p.observed_at||null;
+      p.snap_risk=p.risk_level; p.snap_freeboard=p.freeboard_m;
+    }
+    p.live_level=hit.level; p.live_at=hit.at; p.live=true;
+    p.level_msl=hit.level;
+    if(hit.at!=null){
+      p.data_age_min=Math.max(0,(Date.now()-hit.at)/60000);
+      // A gauge that was stale at build time but is reporting now is not stale.
+      // The reverse also holds, and matters more: one that has fallen silent since
+      // must start looking silent.
+      p.stale = p.data_age_min > 180;
+    }
+    liveCount++;
+    const bank=p.bank_msl==null?null:Number(p.bank_msl);
+    if(bank!=null&&isFinite(bank)){
+      p.freeboard_m=+(bank-hit.level).toFixed(3);
+      // Escalate only. 5 is an observed fact; anything lower may rest on a forecast
+      // or a tide window that this single reading cannot see.
+      if(p.freeboard_m<=0){
+        p.live_over_bank = Number(p.snap_risk)<5;
+        p.risk_level=5;
+      }
+    }
+  }
+  if(map.getSource("st")) map.getSource("st").setData(gj);
+  renderChrome();
+}
+
+/** Put every gauge back to exactly what the build published. */
+function clearLive(){
+  for(const f of gj.features){
+    const p=f.properties;
+    if(p.snap_level===undefined) continue;
+    p.level_msl=p.snap_level; p.risk_level=p.snap_risk; p.freeboard_m=p.snap_freeboard;
+    delete p.live; delete p.live_level; delete p.live_at; delete p.live_over_bank;
+  }
+  liveAt=null; liveFail=false; liveCount=0;
+  if(map&&map.getSource("st")) map.getSource("st").setData(gj);
+}
+
+function setLive(on){
+  liveOn=on;
+  localStorage.setItem("seraphim_live", on?"1":"0");
+  if(liveTimer){ clearInterval(liveTimer); liveTimer=null; }
+  if(on){
+    refreshLive();
+    liveTimer=setInterval(refreshLive, 120000);
+  } else {
+    clearLive();
+  }
+  renderChrome();
+}
+
+function renderLiveBar(){
+  const src=liveSource(), el=$("livebar");
+  if(!el) return;
+  if(!src){
+    el.innerHTML=`<button id="livebtn" class="off" disabled style="opacity:.55">
+      <span class="box"></span><span>${esc(t("live_na"))}</span></button>`;
+    return;
+  }
+  const sub = !liveOn ? t("live_hint")
+    : liveFail ? t("live_fail")
+    : `${t("live_src")}: ${src.label}`
+      + (liveAt?` · ${ageText((Date.now()-liveAt)/60000)} ${t("ago")}`:"")
+      + (liveCount?` · ${liveCount} ${t("gauges")}`:"");
+  el.innerHTML=`<button id="livebtn" class="${liveOn?"on":"off"}">
+    <span class="box">✓</span><span class="pulse"></span>
+    <span>${esc(liveOn?t("live_on"):t("live_off"))}<small>${esc(sub)}</small></span>
+  </button>`;
+  const b=$("livebtn");
+  if(b) b.onclick=()=>setLive(!liveOn);
 }
 
 async function load(){
@@ -764,7 +984,8 @@ function stationPopup(e){
     ${ttb!==null?`<div class="pttb">⚠ ${esc(t("ttb"))} ~${ttb} ${esc(t("hr"))} ${esc(t("est"))}</div>
       ${meta?.validation?`<div class="conf">${esc(t("acc_err"))} ±${meta.validation.median_error_m} m
         ${esc(t("acc_at"))} ${meta.validation.lead_hours}h · n=${meta.validation.samples}</div>`:""}`:""}
-    <div class="pr"><span>${esc(t("level"))}</span><span class="num">${fmt(n("level_msl")," m")}</span></div>
+    <div class="pr"><span>${esc(p.live?t("live_lvl"):t("level"))}</span><span class="num">${fmt(n("level_msl")," m")}</span></div>
+    ${p.live&&p.live_at?`<div class="pr"><span>${esc(t("live_at"))}</span><span class="num">${esc(new Date(Number(p.live_at)).toLocaleString(LANG==="th"?"th-TH":"en-GB",{hour:"2-digit",minute:"2-digit",day:"2-digit",month:"short"}))}</span></div>`:""}
     <div class="pr"><span>${esc(t("bank"))}</span><span class="num">${fmt(n("bank_msl")," m")}</span></div>
     <div class="pr"><span>${esc(over?t("above"):t("fb"))}</span><span class="num" style="color:${over?RISK[5]:"inherit"}">${fb===null?"-":fmt(Math.abs(fb)," m")}</span></div>
     <div class="pr"><span>${esc(t("rain24"))}</span><span class="num">${fmt(n("rain_next_24h_mm")," mm",1)}</span></div>
@@ -772,7 +993,9 @@ function stationPopup(e){
     <div class="pr"><span>${esc(t("ageL"))}</span><span class="num">${esc(ageText(n("data_age_min")))}</span></div>
     ${why}
     ${n("bank_msl")===null?`<div class="conf">${esc(t("notbank"))}</div>`:""}
-    ${p.risk_confidence?`<div class="conf">${esc(t("conf"))}: ${esc(p.risk_confidence)}</div>`:""}`)
+    ${p.risk_confidence?`<div class="conf">${esc(t("conf"))}: ${esc(p.risk_confidence)}</div>`:""}
+    ${p.live_over_bank?`<div class="pttb">⚠ ${esc(t("live_new"))}</div>`:""}
+    ${p.live?`<div class="conf">${esc(t("live_note"))}</div>`:""}`)
     .addTo(map);
 }
 
@@ -799,8 +1022,6 @@ function renderChrome(){
   $("o-light").textContent=t("light"); $("o-osm").textContent=t("osm");
   $("camnote").textContent=t("camnote")+(fires?"":" "+t("nofires"));
   $("credit").textContent=t("credit");
-  $("fliplbl").textContent=basemap==="satellite"?t("map_s"):t("sat_s");
-  $("flip").firstChild.nodeValue=basemap==="satellite"?"🗺":"🛰";
   $("rtip").textContent=t("tune");
 
   // Tick boxes rather than pills: the user asked to "tick to show and unshow", and a
@@ -818,6 +1039,7 @@ function renderChrome(){
   $("h-legend").textContent=t("legend"); $("h-worst").textContent=t("worst");
   $("h-acc").textContent=t("acc");
   renderAccuracy();
+  renderLiveBar();
   document.querySelectorAll("#lang button").forEach(b=>b.classList.toggle("on",b.dataset.l===LANG));
   document.querySelectorAll("#view button").forEach(b=>b.classList.toggle("on",b.dataset.v===country));
   $("o-osm") && null;
@@ -922,7 +1144,8 @@ function setBasemap(name){
     center:v0.center,zoom:v0.zoom,attributionControl:false,
     maxZoom:16,minZoom:3});
   map.addControl(new maplibregl.AttributionControl({compact:true,
-    customAttribution:"ThaiWater (HII) · Open-Meteo · USGS · RainViewer · Radio Browser · "
+    customAttribution:"ThaiWater (HII) · UK Environment Agency (OGL) · "
+      +"Rijkswaterstaat · NOAA/NWS · Open-Meteo (CC-BY 4.0) · USGS · RainViewer · Radio Browser · "
       +"layers inspired by gods-eye-view (MIT) · SeRAPHIM AGPL-3.0"}));
   map.addControl(new maplibregl.NavigationControl({showCompass:false}),"bottom-right");
   map.addControl(new maplibregl.GeolocateControl({trackUserLocation:true}),"bottom-right");
@@ -958,12 +1181,11 @@ function setBasemap(name){
     applyVisibility();
     map.flyTo({center:v.center, zoom:v.zoom});
     $("sheet").classList.remove("open");
-    renderChrome();
+    // Each country is live against a different agency, and one of them (NL) has none.
+    // Re-arm rather than leave a pulsing badge describing the country we just left.
+    if(liveOn) setLive(true); else renderChrome();
   });
   document.querySelectorAll("[data-base]").forEach(el=>el.onclick=()=>setBasemap(el.dataset.base));
-
-  // One tap to flip between imagery and a street map, without opening a drawer.
-  $("flip").onclick=()=>setBasemap(basemap==="satellite"?"osm":"satellite");
 
   $("rclose").onclick=()=>{ shown.radio=false; applyVisibility(); renderChrome(); };
   $("rplay").onclick=()=>{
@@ -982,7 +1204,17 @@ function setBasemap(name){
   $("dial").addEventListener("pointerdown",e=>{dragging=true;$("dial").setPointerCapture(e.pointerId);dialPick(e.clientX);});
   $("dial").addEventListener("pointermove",e=>{ if(dragging) dialPick(e.clientX); });
   $("dial").addEventListener("pointerup",e=>{ dragging=false; playRadio(radioNear[radioIdx]); });
-  map.on("moveend",()=>{ if(shown.radio) refreshDial(); });
+  map.on("moveend",()=>{
+    if(shown.radio) refreshDial();
+    // The US feed is scoped to the viewport, so panning is what changes the answer.
+    // Debounced, because moveend fires on every flick.
+    if(liveOn && liveSource() && country==="us"){
+      clearTimeout(window.__liveMove);
+      window.__liveMove=setTimeout(refreshLive, 1200);
+    }
+  });
+  // Resume only if this visitor turned it on before. The default stays off.
+  if(liveOn) setLive(true); else renderLiveBar();
   window.addEventListener("resize",()=>{ if(shown.radio) drawDial(); });
   window.addEventListener("online",renderAge);
   window.addEventListener("offline",renderAge);
@@ -995,6 +1227,9 @@ function setBasemap(name){
       for(const k of Object.keys(loaded)) delete loaded[k];
       await load();
       if(map.getSource("st")) map.getSource("st").setData(gj);
+      // A new snapshot replaces every feature object, so the live overlay has to be
+      // laid back over it or the map would silently revert to build-time levels.
+      if(liveOn) refreshLive();
       if(map.getSource("prov")&&provinces) map.getSource("prov").setData(provinces);
       if(map.getSource("quakes")&&quakes) map.getSource("quakes").setData(quakes);
       if(map.getSource("fires")&&fires) map.getSource("fires").setData(fires);

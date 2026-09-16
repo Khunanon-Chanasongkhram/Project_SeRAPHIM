@@ -2,7 +2,7 @@
 
 Legend: ✅ tested working, keyless · 🔑 needs key/registration · ⚠️ needs legal check · ❓ unverified
 
-Last verified: 2026-09-15
+Last verified: 2026-09-16
 
 ## Tier 1, Thailand core (verified live)
 
@@ -109,6 +109,116 @@ mainly **diurnal**, modulated by lunar *declination* rather than phase. So range
 **empirically** against each location's own recent distribution, which is also what makes the
 method valid anywhere the project expands to. Moon phase is retained only for solunar fishing
 periods (Phase 3), where it genuinely applies.
+
+## Tier 1c, United States, NOAA / National Weather Service ✅ (verified 2026-09-16)
+
+**Three US sources were probed. Only one of them supports a freeboard.**
+
+| Source | Coverage | Thresholds? | Verdict |
+|---|---|---|---|
+| `mapservices.weather.noaa.gov/.../water/riv_gauges/MapServer/0/query` | 12,842 gauges, 2 paged calls | ✅ action/flood/moderate/major | ✅ **in production** |
+| `api.water.noaa.gov/nwps/v1/gauges` | 12,884 gauges, one 13.5 MB call | ❌ category only, numbers need 12,884 per-gauge calls | used only to cross-check timestamps |
+| `waterservices.usgs.gov/nwis/iv` | per **state**, so ~50 calls | ❌ none | not used |
+
+Layer 0 is observed stage, layer 1 is the **NWS 24-hour forecast stage**. Both are bulk,
+keyless, public domain, and paginate at 10,000 rows with `exceededTransferLimit`.
+
+- **11,467 usable gauges** after refusing anything that is not a height in feet
+  (`pedts` must start with `H`; `Q*` is a discharge, and 94 rows are in kcfs).
+- **6,848 publish a flood stage.** That is a genuine overtopping threshold, the same
+  kind of number as Thailand's `min_bank`, so **US gauges get freeboard, time-to-bank
+  and level 5** — unlike the UK, which publishes only a typical range.
+- **2,346 publish an official 24-hour forecast stage** (layer 1); `-999` means none.
+- **Feet, on the gauge's own datum.** `hdatum` is `none` on all 12,842 rows and the
+  values mix river stage (1.9 ft) with pool elevation (3,199.78 ft). Converted to metres
+  at the adapter boundary; datum marked `local`, so a level is only ever compared with
+  thresholds from the same station.
+
+### ✅ Freeboard cross-checked against NWS's own flood category
+**6,797 gauges, 100.00% sign agreement** (2026-09-16), including all 10 then at or over
+flood stage. Same discipline as the ThaiWater `diff_wl_bank_text` check: inverting a
+freeboard would turn "overtopped" into "safe".
+
+### ✅ `obstime` and `fcsttime` are UTC, verified not assumed
+Neither carries an offset. Cross-referenced against the NWPS API, which publishes an
+explicit `validTime`: AACS2 reads `2026-09-16 00:15:00` here and
+`2026-09-16T00:15:00Z` there; ABBG1's forecast reads `2026-09-16 06:00:00` / 0.3 ft
+against `2026-09-16T06:00:00Z` / 0.3 ft. Reading them as local would have shifted every
+US reading by up to 10 hours.
+
+### ⚠️ Adding the US would have blown the Open-Meteo allowance threefold
+11,467 American gauges took the shared 0.2° forecast grid from 1,029 cells to **7,284**,
+about **36,000 location-calls/day against a 10,000 allowance**. Fixed by the fact that
+NOAA already publishes a per-gauge hydrological forecast: US gauges leave the shared grid
+(`shared_forecast_grid = False`) and use layer 1 instead, which costs **two calls
+regardless of gauge count**. The grid is back to ~644 cells, and the US signal is better
+than the rainfall proxy it replaced.
+
+**Extreme values were checked, not clipped.** `MCCI2` reads −65.5 m: it is Chicago's
+Deep Tunnel, ~300 ft underground. The 2,550–2,654 m readings are Colorado and Wyoming
+mountain reservoirs. Both are real.
+
+## Tier 1d, Netherlands, Rijkswaterstaat ✅ (verified 2026-09-16)
+
+⚠️ **The old host is decommissioned.** `waterwebservices.rijkswaterstaat.nl` 301s to a
+migration notice that itself 404s. Live service is **DDAPI 2.0**:
+
+| Endpoint | Method | Returns |
+|---|---|---|
+| `ddapi20-waterwebservices.rijkswaterstaat.nl/METADATASERVICES/OphalenCatalogus` | POST | 2,499 locations, 7.3 MB |
+| `.../ONLINEWAARNEMINGENSERVICES/OphalenLaatsteWaarnemingen` | POST | all 706 water-level locations in **one call, ~9 s** |
+
+### ⚠️⚠️ "OphalenLaatsteWaarnemingen" means "latest value of every series", NOT "current"
+Of 2,244 series returned, the **oldest "latest" reading is dated 1740-01-01** and the
+median is ~27 years old. Rijkswaterstaat keeps historical series in the same endpoint as
+live telemetry, distinguished only by timestamp. **Publishing this unfiltered would have
+put 286-year-old marks on a live flood map, each looking like an ordinary reading.**
+A hard 24 h recency gate drops them; such a series is not a gauge, so it is dropped
+rather than shown as stale.
+
+**After the gate: 318 live locations, median age 22 minutes** — fresher than any other
+source in this project.
+
+- **One location, up to 18 parallel series** from different methods, including
+  *"Visuele aflezing van blad"* (visual reading off a board). Newest per location wins.
+- **Centimetres**, converted to metres at the adapter boundary.
+- **Four datums**: NAP 690 locations, PLAATSLR 23, MSL 18, TAW 8. NAP and MSL are kept
+  as national datums; **TAW (Belgian, ~2.33 m below NAP) and PLAATSLR are marked
+  `local`** rather than offset on a constant nobody here has verified.
+- **No bank level exists in this feed**, so Dutch gauges carry a level and a trend only,
+  never a freeboard, time-to-bank or level 5. Same treatment as the UK.
+- The API publishes **no administrative geography**; the area rollup groups by the town
+  name already embedded in the station code (`dronten.roggebotsluis.vossemeer`), which
+  is a label, not an official boundary.
+
+⚠️ **A plausibility gate that nearly deleted real data.** Fresh values span −146 cm to
+**11,968 cm NAP**. 119.68 m looks impossible in a country famous for being flat, but
+`epen.geul.cottessen` gauges the Geul in South Limburg, where the valley floor genuinely
+sits above 100 m. The gate is set against Dutch terrain (−7 m Zuidplaspolder to 322 m
+Vaalserberg), not against the stereotype.
+
+## Browser-side live refresh, CORS probed 2026-09-16
+
+The map can pull the newest readings straight from the agency, so "live" costs our
+origin nothing and keeps the static-CDN architecture intact. **Opt-in, default off**,
+because it points a visitor's browser and IP at a foreign government API.
+
+| Source | `Access-Control-Allow-Origin` | Live refresh | Payload (gzip) |
+|---|---|---|---|
+| ThaiWater | reflects origin | ✅ | ~300 KB |
+| NOAA `riv_gauges` | reflects origin | ✅ viewport-scoped, paged | 4.8 KB city / 89 KB continental |
+| UK EA | `*` | ✅ | ~357 KB |
+| **Rijkswaterstaat** | **absent** | ❌ **blocked in a browser** | — |
+
+The Netherlands therefore refreshes on the build cadence only, and the UI says so rather
+than offering a toggle that silently does nothing.
+
+⚠️ NOAA caps a viewport response at 10,000 rows and flags `exceededTransferLimit`; at
+continental zoom that truncates, so the client pages rather than updating most gauges in
+view and quietly leaving the rest on build-time numbers.
+
+**Live station ids verified against published ids:** TH 1117/1117, US 37/37 in a test
+viewport. A mismatch would make the overlay silently do nothing.
 
 ## Tier 2b, Astronomy (computed, not fetched)
 Sun and moon positions are computed locally (`workers/seraphim/astro.py`), so calm mode
