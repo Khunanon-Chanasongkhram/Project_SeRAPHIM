@@ -58,13 +58,38 @@ jobs:
           restore-keys: |
             seraphim-floodclim-
 
+      # Read-only, and not this job's to save. Deciding which cells exist means asking
+      # every adapter for its gauge list, and the Dutch catalogue alone is 7.3 MB. The
+      # main build caches those lists precisely so a government API is not refetched on
+      # every tick; a daily job that ignores that cache would undo the courtesy for no
+      # gain, since it only wants coordinates.
+      - name: Restore gauge catalogues
+        uses: actions/cache/restore@v4
+        with:
+          path: data/cache
+          key: seraphim-state-
+          restore-keys: |
+            seraphim-state-
+
       - name: Top up
         working-directory: workers
+        # Inputs go through env, never interpolated into the shell. A `${{ }}` inside a
+        # run block is substituted as text before bash sees it, so a crafted input would
+        # execute as script. Only someone with write access can dispatch this, but that
+        # is a reason not to care about the blast radius, not a reason to write it.
+        env:
+          BUDGET: ${{ github.event.inputs.budget || '300' }}
+          COUNTRY: ${{ github.event.inputs.country }}
         run: |
+          # The save step below runs with if: always(), and actions/cache/save fails
+          # outright on a path that does not exist. Without this, a run that fetched
+          # nothing (every batch rate-limited, which is a normal outcome here) would
+          # report itself as a workflow failure rather than as no progress.
+          mkdir -p ../data/climate
           python -m seraphim.cli floodhist \
             --out ../data \
-            --budget "${{ github.event.inputs.budget || '300' }}" \
-            ${{ github.event.inputs.country && format('--country {0}', github.event.inputs.country) || '' }}
+            --budget "$BUDGET" \
+            ${COUNTRY:+--country "$COUNTRY"}
 
       # Saved under a fresh key every run; restore-keys above picks the newest. Cache
       # entries are immutable, so this is the only way to grow one.
