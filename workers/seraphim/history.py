@@ -32,6 +32,14 @@ MIN_SPAN_HOURS = 0.75
 #: agree about what counts as movement.
 STEADY_RATE_M_PER_HR = 0.01
 
+#: Direction changes within the window before a fitted slope stops being believable.
+#: Two is the first count that cannot be a single turning point, so it is the first
+#: that implies oscillation rather than a river that rose and then levelled off.
+MIN_REVERSALS_TO_DOUBT = 2
+#: Movements smaller than this are not counted as direction changes: telemetry jitter
+#: around a flat level would otherwise read as violent oscillation.
+REVERSAL_NOISE_M = 0.005
+
 
 @dataclass(frozen=True, slots=True)
 class Trend:
@@ -41,10 +49,19 @@ class Trend:
     r2: float | None
     points: int
     span_hours: float
+    #: How many times the level changed direction inside the window. Two or more and
+    #: the series is oscillating, not trending: a tide, a gate cycling, or noise. A
+    #: straight line through it has a slope, and the slope means nothing.
+    reversals: int = 0
+
+    @property
+    def oscillating(self) -> bool:
+        """Changed direction at least twice: whatever this is, it is not a trend."""
+        return self.reversals >= MIN_REVERSALS_TO_DOUBT
 
     @property
     def confidence(self) -> str:
-        """steady | good | fair | poor | none.
+        """oscillating | steady | good | fair | poor | none.
 
         `steady` exists because of a measurement, not a hunch. Backtesting showed the
         tiers were not ordered: "poor" predicted better than "fair". The cause was a
@@ -58,6 +75,10 @@ class Trend:
         """
         if self.rate_m_per_hr is None or self.points < MIN_POINTS:
             return "none"
+        if self.oscillating:
+            # Reported as its own tier rather than folded into "poor", because the
+            # problem is not a weak fit, it is fitting the wrong shape entirely.
+            return "oscillating"
         if abs(self.rate_m_per_hr) < STEADY_RATE_M_PER_HR:
             return "steady"
         if self.points >= 5 and self.span_hours >= 2.0 and (self.r2 or 0) >= 0.7:
@@ -127,6 +148,8 @@ def fit_trend(points: list[tuple[datetime, float]]) -> Trend:
     if len(points) < 2:
         return Trend(None, None, len(points), 0.0)
 
+    reversals = _count_reversals([v for _, v in points])
+
     t0 = points[0][0]
     xs = [(t - t0).total_seconds() / 3600.0 for t, _ in points]
     ys = [v for _, v in points]
@@ -134,13 +157,13 @@ def fit_trend(points: list[tuple[datetime, float]]) -> Trend:
     n = len(xs)
 
     if span < MIN_SPAN_HOURS or n < MIN_POINTS:
-        return Trend(None, None, n, round(span, 2))
+        return Trend(None, None, n, round(span, 2), reversals)
 
     mx = sum(xs) / n
     my = sum(ys) / n
     sxx = sum((x - mx) ** 2 for x in xs)
     if sxx <= 1e-12:
-        return Trend(None, None, n, round(span, 2))
+        return Trend(None, None, n, round(span, 2), reversals)
     sxy = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
     slope = sxy / sxx
 
@@ -148,7 +171,22 @@ def fit_trend(points: list[tuple[datetime, float]]) -> Trend:
     # A perfectly flat river is a perfect fit, not an undefined one.
     r2 = 1.0 if syy <= 1e-12 else max(0.0, min(1.0, (sxy**2) / (sxx * syy)))
 
-    return Trend(round(slope, 4), round(r2, 3), n, round(span, 2))
+    return Trend(round(slope, 4), round(r2, 3), n, round(span, 2), reversals)
+
+
+def _count_reversals(values: list[float]) -> int:
+    """Direction changes in a series, ignoring movements too small to be real."""
+    direction = 0
+    reversals = 0
+    for previous, current in zip(values, values[1:]):
+        delta = current - previous
+        if abs(delta) < REVERSAL_NOISE_M:
+            continue
+        sign = 1 if delta > 0 else -1
+        if direction and sign != direction:
+            reversals += 1
+        direction = sign
+    return reversals
 
 
 def merge_current(

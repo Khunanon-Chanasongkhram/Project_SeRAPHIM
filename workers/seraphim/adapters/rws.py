@@ -187,6 +187,12 @@ class RijkswaterstaatAdapter(SourceAdapter):
                 datum=datum,
                 basin=None,
                 agency="Rijkswaterstaat",
+                # The MSL-datum locations are North Sea platforms (K13a, A12,
+                # Hollandse Kust), not river gauges: what they measure is the tide.
+                # Before this they were publishing a "rising 13 cm/h" trend and a
+                # 12-hour projection of +1.2 m, which is a flooding tide read as a
+                # flood. The NAP-datum inland stations are left alone.
+                tidal=(datum == "MSL"),
                 admin=Admin(country="NL", province=_place_from_code(code)),
             ))
             observations.append(Observation(

@@ -71,6 +71,10 @@ KCFS_TO_CMS = 28.316846592
 #: HT tidal, HM/HC/HF/HL variants); "Q" is a discharge. A flow in kcfs parsed as a
 #: level would read as a river tens of thousands of feet deep.
 HEIGHT_PREFIX = "H"
+#: SHEF "HT" is a tidal stage. Those gauges rise and fall twice a day, so a fitted rate
+#: of rise describes the last three hours rather than predicting the next twelve.
+#: 195 of the 12,842 gauges carry it.
+TIDAL_PREFIX = "HT"
 #: The only unit this adapter will read a level from. Anything else is refused rather
 #: than converted on a guess.
 LEVEL_UNIT = "ft"
@@ -182,6 +186,7 @@ class NWSRiverGaugesAdapter(SourceAdapter):
                 typical_low=_ft(num(r.get("lowthresh"))),
                 basin=text(r.get("waterbody")),
                 agency="NOAA / National Weather Service",
+                tidal=pedts.startswith(TIDAL_PREFIX),
                 admin=Admin(country="US", province=state, province_code=state,
                             district=wfo.upper() if wfo else None),
             ))

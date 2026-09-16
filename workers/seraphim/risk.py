@@ -220,7 +220,9 @@ def assess(
     fc = state.forecast
     rate = trend.rate_m_per_hr if trend else None
     rising = bool(trend and trend.rising and rate and rate >= MIN_RATE_M_PER_HR)
-    ttb = time_to_bank(fb, trend)
+    # A tidal gauge reaches its "bank" twice a day and goes back down again. Naming an
+    # hour for that would be printing the tide table as an emergency.
+    ttb = None if state.station.tidal else time_to_bank(fb, trend)
 
     level = 1
 
@@ -266,6 +268,12 @@ def assess(
                     "within_typical",
                     f"อยู่ในช่วงปกติ (ต่ำกว่าระดับสูงสุดปกติ {abs(above):.2f} ม.)",
                     f"within its typical range, {abs(above):.2f} m below the usual high"))
+        elif state.station.tidal:
+            reasons.append(Reason(
+                "tidal_gauge",
+                "สถานีวัดน้ำทะเล ระดับขึ้นลงตามน้ำทะเลวันละสองรอบ ไม่มีการคาดการณ์",
+                "A tidal gauge: this level rises and falls with the tide twice a day, "
+                "so no trend forecast is made for it"))
         elif state.station.typical_high is None and state.station.bank_msl is None:
             reasons.append(Reason(
                 "no_threshold",
@@ -282,11 +290,16 @@ def assess(
         )
 
     if rising and rate is not None:
+        # On a tidal gauge this number is the tide coming in, and it will go back out.
+        # Calling it "rising" without saying so reads as a river coming up.
+        tide_th = " (น้ำขึ้นตามจังหวะน้ำทะเล ไม่ใช่น้ำหลาก)" if state.station.tidal else ""
+        tide_en = " (this is the tide coming in, not a river rising)" if state.station.tidal else ""
         reasons.append(
             Reason(
                 "rising",
-                f"น้ำขึ้น {rate * 100:.0f} ซม./ชม. (ช่วง {trend.span_hours:.1f} ชม.)",
-                f"Rising {rate * 100:.0f} cm/hr over the last {trend.span_hours:.1f} h",
+                f"น้ำขึ้น {rate * 100:.0f} ซม./ชม. (ช่วง {trend.span_hours:.1f} ชม.){tide_th}",
+                f"Rising {rate * 100:.0f} cm/hr over the last "
+                f"{trend.span_hours:.1f} h{tide_en}",
             )
         )
     if ttb is not None:

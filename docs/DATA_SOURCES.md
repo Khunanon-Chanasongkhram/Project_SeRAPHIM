@@ -259,7 +259,19 @@ source in this project.
 - **Four datums**: NAP 690 locations, PLAATSLR 23, MSL 18, TAW 8. NAP and MSL are kept
   as national datums; **TAW (Belgian, ~2.33 m below NAP) and PLAATSLR are marked
   `local`** rather than offset on a constant nobody here has verified.
-- **No bank level exists in this feed**, so Dutch gauges carry a level and a trend only,
+- ❌ **No flood threshold exists anywhere in the Dutch public API** (re-probed
+2026-09-16). No grens/alarm/waak/norm field in any of 2,143 catalogue metadata entries,
+and none in the four documented DDAPI endpoints. waterinfo.rws.nl colour-codes its own
+map so thresholds exist internally, and its undocumented API hints at them
+(`/api/schematicwaterlevel/get` requires a `criticalLocationName`), but it is
+undocumented and unversioned and would break silently. Not used.
+
+⚠️ **The 12 MSL-datum locations are North Sea platforms, not river gauges.** They measure
+the tide. They are marked `tidal` so no trend forecast is fitted to them; before that
+they published "rising 13 cm/h" and a projected +1.22 m in 12 hours, which was a flooding
+tide read as a flood.
+
+**No bank level exists in this feed**, so Dutch gauges carry a level and a trend only,
   never a freeboard, time-to-bank or level 5. Same treatment as the UK.
 - The API publishes **no administrative geography**; the area rollup groups by the town
   name already embedded in the station code (`dronten.roggebotsluis.vossemeer`), which

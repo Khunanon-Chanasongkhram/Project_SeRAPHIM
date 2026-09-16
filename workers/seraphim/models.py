@@ -57,6 +57,17 @@ class Station:
     #: because sources do not always agree with themselves.
     critical_msl: float | None = None
     ground_msl: float | None = None
+    #: True where the level here is driven by the tide rather than by catchment flow.
+    #:
+    #: A tidal gauge rises and falls twice a day, so fitting a rate of rise to it and
+    #: extending that forward is not a forecast, it is a description of the last three
+    #: hours pointed at tomorrow. A North Sea platform reading +13 cm/h is a flooding
+    #: tide that will turn within hours, not a river coming up.
+    #:
+    #: Set by adapters that can actually tell. The US publishes a SHEF code per gauge;
+    #: the Dutch offshore platforms are identifiable by their datum. Where a network
+    #: does not say, `history` catches it after a full tidal cycle of archive instead.
+    tidal: bool = False
     basin: str | None = None
     agency: str | None = None
     admin: Admin | None = None

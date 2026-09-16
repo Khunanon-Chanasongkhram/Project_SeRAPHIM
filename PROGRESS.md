@@ -15,7 +15,7 @@ reservoirs**, all fetched live.
 Fixed 2026-09-16, see the session entry: `min_bank: 0` is ThaiWater's "not published"
 sentinel, not a bank at sea level. Anyone who saw the map before this fix saw a national
 emergency that was not happening.
-**251 tests.** Live: https://khunanon-chanasongkhram.github.io/Project_SeRAPHIM/
+**265 tests.** Live: https://khunanon-chanasongkhram.github.io/Project_SeRAPHIM/
 
 **Next action:** push. Pushing also triggers a deploy, which the site needs.
 
@@ -62,6 +62,57 @@ account except GitHub. The SOS component was removed before deploy and lives on 
 
 Beyond the plan: validation/backtesting, per-country data splitting, world radio,
 rain radar, earthquakes, active fires, satellite imagery, TH/EN switch.
+
+---
+
+## 2026-09-16 - Session 20: he was right about the Netherlands
+
+He said NL water level "still bugs, I think there are no bank level". He was right that
+something was wrong, and the thing that was wrong was worse than a missing threshold.
+
+**Rijkswaterstaat genuinely publishes no flood threshold.** Probed again properly: the
+catalogue has no grens/alarm/waak/norm field anywhere in 2,143 metadata entries, and the
+four documented DDAPI endpoints carry none. waterinfo.rws.nl colour-codes its own map, so
+thresholds exist internally, and its undocumented API leaks hints
+(`/api/schematicwaterlevel/get` wants a `criticalLocationName`). Not built on: it is
+undocumented, unversioned and would break silently, which is exactly the failure this
+project is supposed to avoid. So NL stays level-and-trend, and that part is not a bug.
+
+**The actual bug was worse: we were forecasting the tide.** `rws:a12` sits in the middle
+of the North Sea. Its readings ran +0.18, +0.19, +0.36, +0.53 over three hours, the trend
+fitter called it "rising 13 cm/h, fair confidence", and the map published **a projected
+level of +1.22 m in twelve hours**. The tide was going to turn in about three. Twelve of
+the Dutch stations are offshore platforms and every one of them was doing this.
+
+It is not only a Dutch problem: any tidal gauge anywhere was getting a monotonic trend
+fitted to an oscillation. The US has 195 of them.
+
+**Two defences, because neither is enough alone.**
+- Adapters that KNOW now say so. The US publishes a SHEF code (`HT` is a tidal stage);
+  the Dutch offshore platforms are the MSL-datum ones, the inland NAP ones are left alone.
+- Everything else is caught by counting direction changes in the archive, with a 5 mm
+  noise floor so telemetry jitter on a still river does not read as violent oscillation.
+  Two reversals is the first count that cannot be a single turning point. This needs a
+  full tidal cycle of history, which is why the metadata defence exists too.
+
+A tidal gauge now gets no projection and no time-to-bank, and says why in both languages.
+It still reports being over its bank if it is, because that is an observation.
+
+**A bug I introduced while fixing that one**, caught by reading the diff rather than by a
+test: the tidal guard landed inside `assess()` instead of at the `time_to_bank` call
+site, so it would have `return None`ed the whole risk object for every tidal station,
+erasing them from the map. Moved to the call site, and there is now a test asserting that
+refusing to forecast never refuses to assess.
+
+**The empty-popup bug he was probably actually seeing.** Reasons are only published from
+risk level 2 up, to keep 11,000 copies of "nothing is happening" out of the payload. But
+a station with no threshold has nothing else in its popup: no bank level, no freeboard,
+no time-to-bank. So 313 of 318 Dutch gauges showed the word "Normal" and nothing else,
+including ones rising at 13 cm/h. Reasons are now published at any level for stations
+with no threshold of any kind, because there the reasoning is the entire content.
+NL 11 KB -> 33 KB gzipped, for 318 stations that previously said nothing.
+
+265 tests.
 
 ---
 

@@ -24,6 +24,23 @@ SCHEMA_VERSION = 1
 #: Risk level at or above which full reasoning is published per station.
 REASONS_FROM_LEVEL = 2
 
+
+def _wants_reasons(state: StationState, level: int | None) -> bool:
+    """Whether this station's reasoning is worth the bytes.
+
+    Normally only from level 2 up: at level 1 the reasoning is "nothing is happening",
+    and 11,000 copies of that is payload nobody reads.
+
+    The exception is a station with NO threshold of any kind. There the reasoning is
+    the entire content of the popup: no bank level, no freeboard, no time-to-bank, so
+    without it a Dutch gauge rising 13 cm/h showed the word "Normal" and nothing else.
+    Every risk score ships with its reasoning; for these stations it is all there is.
+    """
+    if level is not None and level >= REASONS_FROM_LEVEL:
+        return True
+    st = state.station
+    return st.bank_msl is None and st.typical_high is None
+
 # Health thresholds. Published in meta.json so any monitor can read one field rather
 # than re-deriving judgement, and so "is it working" has a single agreed answer.
 MIN_EXPECTED_STATIONS = 800        # ~1,121 normally; a big drop means a silent break
@@ -72,6 +89,10 @@ def _level_forecast(state: StationState, trends: dict | None) -> list[dict] | No
     trend = (trends or {}).get(state.station.id)
     level = state.observation.level_msl
     if trend is None or level is None:
+        return None
+    if state.station.tidal:
+        # A tide is not a trend. Extending one forward twelve hours describes the last
+        # three and points them at tomorrow.
         return None
     out = []
     for lead in FORECAST_LEADS:
@@ -165,7 +186,7 @@ def build_geojson(states: list[StationState], risks: dict | None = None,
                     # every kilobyte is a real cost to someone.
                     "reasons": (
                         [{"code": r.code, "th": r.th, "en": r.en} for r in rk.reasons]
-                        if rk and rk.level >= REASONS_FROM_LEVEL else []
+                        if rk and _wants_reasons(s, rk.level) else []
                     ),
                     "observed_at": ob.observed_at.isoformat(),
                     "data_age_min": s.data_age_minutes,
