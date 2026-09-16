@@ -31,11 +31,23 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(request.url);
   if (url.pathname.includes("/api/")) return;         // API is always live
 
+  // The page itself must revalidate every time. GitHub Pages serves it with
+  // `cache-control: max-age=600`, so without this a deploy is invisible for ten
+  // minutes even on a fast connection, and the obvious conclusion is that the deploy
+  // failed. Assets keep the normal cache; only the document is forced to check.
+  const isDocument = request.mode === "navigate"
+    || (request.destination === "document")
+    || url.pathname.endsWith(".html")
+    || url.pathname.endsWith("/");
+  const network = isDocument
+    ? fetch(request.url, { cache: "no-cache", credentials: "same-origin" })
+    : fetch(request);
+
   // Network-first so a connected user sees fresh data, cache as the fallback.
   // Snapshots are explicitly included: they are the difference between a degraded
   // map and no map.
   e.respondWith(
-    fetch(request)
+    network
       .then((res) => {
         if (res.ok && url.origin === location.origin) {
           const copy = res.clone();

@@ -1239,7 +1239,15 @@ function setBasemap(name){
     } else { renderAge(); }
   },60000);
 
-  if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(()=>{});
+  // Register, then immediately ask the browser to re-check sw.js. Without the update()
+  // the worker script is itself subject to the CDN's 10-minute cache, so a deploy can
+  // keep serving the previous worker, which is a confusing way to conclude that a push
+  // did not land.
+  if("serviceWorker" in navigator){
+    navigator.serviceWorker.register("./sw.js")
+      .then(r=>{ r.update(); })
+      .catch(()=>{});
+  }
 })();
 </script>
 </body>

@@ -2,10 +2,9 @@
 
 System for early Real-time Assessment & Predictive Hazard Incident Monitoring.
 
-A flood watching map. It reads **~16,000 public river gauges across Thailand, the UK,
-the Netherlands and the United States**,
-mixes in rain and tide forecasts, and tries to answer one question: how long until this
-river comes over its bank?
+A flood watching map. It reads **about 16,000 public river gauges across Thailand, the
+UK, the Netherlands and the United States**, mixes in rain and tide forecasts, and tries
+to answer one question: how long until this river comes over its bank?
 
 It watches. It does not collect anything about you, and it cannot call anyone for help.
 
@@ -66,29 +65,77 @@ question, since none of this has been tested where it counts.
 
 ## What it does
 
-**Watch.** 1,117 Thai, 3,327 British, 11,467 American and 318 Dutch live river gauges,
-rainfall, discharge forecasts, official US river forecasts, and tide prediction at
-23 points along both coasts, on one map. Satellite imagery by default with a one tap flip
-to a street map, Thai and English, and it refreshes itself every 15 minutes without a
-reload.
+**Watch.** About 1,100 Thai, 3,300 British, 11,500 American and 320 Dutch live river
+gauges, rainfall, discharge forecasts, official US river forecasts, and tide prediction at
+23 points along both coasts, on one map. Satellite imagery by default, with street and
+plain map styles in the layers panel. Thai and English. It refreshes itself every 15
+minutes without a reload.
 
 **Layers you can tick on and off.** Province risk shading, gauges, tide points, animated
 rain radar, earthquakes from the past 24 hours, active fires, and geolocated world radio
 with a tuner dial you can sweep. The radio has nothing to do with floods. It is there
 because it is fun, and because this is a project for enjoying.
 
-**Where, not just what.** All 77 provinces are shaded by the worst gauge in them, so you
-can see where the trouble is before you start tapping dots.
+**Where, not just what.** In Thailand all 77 provinces are shaded by the worst gauge in
+them, so you can see where the trouble is before you start tapping dots. Elsewhere the
+map ranks the worst districts and catchments in the panel instead.
 
-**Predict.** A risk score from 1 to 5 for every district in all 77 provinces, with time
-to bank where the trend is solid enough to show one. It also checks whether a high tide
-is about to block drainage, which is a big part of why Bangkok floods the way it does.
+**Predict.** A risk score from 1 to 5 for roughly 3,000 districts and catchments across
+the four countries, with time to bank where the trend is solid enough to show one. It
+also checks whether a high tide is about to block drainage, which is a big part of why
+Bangkok floods the way it does.
 Every score comes with the reasons behind it, in Thai and English, so you can disagree
 with it.
 
 **Fish.** Tide, moon and weather for 40 spots, sea and reservoir and river. Partly
 because it is useful, and partly because an app you open twice in your life is an app
 you do not have installed when you need it.
+
+## Live mode
+
+The map rebuilds itself every 15 minutes, and that is what you get by default. If you
+want the newest readings there is a **Live** switch in the bottom panel.
+
+Turning it on makes your browser fetch gauge readings **straight from the agency**,
+every two minutes, instead of waiting for the next rebuild. It is off until you turn it
+on, for two reasons worth knowing before you do:
+
+* Your browser talks directly to a foreign government's servers, so they see your
+  IP address. That should be your choice, not mine.
+* It costs you data. Roughly 300 KB per refresh for Thailand, 90 KB for the US,
+  350 KB for the UK.
+
+Live mode works for Thailand, the UK and the US. **It cannot work for the Netherlands**,
+because Rijkswaterstaat's servers refuse requests from web pages. The switch says so
+there rather than pretending.
+
+One thing it deliberately will not do: a live reading can push a gauge **up** to "over
+bank", because that is something being measured right now. It will never push one
+**down**. The published score may be high because of a rainfall forecast or an incoming
+tide, and a single new reading knows nothing about either. So you see the live level
+next to the score, with the time the score was worked out, rather than the two blended
+into one number you cannot take apart.
+
+## What it will not tell you
+
+Three limits that are easy to miss, and worth knowing before you read anything off the
+map.
+
+**It will not tell you how deep the water will be.** There is a layer showing low ground
+near gauges that are spilling. It shows **where** water would go, never how deep it would
+be there. Depth depends on how much water arrives and for how long, and this does not
+know either. I tried twice to make it say a depth and both attempts produced confident
+nonsense, so it says nothing.
+
+**It cannot give a time to bank everywhere.** That number needs a published bank level,
+and not every country publishes one. Thailand and the United States do. The UK publishes
+only a "normal range", and the Netherlands publishes no threshold at all, so gauges there
+show a level and a trend and nothing more. The map says so in the popup instead of
+quietly showing you a smaller number and letting you assume it means the same thing.
+
+**A quiet gauge is not a safe gauge.** If a gauge stops reporting it is marked stale
+rather than dropped, because a gauge that goes silent during a flood is telling you
+something. Every reading on the map carries its age.
 
 ## Does it work?
 
@@ -147,15 +194,19 @@ nothing to install.
 | `docs/OPERATIONS.md` | capacity, health checks, what happens when things break |
 | `docs/DATA_SOURCES.md` | every API, tested or not, with the date I checked |
 | `docs/VALIDATION.md` | whether the predictions are any good, measured |
-| `docs/TERRAIN.md` | where water would go, and the two wrong versions |
+| `docs/TERRAIN.md` | the low-ground layer, and why it makes no depth claim |
 | `workers/seraphim/` | the Python that fetches, scores and publishes |
 | `web/` | the map and the fishing page |
 | `scripts/check_js.py` | scans inline JS and translations, since there is no Node here |
 
 ## Where the data comes from
 
-* **ThaiWater / HII** for the river gauges. Terms of use not confirmed yet, so do not
-  put this in front of the public until that is sorted.
+* **ThaiWater / HII** for the Thai river gauges. Terms of use not confirmed yet, so do
+  not put this in front of the public until that is sorted.
+* **UK Environment Agency** for the British gauges. Open Government Licence, keyless.
+* **NOAA / US National Weather Service** for the American gauges, their flood stages and
+  their own 24-hour river forecasts. Public domain, keyless.
+* **Rijkswaterstaat** for the Dutch gauges. Dutch open data, keyless.
 * **Open-Meteo** for rain, river discharge and tide. CC-BY 4.0, non commercial.
 * **USGS** for earthquakes, keyless.
 * **RainViewer** for global rain radar, keyless.
@@ -168,81 +219,6 @@ nothing to install.
 Everything in `docs/DATA_SOURCES.md` says whether I actually tested it and when. I did
 not take any of it from documentation alone, because a wrong water level is worse than no
 water level.
-
-## Terrain, and the two versions of it that were wrong
-
-There is a layer showing low ground near gauges whose channel is spilling. It says
-**where water would go, never how deep**, and that restraint took three attempts.
-
-Subtracting a DEM from the water level looked right and produced impossible answers: two
-of four test stations had the river flowing several metres underground, because a 90 m
-DEM cell at a canal gate contains the embankment, not the water. Using the gauge as a
-relative reference instead turned a 0.4 m overtopping into a claim of 3.4 m of water,
-because gauges sit on the high ground and the delta beside them is low.
-
-So it makes no depth claim at all. It needed no DEM download and no raster library, which
-matters because this machine has no numpy, no GDAL and no pip. Details, including the
-numbers that killed the first two versions, are in [`docs/TERRAIN.md`](docs/TERRAIN.md).
-
-## Four countries, and what each one taught me
-
-**Thailand** publishes a bank level for every gauge. **The UK does not.** It publishes a
-typical operating range, which is a different claim, and its levels come in four
-different datums in the same feed.
-
-So UK stations get a weaker signal that says so: above or below typical range, capped
-below the levels that mean "the river is out", and **no time to bank at all**, because
-you cannot forecast reaching a threshold that nobody published. The map says this in the
-popup rather than quietly showing a lower number.
-
-**The United States does publish one.** NOAA's flood stage is the level at which water
-leaves the channel, the same kind of number as Thailand's bank level, so **US gauges get
-the full treatment**: freeboard, time to bank, and level 5. The risk engine needed no
-change for that, because its caps key on whether a threshold exists, not on which country
-a gauge is in. Before trusting it I checked our computed freeboard against NWS's own
-flood category across 6,797 gauges: **100.00% agreement**.
-
-America also broke the forecast budget. 11,467 gauges took the shared Open-Meteo grid
-from 1,029 cells to 7,284, roughly 36,000 calls a day against a 10,000 allowance. The
-fix was realising Open-Meteo is the *downgrade* there: NOAA publishes a per-gauge
-24-hour river forecast, which costs two calls no matter how many gauges you ask about.
-
-**The Netherlands tried to hand me readings from 1740.** Its "latest observations"
-endpoint returns the latest value of *every series it has ever held*, live telemetry and
-centuries-old archives together, distinguished only by a timestamp. Unfiltered, that puts
-286-year-old marks on a live flood map, each looking perfectly ordinary. A hard recency
-gate drops them; what remains is 318 gauges with a **median age of 22 minutes**, the
-freshest data in the project.
-
-It also nearly cost me real data the other way. Dutch gauges reading 119 m above datum
-look impossible in a country famous for being flat, until you find that the one doing it
-gauges a valley in South Limburg that genuinely sits that high. The plausibility check is
-built against Dutch terrain, not against the stereotype.
-
-That was the real test of the adapter design from day one, and the interesting part is
-that it held: the risk engine already treated a missing bank level as missing rather than
-zero, so nothing had to be unpicked.
-
-## Live data, without a server
-
-Reads are static files on a CDN, and that is what makes a million map views cost nothing.
-So "live" here does not mean putting a server in front of the map, it means **the browser
-asking the agency directly**, exactly as it already does for rain radar. The origin still
-serves nothing but files.
-
-It is **off by default and opt-in**, because turning it on points your browser and your
-IP at a foreign government API and costs you a few hundred KB per refresh. Neither should
-happen to you without your say-so.
-
-A live reading is allowed to do very little: it replaces the level and recomputes
-freeboard, and it may **escalate** a gauge to "over bank", because that is an observation.
-It may **never de-escalate**, because the published score can rest on a forecast, a tide
-window or a trend that one reading knows nothing about. The panel shows a live level
-beside a score stamped with the build it came from, rather than blending the two.
-
-Thailand, the UK and the US allow it. **Rijkswaterstaat sends no CORS header, so the
-Netherlands cannot be refreshed from a browser at all** — and the map says so, instead of
-offering a toggle that silently does nothing.
 
 ## Credit where it is due
 
