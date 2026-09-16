@@ -261,6 +261,25 @@ def clarity_advice(rain_24h_mm: float | None, discharge_ratio: float | None) -> 
     return None
 
 
+#: Decimal places per published condition. Integers unless a tenth carries meaning:
+#: rain does (0.4 mm is drizzle, 4 mm is a soaking) and the 6-hour pressure change does,
+#: because 2 hPa is the threshold the score itself uses.
+_CONDITION_ROUNDING = {
+    "wind_kmh": 0, "gust_kmh": 0, "wind_dir_deg": 0,
+    "cloud_percent": 0, "temp_c": 0, "rain_mm": 1, "pressure_change_hpa": 1,
+}
+
+
+def _round_conditions(hour: dict) -> dict:
+    out = {}
+    for key, places in _CONDITION_ROUNDING.items():
+        value = hour.get(key)
+        if value is None:
+            continue
+        out[key] = int(round(value)) if places == 0 else round(value, places)
+    return out
+
+
 def day_plan(
     lat: float, lon: float, day: date, profile: str = "sea",
     tide_rates: dict[int, float] | None = None,
@@ -276,6 +295,7 @@ def day_plan(
 
     has_tide = bool(tide_rates)
     hours: list[BiteHour] = []
+    conditions: list[dict] = []
     for h in range(24):
         when = start + timedelta(hours=h)
         w = (weather or {}).get(h, {})
@@ -285,6 +305,10 @@ def day_plan(
             windows=windows, sun=sun, twilight=twilight,
             wind_kmh=w.get("wind_kmh"), pressure_change_hpa=w.get("pressure_change_hpa"),
         ))
+        # Rounded to what is actually readable. Nobody needs a wind bearing to a
+        # tenth of a degree, and the raw floats cost ~100 KB gzipped across 40 spots
+        # x 7 days x 24 hours, which is real mobile data for no information.
+        conditions.append(_round_conditions(w))
 
     best = sorted(hours, key=lambda b: -b.score)[:3]
     return {
@@ -302,9 +326,10 @@ def day_plan(
         ],
         "hours": [
             {"at": b.at.isoformat(), "score": b.score,
+             "conditions": conditions[i] or None,
              "factors": [{"code": f.code, "points": f.points, "th": f.th, "en": f.en}
                          for f in b.factors]}
-            for b in hours
+            for i, b in enumerate(hours)
         ],
         "best": [{"at": b.at.isoformat(), "score": b.score} for b in best],
         "peak_score": max((b.score for b in hours), default=0),
@@ -335,10 +360,25 @@ def tide_rates_for_day(summary: dict, day: date, tz_offset: float = TH_UTC_OFFSE
 
 def weather_for_day(series: dict, day: date, tz_offset: float = TH_UTC_OFFSET
                     ) -> dict[int, dict]:
-    """Wind, and the 6-hour pressure change, per hour of one local day."""
+    """Conditions per hour of one local day.
+
+    Wind and the 6-hour pressure change feed the bite score. Gusts, wind direction,
+    cloud, rain and air temperature ride along unscored, because they are what decides
+    whether the trip is a good idea at all.
+    """
     times = series.get("time") or []
     pressure = series.get("pressure_msl") or []
     wind = series.get("wind_kmh") or []
+    #: Not scored, but shown. These are what a person actually checks before going out,
+    #: and a planner that scores an hour 82 without saying it is blowing a gale with
+    #: 40 mm of rain is not much of a planner.
+    extra = {
+        "gust_kmh": series.get("gust_kmh") or [],
+        "wind_dir_deg": series.get("wind_dir_deg") or [],
+        "cloud_percent": series.get("cloud_percent") or [],
+        "rain_mm": series.get("rain_mm") or [],
+        "temp_c": series.get("temp_c") or [],
+    }
     index = {t: i for i, t in enumerate(times)}
     day_start = datetime(day.year, day.month, day.day, tzinfo=timezone.utc) - \
         timedelta(hours=tz_offset)
@@ -351,6 +391,9 @@ def weather_for_day(series: dict, day: date, tz_offset: float = TH_UTC_OFFSET
         entry: dict = {}
         if i < len(wind) and wind[i] is not None:
             entry["wind_kmh"] = wind[i]
+        for key, values in extra.items():
+            if i < len(values) and values[i] is not None:
+                entry[key] = values[i]
         # Falling pressure ahead of a front is the classic pre-frontal feeding trigger.
         if i >= 6 and i < len(pressure) and pressure[i] is not None and pressure[i - 6] is not None:
             entry["pressure_change_hpa"] = round(pressure[i] - pressure[i - 6], 2)
@@ -359,8 +402,19 @@ def weather_for_day(series: dict, day: date, tz_offset: float = TH_UTC_OFFSET
     return out
 
 
+#: How far the planner looks ahead.
+#:
+#: Was 3. The limit is the tide curve, and that turned out to be 9 days rather than the
+#: 7 we were asking for (Open-Meteo marine fills 216 hours and no more, whatever you
+#: request). Spot weather reaches 10 days. Seven is published: it covers next weekend,
+#: which is the question people actually have, and stays a day inside both sources so
+#: the last day is never half-empty.
+DEFAULT_DAYS = 7
+
+
 def build_fishing(spots, tide_by_id: dict[str, dict], weather_by_id: dict[str, dict],
-                  today: date, days: int = 3, tz_offset: float = TH_UTC_OFFSET) -> list[dict]:
+                  today: date, days: int = DEFAULT_DAYS,
+                  tz_offset: float = TH_UTC_OFFSET) -> list[dict]:
     """A multi-day plan for every spot."""
     out = []
     for spot in spots:

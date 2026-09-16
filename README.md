@@ -85,6 +85,11 @@ because it is fun, and because this is a project for enjoying.
 them, so you can see where the trouble is before you start tapping dots. Elsewhere the
 map ranks the worst districts and catchments in the panel instead.
 
+**Predict, in hours and in weeks.** Every gauge with a trustworthy trend carries a
+projected level at +1, +3, +6 and +12 hours, and rivers that GloFAS can see carry a
+30-day outlook. The outlook is river *flow*, never a water level, because converting one
+to the other needs a rating curve nobody publishes.
+
 **Predict.** A risk score from 1 to 5 for roughly 3,000 districts and catchments across
 the four countries, with time to bank where the trend is solid enough to show one. It
 also checks whether a high tide is about to block drainage, which is a big part of why
@@ -92,9 +97,13 @@ Bangkok floods the way it does.
 Every score comes with the reasons behind it, in Thai and English, so you can disagree
 with it.
 
-**Fish.** Tide, moon and weather for 40 spots, sea and reservoir and river. Partly
-because it is useful, and partly because an app you open twice in your life is an app
-you do not have installed when you need it.
+**Fish.** A **7-day** planner for 40 spots, sea and reservoir and river. Each day shows
+its best hours and its peak score on the button, so you can see which day to go without
+tapping through the week. Alongside the score: wind and gusts, wind direction, cloud,
+rain, air temperature and the 6-hour pressure change, because the score tells you when
+fish might feed and those tell you whether you should be out there at all. Partly because
+it is useful, and partly because an app you open twice in your life is an app you do not
+have installed when you need it.
 
 ## Live mode
 
@@ -143,6 +152,12 @@ publish no overtopping threshold, and the feed marks that absence with a zero. R
 that zero as a real bank level is exactly the bug that once had this map showing 300-odd
 Thai rivers over their banks when almost none were. Those stations now show a level and a
 trend and nothing more.
+
+**The forecast deliberately under-promises.** It assumes the current rate of rise fades
+rather than continuing forever, because the version that assumed otherwise was measurably
+*worse than predicting no change at all* beyond an hour. The cost is that it will not
+give a time-to-bank for a river far below its bank creeping up slowly. It would rather
+say nothing than say a number that is out by most of a day.
 
 **A quiet gauge is not a safe gauge.** If a gauge stops reporting it is marked stale
 rather than dropped, because a gauge that goes silent during a flood is telling you

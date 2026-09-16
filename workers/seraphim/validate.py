@@ -23,6 +23,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from statistics import median
 
+from seraphim.forecast import displacement, hours_to_level
 from seraphim.history import fit_trend
 
 #: Horizons to score. Beyond half a day a linear river forecast is not worth defending.
@@ -47,6 +48,7 @@ MIN_HISTORY_POINTS = 4
 class Scored:
     lead: float
     error: float          # |predicted - actual|, metres
+    linear_error: float   # what straight-line extrapolation would have scored
     baseline_error: float # |last known level - actual|, metres (persistence)
     confidence: str
     rising: bool
@@ -133,10 +135,14 @@ def backtest(archive_root: Path) -> dict:
                 actual = _actual_at(series, target)
                 if actual is None:
                     continue
-                predicted = origin_level + rate * lead
+                # The model we actually ship. `linear_error` keeps the straight line
+                # it replaced in view, so the change stays measured rather than assumed.
+                predicted = origin_level + displacement(rate, lead)
+                linear = origin_level + rate * lead
                 scored.append(Scored(
                     lead=lead,
                     error=abs(predicted - actual),
+                    linear_error=abs(linear - actual),
                     baseline_error=abs(origin_level - actual),
                     confidence=trend.confidence,
                     rising=rate > 0,
@@ -149,8 +155,8 @@ def backtest(archive_root: Path) -> dict:
             freeboard = None if bank is None else bank - origin_level
             if (freeboard is not None and freeboard > 0 and rate >= 0.01
                     and trend.confidence in ("good", "fair")):
-                hours = freeboard / rate
-                if hours <= max(LEAD_HOURS):
+                hours = hours_to_level(0.0, freeboard, trend)
+                if hours is not None and hours <= max(LEAD_HOURS):
                     observable = (last_observed - origin_time).total_seconds() / 3600
                     crossed = next((
                         (ts - origin_time).total_seconds() / 3600
@@ -176,6 +182,9 @@ def _summarise(scored: list[Scored], calls: list[BankCall], timelines: dict) -> 
             "median_persistence_error_m": round(med_base, 3),
             "skill_vs_persistence": skill,
             "beats_persistence": bool(skill is not None and skill > 0),
+            # The straight line this model replaced, kept in the published output so
+            # the change stays a measurement rather than a claim in a commit message.
+            "median_linear_error_m": round(median(sorted(s.linear_error for s in rows)), 3),
         }
 
     by_lead = []
@@ -241,7 +250,7 @@ def _summarise(scored: list[Scored], calls: list[BankCall], timelines: dict) -> 
 def format_report(result: dict) -> str:
     out = [f"scored {result['predictions_scored']:,} predictions across "
            f"{result['stations_with_timeline']} stations", ""]
-    out.append(f"  {'lead':>5}{'n':>7}{'stns':>6}{'median':>9}{'persist':>9}{'skill':>7}"
+    out.append(f"  {'lead':>5}{'n':>7}{'stns':>6}{'median':>9}{'linear':>9}{'persist':>9}{'skill':>7}"
                f"   | {'moving n':>9}{'median':>9}{'skill':>7}")
     for r in result["by_lead"]:
         sk = "n/a" if r["skill_vs_persistence"] is None else f"{r['skill_vs_persistence']:+.0%}"
@@ -250,7 +259,8 @@ def format_report(result: dict) -> str:
         mn = f"{m['n']:,}" if m else "-"
         mmed = f"{m['median_error_m']:.3f}m" if m else "-"
         out.append(f"  {r['lead_hours']:>4.0f}h{r['n']:>7,}{r['stations']:>6}"
-                   f"{r['median_error_m']:>8.3f}m{r['median_persistence_error_m']:>8.3f}m{sk:>7}"
+                   f"{r['median_error_m']:>8.3f}m{r.get('median_linear_error_m', 0):>8.3f}m"
+                   f"{r['median_persistence_error_m']:>8.3f}m{sk:>7}"
                    f"   | {mn:>9}{mmed:>9}{msk:>7}")
     if result["by_confidence"]:
         out += ["", "  confidence tiers (lead <= 3h):"]

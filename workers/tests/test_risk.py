@@ -67,9 +67,20 @@ TIDE_LATER = [{**TIDE[0], "next": [
 
 
 class TestTimeToBank(unittest.TestCase):
-    def test_basic_arithmetic(self):
-        # 1.2 m of headroom at 0.2 m/hr = 6 hours.
-        self.assertEqual(time_to_bank(1.2, rising_trend(0.2)), 6.0)
+    def test_a_decaying_rate_takes_longer_than_the_straight_line(self):
+        # 0.6 m of headroom at 0.2 m/hr is 3 h only if the river holds that rate. It
+        # does not: backtesting put straight-line bank calls 5.8 h out. The decaying
+        # model reaches the same bank later (4.16 h), and says so.
+        hours = time_to_bank(0.6, rising_trend(0.2))
+        self.assertIsNotNone(hours)
+        self.assertGreater(hours, 3.0)
+
+    def test_a_short_reach_is_barely_affected_by_the_decay(self):
+        # Well inside the decay constant the model is still essentially a straight line,
+        # which is what keeps its 1-3 h skill.
+        hours = time_to_bank(0.1, rising_trend(0.2))   # straight line says 0.5 h
+        self.assertIsNotNone(hours)
+        self.assertLess(abs(hours - 0.5), 0.1)
 
     def test_withheld_when_trend_untrustworthy(self):
         self.assertIsNone(time_to_bank(1.2, Trend(0.2, 0.05, 3, 1.0)))
@@ -82,7 +93,15 @@ class TestTimeToBank(unittest.TestCase):
 
     def test_withheld_beyond_horizon(self):
         self.assertIsNone(time_to_bank(100.0, rising_trend(0.02)))
-        self.assertIsNotNone(time_to_bank(MAX_TTB_HOURS * 0.02 * 0.9, rising_trend(0.02)))
+
+    def test_withheld_when_the_bank_is_out_of_the_models_reach(self):
+        # A decaying rate has a ceiling: rate * tau. A bank beyond it is simply not
+        # reached at this rate, and "not at this rate" is the honest answer rather
+        # than a large number extrapolated from a rate we do not believe persists.
+        from seraphim.forecast import RATE_DECAY_HOURS
+        ceiling = 0.02 * RATE_DECAY_HOURS
+        self.assertIsNone(time_to_bank(ceiling * 1.01, rising_trend(0.02)))
+        self.assertIsNotNone(time_to_bank(ceiling * 0.5, rising_trend(0.02)))
 
     def test_none_when_already_over_bank(self):
         self.assertIsNone(time_to_bank(-0.5, rising_trend()))
@@ -96,15 +115,28 @@ class TestRiskLevels(unittest.TestCase):
         self.assertTrue(any(x.code == "over_bank" for x in r.reasons))
 
     def test_imminent_overtopping_is_severe(self):
-        # 0.8 m headroom at 0.2 m/hr = 4 h.
-        r = assess(state(level=1.2, bank=2.0), rising_trend(0.2), [], NOW)
+        # 0.4 m of headroom at 0.2 m/hr. A straight line calls that 2 h; the decaying
+        # rate says 2.43 h, still well inside the severe threshold.
+        r = assess(state(level=1.6, bank=2.0), rising_trend(0.2), [], NOW)
         self.assertEqual(r.level, 4)
-        self.assertAlmostEqual(r.time_to_bank_hr, 4.0, places=1)
+        self.assertAlmostEqual(r.time_to_bank_hr, 2.4, places=1)
 
-    def test_day_away_is_warning(self):
-        # 1.0 m at 0.05 m/hr = 20 h.
-        r = assess(state(level=1.0, bank=2.0), rising_trend(0.05), [], NOW)
+    def test_half_a_day_away_is_a_warning_not_a_danger(self):
+        # 0.8 m at 0.154 m/hr lands at ~12 h on the decaying rate: inside the 24 h
+        # warning band, outside the 6 h danger band. The freeboard is deliberately
+        # kept above the severe threshold so that TIMING is what decides the level.
+        r = assess(state(level=1.2, bank=2.0), rising_trend(0.154), [], NOW)
         self.assertEqual(r.level, 3)
+        self.assertGreater(r.time_to_bank_hr, 6.0)
+        self.assertLess(r.time_to_bank_hr, 24.0)
+
+    def test_a_bank_beyond_the_models_reach_gets_no_time_to_bank(self):
+        # 1.0 m at 0.05 m/hr is past the ceiling of a decaying rate (0.05 * 6 = 0.3 m).
+        # The straight line used to answer "20 h"; backtesting says such calls missed by
+        # most of a day, so the honest answer is no number at all.
+        r = assess(state(level=1.0, bank=2.0), rising_trend(0.05), [], NOW)
+        self.assertIsNone(r.time_to_bank_hr)
+        self.assertFalse(any(x.code == "time_to_bank" for x in r.reasons))
 
     def test_calm_river_is_normal(self):
         r = assess(state(level=0.0, bank=5.0), Trend(0.0, 1.0, 8, 4.0), [], NOW)
@@ -220,10 +252,11 @@ class TestHistoryReplay(unittest.TestCase):
             self.assertEqual(trend.confidence, "good")
 
             last_level = readings[-1][1]
-            s = state(level=last_level, bank=last_level + 1.2)
+            s = state(level=last_level, bank=last_level + 0.778)
             r = assess(s, trend, [], NOW)
-            # 1.2 m of headroom at 0.15 m/hr = 8 hours.
-            self.assertAlmostEqual(r.time_to_bank_hr, 8.0, delta=0.3)
+            # 0.778 m of headroom at 0.15 m/hr: a straight line says 5.2 h, the
+            # decaying rate ~12 h. Recovered end to end from a replayed archive.
+            self.assertAlmostEqual(r.time_to_bank_hr, 12.0, delta=0.6)
             self.assertEqual(r.level, 3)
             self.assertTrue(any(x.code == "time_to_bank" for x in r.reasons))
 

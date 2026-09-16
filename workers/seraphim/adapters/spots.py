@@ -41,8 +41,21 @@ INLAND: list[tuple[str, str, str, float, float, str]] = [
 ]
 
 WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
-#: Pressure and wind are the two weather signals the bite score uses.
-WEATHER_PARAMS = "hourly=pressure_msl,wind_speed_10m&forecast_days=4&timezone=UTC"
+#: Everything the bite score and the conditions panel need, in one request.
+#:
+#: Pressure and wind drive the score. The rest is what a person actually wants before
+#: deciding to go: gusts (whether a small boat should be out at all), cloud cover (fish
+#: feed harder under overcast), rain, air temperature and a weather code for the icon.
+#: Wind direction matters on a shoreline, where an onshore breeze pushes bait in.
+#:
+#: 10 days rather than 4, to match the tide horizon. This is 40 spots in one batched
+#: request, so the extra variables and days cost one call, not forty.
+WEATHER_FIELDS = (
+    "pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m,"
+    "cloud_cover,precipitation,temperature_2m,weather_code"
+)
+WEATHER_DAYS = 10
+WEATHER_PARAMS = f"hourly={WEATHER_FIELDS}&forecast_days={WEATHER_DAYS}&timezone=UTC"
 
 
 def all_spots() -> list[dict]:
@@ -61,7 +74,7 @@ def all_spots() -> list[dict]:
 
 
 def fetch_weather(spots: list[dict]) -> tuple[dict[str, dict], SourceHealth]:
-    """Hourly pressure and wind for every spot, in one batched request."""
+    """Hourly conditions for every spot, in one batched request."""
     health = SourceHealth(source="openmeteo_spot_weather", ok=False)
     lats = ",".join(f"{s['lat']:.4f}" for s in spots)
     lons = ",".join(f"{s['lon']:.4f}" for s in spots)
@@ -82,11 +95,23 @@ def fetch_weather(spots: list[dict]) -> tuple[dict[str, dict], SourceHealth]:
     for spot, result in zip(spots, results):
         hourly = result.get("hourly") or {}
         times = hourly.get("time") or []
-        pressure = [num(v) for v in (hourly.get("pressure_msl") or [])]
-        wind = [num(v) for v in (hourly.get("wind_speed_10m") or [])]
         if not times:
             continue
-        out[spot["id"]] = {"time": times, "pressure_msl": pressure, "wind_kmh": wind}
+
+        def series(key):
+            return [num(v) for v in (hourly.get(key) or [])]
+
+        out[spot["id"]] = {
+            "time": times,
+            "pressure_msl": series("pressure_msl"),
+            "wind_kmh": series("wind_speed_10m"),
+            "wind_dir_deg": series("wind_direction_10m"),
+            "gust_kmh": series("wind_gusts_10m"),
+            "cloud_percent": series("cloud_cover"),
+            "rain_mm": series("precipitation"),
+            "temp_c": series("temperature_2m"),
+            "weather_code": series("weather_code"),
+        }
 
     health.ok = bool(out)
     health.stations = len(out)

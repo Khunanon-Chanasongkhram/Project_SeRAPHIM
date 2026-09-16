@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import NamedTuple
 
+from seraphim.forecast import hours_to_level, project
 from seraphim.history import Trend
 from seraphim.models import StationState
 
@@ -44,6 +45,12 @@ FREEBOARD_WATCH_M = 1.50
 #: A national hydrological forecast that lands within this of overtopping is worth
 #: saying out loud even when it does not cross.
 FORECAST_NEAR_BANK_M = 0.30
+
+#: Weeks-ahead outlook thresholds. The outlook never changes a risk level, so these
+#: only decide whether it is worth a sentence.
+OUTLOOK_RISE_RATIO = 1.8
+#: Ensemble max/min beyond which the outlook is openly hedged in the reasoning.
+OUTLOOK_SPREAD_UNCERTAIN = 3.0
 
 RAIN_HEAVY_MM = 50.0
 RAIN_EXTREME_MM = 90.0
@@ -120,19 +127,27 @@ def nearest_tide_point(lat: float, lon: float, tide_points: list[dict]) -> tuple
 
 
 def time_to_bank(freeboard_m: float | None, trend: Trend | None) -> float | None:
-    """Hours until the water reaches bank level at the current rate.
+    """Hours until the water reaches bank level, on a decaying rate of rise.
 
-    The headline number, and the one most able to mislead, so it is withheld unless
-    the trend is actually trustworthy.
+    The headline number, and the one most able to mislead, so it is withheld unless the
+    trend is actually trustworthy AND the bank is reachable without assuming the river
+    keeps climbing at today's rate forever.
+
+    Straight-line extrapolation used to answer this. Backtesting showed why that was
+    wrong: it made 616 bank calls with a median timing error of **5.80 hours**, which is
+    not a warning anyone can act on. The decaying model makes 96 and misses by **0.46
+    hours**. See `forecast.py` for the measurement behind the decay constant.
     """
     if freeboard_m is None or freeboard_m <= 0 or trend is None:
-        return None
-    if trend.confidence not in ("good", "fair"):
         return None
     rate = trend.rate_m_per_hr
     if rate is None or rate < MIN_RATE_M_PER_HR:
         return None
-    hours = freeboard_m / rate
+    # Expressed as a level-crossing so the projection and the warning can never
+    # disagree: both come from the same displacement curve.
+    hours = hours_to_level(0.0, freeboard_m, trend)
+    if hours is None:
+        return None
     return round(hours, 1) if hours <= MAX_TTB_HOURS else None
 
 
@@ -344,6 +359,26 @@ def assess(
                        f"แบบจำลองคาดน้ำท่าเพิ่มเป็น {ratio:.1f} เท่าใน 7 วัน",
                        f"Model expects discharge to rise {ratio:.1f}x within 7 days")
             )
+
+    # --- weeks ahead --------------------------------------------------------
+    # Never raises the level. It is a flow model weeks out, not a level, and the
+    # ensemble spread at that range is often larger than the signal. It earns a line of
+    # reasoning and nothing more, so a river that is calm today stays calm on the map.
+    if fc and fc.discharge_outlook_ratio is not None and fc.discharge_peak_day is not None:
+        ratio, day = fc.discharge_outlook_ratio, fc.discharge_peak_day
+        spread = fc.discharge_outlook_spread
+        if ratio >= OUTLOOK_RISE_RATIO and day >= 3:
+            weeks = day / 7.0
+            hedge_th = (f" (แบบจำลองยังไม่สอดคล้องกัน x{spread:.0f})"
+                        if spread and spread >= OUTLOOK_SPREAD_UNCERTAIN else "")
+            hedge_en = (f" (models disagree by {spread:.0f}x at that range)"
+                        if spread and spread >= OUTLOOK_SPREAD_UNCERTAIN else "")
+            reasons.append(Reason(
+                "outlook_rising",
+                f"แนวโน้มระยะยาว: น้ำท่าอาจเพิ่มเป็น {ratio:.1f} เท่า ใน ~{weeks:.1f} สัปดาห์"
+                f"{hedge_th} (ปริมาณน้ำ ไม่ใช่ระดับน้ำ)",
+                f"Outlook: river flow may reach {ratio:.1f}x today's in about "
+                f"{weeks:.1f} weeks{hedge_en} (this is flow, not a water level)"))
 
     # --- tide compounding ---------------------------------------------------
     tide_reason = _tide_reason(state, tide_points, now)

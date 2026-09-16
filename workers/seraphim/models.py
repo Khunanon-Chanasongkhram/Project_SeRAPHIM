@@ -121,6 +121,20 @@ class Forecast:
     #: In the SAME datum and units as that station's observations (metres, and `local`
     #: wherever the network publishes no national datum), so it is only ever compared
     #: with thresholds from the same station.
+    #: Weeks-ahead outlook, from GloFAS. River FLOW in m3/s, never a level: converting
+    #: discharge to metres needs a rating curve per gauge that nobody publishes and our
+    #: archive is far too short to fit. A level weeks out would be the most confident
+    #: wrong number in the project.
+    discharge_outlook_cms: list[float] | None = None
+    discharge_peak_cms: float | None = None
+    #: Days from today to the modelled peak.
+    discharge_peak_day: int | None = None
+    #: Peak flow divided by today's.
+    discharge_outlook_ratio: float | None = None
+    #: Ensemble max/min at the far end. Near 1 means the members agree; large means the
+    #: outlook is a shrug wearing a curve, and the UI says so.
+    discharge_outlook_spread: float | None = None
+
     forecast_level: float | None = None
     #: Valid time of that forecast level, and who issued it. Both displayed: a forecast
     #: for 06:00 tomorrow issued this morning is worth more than one issued two days ago.

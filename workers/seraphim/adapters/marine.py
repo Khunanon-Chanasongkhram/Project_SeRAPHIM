@@ -53,7 +53,11 @@ POINTS: list[tuple[str, str, str, float, float]] = [
 #: Past days are requested as well as future: the range classifier needs a local
 #: distribution to rank today against, and 14 days spans a full spring-neap cycle.
 PAST_DAYS = 14
-FORECAST_DAYS = 7
+#: The API accepts larger values but stops filling them: probed 2026-09-16, asking for
+#: 10, 14 or 16 days all return exactly **216 non-null hours, 9 days**. So 10 is asked
+#: for and 9 is what arrives, which is the real ceiling of this product. Asking for 16
+#: would publish a week of nulls and look like a gap rather than a limit.
+FORECAST_DAYS = 10
 
 
 class TideAdapter:
@@ -69,7 +73,8 @@ class TideAdapter:
         lats = ",".join(str(p[3]) for p in POINTS)
         lons = ",".join(str(p[4]) for p in POINTS)
         url = (
-            f"{URL}?latitude={lats}&longitude={lons}&hourly=sea_level_height_msl"
+            f"{URL}?latitude={lats}&longitude={lons}"
+            f"&hourly=sea_level_height_msl,wave_height,wave_period"
             f"&past_days={PAST_DAYS}&forecast_days={FORECAST_DAYS}&timezone=UTC"
         )
         try:

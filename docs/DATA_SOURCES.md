@@ -294,6 +294,35 @@ view and quietly leaving the rest on build-time numbers.
 **Live station ids verified against published ids:** TH 1117/1117, US 37/37 in a test
 viewport. A mismatch would make the overlay silently do nothing.
 
+### ⚠️ Marine tide silently caps at 9 days
+Probed 2026-09-16: `forecast_days=10`, `14` and `16` all return exactly **216 non-null
+hours**. The API pads the rest with nulls rather than refusing, so asking for 16 days
+publishes a week of holes that look like a data gap instead of a product limit. We ask
+for 10 and use the 9 that arrive. The fishing planner publishes **7 days**, staying a day
+inside both this and the weather horizon so the last day is never half-empty.
+
+Also fetched here now: `wave_height` and `wave_period` (216 h, same coverage), for sea
+state on the fishing page.
+
+### Spot weather, extended 2026-09-16
+`pressure_msl, wind_speed_10m, wind_direction_10m, wind_gusts_10m, cloud_cover,
+precipitation, temperature_2m, weather_code` over **10 days**, all returning full series.
+40 spots in one batched request, so the extra variables and days cost one call, not forty.
+Pressure and wind feed the bite score; the rest is shown, not scored, because it is what
+decides whether the trip is a good idea at all.
+
+### GloFAS discharge, extended to 30 days
+`daily=river_discharge,river_discharge_mean,river_discharge_max,river_discharge_min&forecast_days=30`.
+The API serves 60, but the ensemble spread is already wide by day 30 (measured max/min
+ratios of **15x** at that range on real Thai points), and a number nobody should act on
+is not worth the payload. Same number of locations and fetched once a day, so the extra
+days cost no additional calls.
+
+⚠️ **This is published as river FLOW, never converted to a water level.** Turning
+discharge into metres needs a rating curve per gauge, which nobody publishes and which
+our archive is far too short to fit. A level weeks out would be the most confident wrong
+number in the project.
+
 ## Tier 2b, Astronomy (computed, not fetched)
 Sun and moon positions are computed locally (`workers/seraphim/astro.py`), so calm mode
 costs no API quota and works offline.

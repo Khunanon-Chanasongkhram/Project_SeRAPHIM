@@ -15,6 +15,7 @@ from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from seraphim.forecast import LEAD_HOURS as FORECAST_LEADS, project
 from seraphim.models import SourceHealth, StationState
 
 #: Bump when the output shape changes in a way clients must notice.
@@ -61,7 +62,28 @@ def _trim(feature: dict) -> dict:
     return feature
 
 
-def build_geojson(states: list[StationState], risks: dict | None = None) -> dict:
+def _level_forecast(state: StationState, trends: dict | None) -> list[dict] | None:
+    """Projected level at each published lead, or None when no honest one exists.
+
+    Only produced where the trend is trustworthy enough to forecast at all, so a flat
+    or noisy river shows its current level and nothing more rather than a flat line
+    dressed up as a prediction.
+    """
+    trend = (trends or {}).get(state.station.id)
+    level = state.observation.level_msl
+    if trend is None or level is None:
+        return None
+    out = []
+    for lead in FORECAST_LEADS:
+        projected = project(level, trend, lead)
+        if projected is None:
+            return None
+        out.append({"in_hours": lead, "level_msl": projected})
+    return out or None
+
+
+def build_geojson(states: list[StationState], risks: dict | None = None,
+                  trends: dict | None = None) -> dict:
     """One feature per station, carrying its latest reading and derived freeboard.
 
     GeoJSON because MapLibre consumes it directly with no tile server, which is the
@@ -113,6 +135,16 @@ def build_geojson(states: list[StationState], risks: dict | None = None) -> dict
                     "forecast_level": fc.forecast_level if fc else None,
                     "forecast_level_at": fc.forecast_level_at if fc else None,
                     "forecast_level_source": fc.forecast_level_source if fc else None,
+                    # Short-range projected levels, same datum as level_msl. Built
+                    # from the damped model, so what the map draws and what
+                    # time-to-bank claims can never disagree.
+                    "level_forecast": _level_forecast(s, trends),
+                    # Weeks ahead, and deliberately a FLOW not a level.
+                    "discharge_outlook_cms": fc.discharge_outlook_cms if fc else None,
+                    "discharge_peak_cms": fc.discharge_peak_cms if fc else None,
+                    "discharge_peak_day": fc.discharge_peak_day if fc else None,
+                    "discharge_outlook_ratio": fc.discharge_outlook_ratio if fc else None,
+                    "discharge_outlook_spread": fc.discharge_outlook_spread if fc else None,
                     "forecast_age_min": (
                         round((s.generated_at - fc.fetched_at).total_seconds() / 60, 1)
                         if fc else None
@@ -207,7 +239,8 @@ def build_fishing_doc(spots: list[dict], generated_at: datetime) -> dict:
     }
 
 
-def split_by_country(states, risks, areas: list[dict]) -> tuple[dict, dict]:
+def split_by_country(states, risks, areas: list[dict],
+                     trends: dict | None = None) -> tuple[dict, dict]:
     """One station file per country, plus a small index.
 
     Adding a second country quadrupled the payload every visitor downloads, which is
@@ -223,7 +256,7 @@ def split_by_country(states, risks, areas: list[dict]) -> tuple[dict, dict]:
     files: dict[str, dict] = {}
     index = {"countries": [], "generated_at": None}
     for cc, group in sorted(by_country.items()):
-        gj = build_geojson(group, risks)
+        gj = build_geojson(group, risks, trends)
         files[f"stations-{cc.lower()}.geojson"] = gj
         rows = [a for a in areas if a.get("country") == cc]
         if rows:

@@ -332,7 +332,7 @@ def build(
                   f"{len(terrain_layer['features'])} low-ground points where a channel is spilling")
 
     # Per-country files so a visitor downloads only the country they are looking at.
-    country_files, country_index = split_by_country(states, risks, areas)
+    country_files, country_index = split_by_country(states, risks, areas, station_trends)
 
     # A transient upstream failure must not delete a country from the site. The UK API
     # returned a 500 mid-development and the build cheerfully published a Thailand-only
@@ -370,7 +370,7 @@ def build(
     print("[countries] " + ", ".join(
         f"{c['code']} {c['stations']}" for c in country_index["countries"]))
 
-    geojson = build_geojson(states, risks)
+    geojson = build_geojson(states, risks, station_trends)
     meta = build_meta(states, health, generated_at, tide_points=len(tide_points),
                       risks=risks, validation=extra.get("validation.json"))
     tide = build_tide(tide_points, generated_at) if tide_points else None

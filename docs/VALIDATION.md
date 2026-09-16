@@ -1,3 +1,19 @@
+> **2026-09-16: the prediction model changed.** Straight-line extrapolation was
+> replaced by a decaying rate of rise after backtesting showed the straight line had
+> *negative* skill beyond an hour (-72% at a 6 h lead, i.e. worse than predicting no
+> change). The published report now carries a `linear` column so the comparison stays
+> visible. Method and the tau sweep are in `workers/seraphim/forecast.py`.
+>
+> Measured effect, same archive:
+>
+> | lead | straight line | damped | persistence |
+> |---|---|---|---|
+> | 6 h | 0.062 m | **0.045 m** | 0.036 m |
+> | 12 h | 0.080 m | **0.054 m** | 0.055 m |
+>
+> Bank-call median timing error fell from **5.80 h to 0.46 h**, at the cost of making
+> far fewer calls.
+
 # Does the prediction actually predict?
 
 The map tells people a river reaches its bank in about N hours. Until this was written,

@@ -177,6 +177,14 @@
     #sheetbody{max-height:calc(100vh - 104px)}
   }
   #livebar{margin:6px 0 2px}
+  /* Calm mode was reachable only through a link inside the disclaimer paragraph,
+     which is the same as not being reachable. */
+  #fishbtn{display:flex;align-items:center;justify-content:center;gap:8px;
+    margin:8px 0 2px;padding:11px 12px;border-radius:9px;text-decoration:none;
+    background:#14351f;border:1px solid #2f7d4a;color:#d7f5e3;
+    font-size:13px;font-weight:600}
+  #fishbtn:active{opacity:.75}
+  #fishbtn small{font-weight:400;color:#8fbfa4;font-size:11px}
   #livebtn{display:flex;align-items:center;gap:8px;width:100%;cursor:pointer;
     background:#171b21;border:1px solid #2a2f36;border-radius:8px;
     padding:8px 10px;color:#e8edf3;font:inherit;font-size:12px;text-align:left}
@@ -185,6 +193,10 @@
   #livebtn.on{border-color:#2f7d4a}
   #livebtn.on .box{background:#2f7d4a;border-color:#2f7d4a;color:#fff}
   #livebtn small{display:block;color:#8b949e;font-size:10.5px;line-height:1.35;margin-top:2px}
+  .fcrow{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:7px 0 2px;font-size:11.5px}
+  .fcrow b{font-weight:600;color:var(--dim);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em}
+  .fcrow span{background:#1b2027;border:1px solid #2a2f36;border-radius:7px;padding:3px 7px;color:#8b949e}
+  .fcrow i{font-style:normal;color:#e8edf3;font-weight:600;margin-left:5px}
   #livebtn .pulse{width:7px;height:7px;border-radius:50%;background:#3fb950;flex:none;
     animation:lp 1.8s ease-in-out infinite}
   #livebtn.off .pulse{display:none}
@@ -235,6 +247,7 @@
     <div class="stats" id="stats"></div>
     <div class="age" id="age"></div>
     <div id="livebar"></div>
+    <a id="fishbtn" href="./fish.html"></a>
     <div class="modes" id="modes"></div>
     <h5 id="h-legend"></h5>
     <div class="legend" id="legend"></div>
@@ -271,7 +284,7 @@ const I18N={
     min:"นาที", hr:"ชม.", day:"วัน", nodata:"ไม่มีข้อมูล",
     hi:"น้ำขึ้นสูงสุด", lo:"น้ำลงต่ำสุด", tidestate:"สถานะน้ำ",
     disc:"<b>โปรเจกต์ส่วนตัว ไม่ใช่บริการทางราชการ</b> สร้างเร็ว ๆ ด้วย AI และยังไม่เคยใช้งานจริงในเหตุการณ์น้ำท่วม อย่าใช้ตัดสินใจเรื่องความปลอดภัยเพียงอย่างเดียว เหตุด่วนโทร <b>1784</b> (ปภ.) หรือ <b>191</b>",
-    fish:"🎣 เวลาตกปลา", degraded:"ข้อมูลอาจไม่เป็นปัจจุบัน", offline:"ออฟไลน์ กำลังแสดงข้อมูลล่าสุดที่บันทึกไว้",
+    fish:"🎣 เวลาตกปลา", fish_s:"น้ำขึ้นน้ำลง 7 วัน", degraded:"ข้อมูลอาจไม่เป็นปัจจุบัน", offline:"ออฟไลน์ กำลังแสดงข้อมูลล่าสุดที่บันทึกไว้",
     osm:"แผนที่ถนน (OSM)", radar:"เรดาร์ฝน", quakes:"แผ่นดินไหว 24 ชม.", fires:"จุดความร้อน",
     radio:"วิทยุทั่วโลก", radar_s:"ภาพเรดาร์ทุก 10 นาที", quakes_s:"ทั่วโลก จาก USGS",
     fires_s:"ต้องใช้คีย์ NASA FIRMS", radio_s:"สถานีที่มีพิกัด",
@@ -292,6 +305,10 @@ const I18N={
     live_na:"ยังไม่มีข้อมูลสดสำหรับประเทศนี้",
     live_fail:"ดึงข้อมูลสดไม่สำเร็จ กำลังแสดงค่าจากรอบประมวลผล",
     live_src:"ที่มาข้อมูลสด",
+    f_hours:"คาดการณ์ (ม.)", f_weeks:"แนวโน้มระยะยาว", f_in:"ใน", f_wk:"สัปดาห์",
+    f_note:"ประมาณการจากอัตราการขึ้นที่วัดได้ ซึ่งจะค่อย ๆ ลดลง ไม่ใช่เส้นตรง",
+    f_flow:"เป็นปริมาณน้ำท่า (GloFAS) ไม่ใช่ระดับน้ำ",
+    f_spread:"แบบจำลองต่างกัน",
     dams:"เขื่อน/อ่างเก็บน้ำ", dams_s:"ปริมาณน้ำกักเก็บ (ไทย)",
     dam_pct:"ปริมาณน้ำกักเก็บ", dam_lvl:"ระดับกักเก็บ", dam_in:"น้ำไหลเข้า",
     dam_out:"ระบายน้ำ", dam_spill:"น้ำล้นทางระบาย", dam_size:"ขนาด",
@@ -320,7 +337,7 @@ const I18N={
     min:"min", hr:"h", day:"d", nodata:"no data",
     hi:"high", lo:"low", tidestate:"tide",
     disc:"<b>A personal hobby project, not an official service.</b> Built fast with AI help and never tested in a real flood. Do not make a safety decision on it alone. Emergency: call <b>1784</b> (DDPM) or <b>191</b>.",
-    fish:"🎣 Fishing times", degraded:"Data may be out of date", offline:"Offline, showing last saved data",
+    fish:"🎣 Fishing times", fish_s:"7-day tide & bite planner", degraded:"Data may be out of date", offline:"Offline, showing last saved data",
     osm:"Street map (OSM)", radar:"Rain radar", quakes:"Earthquakes 24h", fires:"Active fires",
     radio:"World radio", radar_s:"radar frames every 10 min", quakes_s:"global, from USGS",
     fires_s:"needs a NASA FIRMS key", radio_s:"geolocated stations",
@@ -341,6 +358,10 @@ const I18N={
     live_na:"No live feed is available for this country",
     live_fail:"Live fetch failed, showing the last build",
     live_src:"Live source",
+    f_hours:"Forecast (m)", f_weeks:"Weeks ahead", f_in:"in", f_wk:"weeks",
+    f_note:"Projected from the measured rate of rise, which is damped rather than extended in a straight line",
+    f_flow:"River flow (GloFAS), not a water level",
+    f_spread:"models disagree by",
     dams:"Dams & reservoirs", dams_s:"Stored water (Thailand)",
     dam_pct:"Storage", dam_lvl:"Reservoir level", dam_in:"Inflow",
     dam_out:"Released", dam_spill:"Spilled", dam_size:"Size",
@@ -1047,9 +1068,31 @@ function stationPopup(e){
     ${why}
     ${n("bank_msl")===null?`<div class="conf">${esc(t("notbank"))}</div>`:""}
     ${p.risk_confidence?`<div class="conf">${esc(t("conf"))}: ${esc(p.risk_confidence)}</div>`:""}
+    ${forecastRows(p)}
     ${p.live_over_bank?`<div class="pttb">⚠ ${esc(t("live_new"))}</div>`:""}
     ${p.live?`<div class="conf">${esc(t("live_note"))}</div>`:""}`)
     .addTo(map);
+}
+
+/** Hours ahead (projected level) and weeks ahead (river flow, never a level). */
+function forecastRows(p){
+  let fc=p.level_forecast;
+  if(typeof fc==="string"){ try{fc=JSON.parse(fc);}catch{fc=null;} }
+  let out="";
+  if(Array.isArray(fc)&&fc.length){
+    out+=`<div class="fcrow"><b>${esc(t("f_hours"))}</b>`+
+      fc.map(f=>`<span>+${f.in_hours}h<i>${f.level_msl.toFixed(2)}</i></span>`).join("")+
+      `</div><div class="conf">${esc(t("f_note"))}</div>`;
+  }
+  const ratio=p.discharge_outlook_ratio==null?null:Number(p.discharge_outlook_ratio);
+  const day=p.discharge_peak_day==null?null:Number(p.discharge_peak_day);
+  if(ratio!=null&&day!=null&&isFinite(ratio)&&isFinite(day)){
+    const spread=p.discharge_outlook_spread==null?null:Number(p.discharge_outlook_spread);
+    out+=`<div class="pr"><span>${esc(t("f_weeks"))}</span>
+      <span class="num">${ratio.toFixed(1)}x · ${esc(t("f_in"))} ${(day/7).toFixed(1)} ${esc(t("f_wk"))}</span></div>
+      <div class="conf">${esc(t("f_flow"))}${spread&&spread>=3?` · ${esc(t("f_spread"))} ${spread.toFixed(0)}x`:""}</div>`;
+  }
+  return out;
 }
 
 function tidePopup(e){
@@ -1129,7 +1172,8 @@ function renderChrome(){
     if(f){ map.flyTo({center:f.geometry.coordinates,zoom:11}); $("sheet").classList.remove("open"); }
   });
 
-  $("disc").innerHTML=t("disc")+` · <a href="./fish.html">${esc(t("fish"))}</a>`;
+  $("disc").innerHTML=t("disc");
+  $("fishbtn").innerHTML=`<span>${esc(t("fish"))}</span><small>${esc(t("fish_s"))}</small>`;
   renderAge();
 }
 

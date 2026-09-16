@@ -147,7 +147,17 @@ class DischargeAdapter(ForecastAdapter):
     refresh_hours = 24.0
 
     URL = "https://flood-api.open-meteo.com/v1/flood"
-    PARAMS = "daily=river_discharge&forecast_days=7"
+    #: 30 days, with the ensemble spread, because this is the only source here that can
+    #: see past next week. A gauge trend is good for hours; GloFAS is what makes a
+    #: weeks-ahead outlook possible at all. The API will serve 60 days, but the
+    #: ensemble spread is already wide by day 30 and a number nobody should act on is
+    #: not worth the payload.
+    #:
+    #: Same number of locations either way, and this is fetched once a day, so the extra
+    #: days cost no additional calls.
+    FORECAST_DAYS = 30
+    PARAMS = ("daily=river_discharge,river_discharge_mean,river_discharge_max,"
+              f"river_discharge_min&forecast_days={FORECAST_DAYS}")
 
     def fetch_for(self, points):
         health = SourceHealth(source=self.id, ok=False)
@@ -162,10 +172,32 @@ class DischargeAdapter(ForecastAdapter):
             if not series:
                 no_river += 1
                 continue
-            out[sid] = {
+            week1 = series[:7]
+            fields = {
                 "discharge_now_cms": round(series[0], 2),
-                "discharge_max_7d_cms": round(max(series), 2),
+                "discharge_max_7d_cms": round(max(week1), 2),
             }
+
+            # --- the weeks-ahead outlook -------------------------------------
+            # Published as river FLOW, never converted to a level. Turning discharge
+            # into metres needs a rating curve per gauge, which nobody publishes and
+            # which our archive is far too short to fit. A made-up level weeks out
+            # would be the most confident wrong number in the project.
+            if len(series) >= 14:
+                fields["discharge_outlook_cms"] = [round(v, 2) for v in series]
+                peak = max(series)
+                fields["discharge_peak_cms"] = round(peak, 2)
+                fields["discharge_peak_day"] = series.index(peak)
+                base = series[0]
+                if base >= 0.1:
+                    fields["discharge_outlook_ratio"] = round(peak / base, 2)
+                spread = _spread(daily)
+                if spread is not None:
+                    # How far apart the ensemble members are by the end. Displayed, so
+                    # a confident-looking curve cannot hide a model that disagrees
+                    # with itself.
+                    fields["discharge_outlook_spread"] = spread
+            out[sid] = fields
         if no_river:
             health.warnings.append(
                 f"{no_river} points have no GloFAS river (expected for canals, gates and headwaters)"
@@ -175,6 +207,24 @@ class DischargeAdapter(ForecastAdapter):
         if not out:
             health.error = "no discharge forecasts returned"
         return out, health
+
+
+def _spread(daily: dict) -> float | None:
+    """Ensemble max/min as a ratio at the far end of the outlook, or None.
+
+    GloFAS publishes a mean, a max and a min across its members. A ratio near 1 means
+    the members agree; a large one means the outlook is a shrug wearing a curve.
+    """
+    hi = [num(v) for v in (daily.get("river_discharge_max") or [])]
+    lo = [num(v) for v in (daily.get("river_discharge_min") or [])]
+    hi = [v for v in hi if v is not None]
+    lo = [v for v in lo if v is not None]
+    if not hi or not lo:
+        return None
+    last_hi, last_lo = hi[-1], lo[-1]
+    if last_lo < 0.1:
+        return None
+    return round(last_hi / last_lo, 2)
 
 
 register_forecast(RainAdapter())

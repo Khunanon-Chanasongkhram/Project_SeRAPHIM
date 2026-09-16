@@ -48,11 +48,36 @@
   .seg button{background:none;border:0;color:var(--text-secondary);font:inherit;font-size:11px;
     font-weight:700;padding:6px 9px;cursor:pointer;border-radius:0}
   .seg button.on{background:var(--text-primary);color:var(--bg)}
+  /* Controls were quiet to the point of being invisible. A control the user cannot
+     find is a feature that does not exist. */
+  .ctl{font-size:11px;text-transform:uppercase;letter-spacing:.07em;
+    color:var(--text-muted);font-weight:600;display:block;margin-bottom:6px}
+  #spot{padding:11px 12px;font-size:14.5px;font-weight:600;border-width:2px;
+    background-image:linear-gradient(transparent,transparent)}
+  #spot:focus-visible,.days button:focus-visible{outline:2px solid var(--series-1);
+    outline-offset:2px}
+  .cond{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+  .cond div{background:var(--bg);border:1px solid var(--line);border-radius:8px;
+    padding:6px 9px;font-size:12px;display:flex;gap:6px;align-items:baseline}
+  .cond b{font-size:13.5px;font-weight:700}
+  .cond i{font-style:normal;color:var(--text-muted);font-size:10.5px}
+  .rough{border-color:var(--accent);color:var(--accent)}
   select,button{font:inherit;color:var(--text-primary);background:var(--surface);
     border:1px solid var(--line);border-radius:9px;padding:9px 11px}
   select{width:100%}
-  .days{display:flex;gap:5px;margin-top:10px}
-  .days button{flex:1;font-size:12.5px;cursor:pointer;line-height:1.25}
+  /* A week of days does not fit as seven equal columns on a phone, so the row
+     scrolls and each button is a real touch target instead of a sliver. */
+  .days{display:flex;gap:7px;margin-top:10px;overflow-x:auto;padding-bottom:4px;
+    scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
+  .days::-webkit-scrollbar{height:5px}
+  .days::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
+  .days button{flex:0 0 auto;min-width:84px;font-size:12.5px;cursor:pointer;
+    line-height:1.3;padding:9px 11px;scroll-snap-align:start;text-align:center;
+    display:flex;flex-direction:column;gap:3px;align-items:center}
+  /* The day's peak score on the button: the whole question is which day to go. */
+  .days button .pk{font-size:15px;font-weight:700;letter-spacing:-.02em}
+  .days button .dl{font-size:10.5px;color:var(--text-muted);white-space:nowrap}
+  .days button.on .dl{color:var(--surface);opacity:.85}
   .days button.on{background:var(--text-primary);color:var(--surface);
     border-color:var(--text-primary);font-weight:600}
 
@@ -105,8 +130,9 @@
   <p class="sub" id="sub"></p>
 
   <div class="card">
-    <label for="spot" style="font-size:12.5px;color:var(--text-secondary)"></label>
-    <select id="spot" style="margin-top:6px"></select>
+    <label class="ctl" for="spot" id="spotlbl"></label>
+    <select id="spot"></select>
+    <label class="ctl" for="days" id="dayslbl" style="margin-top:14px"></label>
     <div class="days" id="days"></div>
   </div>
 
@@ -151,7 +177,11 @@ const I18N={
       time:"เวลา", score:"คะแนน", factors:"ปัจจัย", peak:"คะแนนสูงสุด เวลา",
       method:"วิธีคิด", caveat:"ข้อจำกัด", notide:"ไม่มีข้อมูลน้ำขึ้นน้ำลงที่จุดนี้",
       warn:"<b>โปรเจกต์ส่วนตัว</b> คะแนนนี้เป็นเพียงการประมาณ ไม่ใช่คำรับรอง ตรวจสภาพอากาศและความปลอดภัยก่อนออกเรือเสมอ เหตุฉุกเฉินทางน้ำ โทร <b>1196</b> หรือ <b>191</b>",
-      fail:"โหลดข้อมูลไม่ได้", n:"น."},
+      fail:"โหลดข้อมูลไม่ได้", n:"น.",
+      whichday:"เลือกวัน", best:"ดีที่สุด", cond:"สภาพอากาศช่วงที่ดีที่สุด",
+      wind:"ลม", gust:"ลมกระโชก", cloud:"เมฆ", rain:"ฝน", temp:"อุณหภูมิ",
+      press:"ความกดอากาศ 6 ชม.", rough:"ลมแรง ระวังเรือเล็ก",
+      wdir:["เหนือ","ตอน.","ตอ.","ตอ.ใต้","ใต้","ตต.ใต้","ตต.","ตต.เหนือ"]},
   en:{title:"Fishing times", sub:"Tide, moon and weather",
       back:"→ flood map", pick:"Choose a spot", hourly:"Hourly bite score",
       cap:"0-100 · higher is better", table:"View as table",
@@ -159,7 +189,11 @@ const I18N={
       time:"Time", score:"Score", factors:"Factors", peak:"peak at",
       method:"Method", caveat:"Caveat", notide:"no tide data at this spot",
       warn:"<b>A personal hobby project.</b> These scores are folklore plus arithmetic, not a promise of fish. Always check conditions before going out. Water emergency: call <b>1196</b> or <b>191</b>.",
-      fail:"Could not load data", n:""}
+      fail:"Could not load data", n:"",
+      whichday:"Which day", best:"best", cond:"Conditions at the best hour",
+      wind:"Wind", gust:"Gusts", cloud:"Cloud", rain:"Rain", temp:"Air",
+      press:"Pressure 6 h", rough:"Windy, take care in a small boat",
+      wdir:["N","NE","E","SE","S","SW","W","NW"]}
 };
 let LANG = localStorage.getItem("seraphim_lang")
   || ((navigator.language||"").toLowerCase().startsWith("th") ? "th" : "en");
@@ -198,6 +232,8 @@ Promise.all([
 function paintChrome(){
   document.documentElement.lang=LANG;
   $("h1").textContent=t("title");
+  $("spotlbl").textContent=t("pick");
+  $("dayslbl").textContent=t("whichday");
   $("sub").innerHTML=`${esc(t("sub"))} · <a class="back" href="./index.html">${esc(t("back"))}</a>`;
   document.querySelector('label[for="spot"]').textContent=t("pick");
   document.querySelectorAll("#lang button").forEach(b=>b.classList.toggle("on",b.dataset.l===LANG));
@@ -215,10 +251,18 @@ function paintChrome(){
 
 function render(){
   const days=spot.days;
+  // Each button shows that day's peak score, so "which day should I go" is answered
+  // by looking at the row rather than by tapping through seven of them.
+  const peakBest=Math.max(...days.map(d=>d.peak_score||0));
   $("days").innerHTML=days.map((d,i)=>{
     const dt=new Date(d.date+"T00:00:00");
-    return `<button data-i="${i}" class="${i===dayIndex?"on":""}">
-      ${dt.toLocaleDateString(LANG==="th"?"th-TH":"en-GB",{weekday:"short",day:"numeric",month:"short"})}</button>`;
+    const label=dt.toLocaleDateString(LANG==="th"?"th-TH":"en-GB",
+      {weekday:"short",day:"numeric",month:"short"});
+    const crown=(d.peak_score===peakBest&&peakBest>0)?" ★":"";
+    return `<button data-i="${i}" class="${i===dayIndex?"on":""}"
+      aria-pressed="${i===dayIndex}" title="${esc(label)}">
+      <span class="pk">${d.peak_score??"-"}${crown}</span>
+      <span class="dl">${esc(label)}</span></button>`;
   }).join("");
   document.querySelectorAll("#days button").forEach(b=>
     b.addEventListener("click",()=>{dayIndex=+b.dataset.i;render();}));
@@ -236,11 +280,38 @@ function render(){
       <div>🌙 ${Math.round(d.moon_illumination*100)}% ${esc(d.moon_regime)}</div>
       ${d.sunrise?`<div>☀ ${esc(ICT(d.sunrise))}</div>`:""}
       ${d.sunset?`<div>🌆 ${esc(ICT(d.sunset))}</div>`:""}
-    </div>`;
+    </div>
+    ${conditionsStrip(d)}`;
   drawChart(d);
   drawTable(d);
   if(spot.tide_point&&d.tide_modelled){$("tidecard").hidden=false;drawTide(d);}
   else $("tidecard").hidden=true;
+}
+
+/** Conditions at the day's best hour: what decides whether the trip is a good idea.
+ *  The score says when the fish might feed; this says whether you should be out there. */
+function conditionsStrip(d){
+  const top=d.best&&d.best[0];
+  if(!top) return "";
+  const hour=(d.hours||[]).find(h=>h.at===top.at);
+  const c=hour&&hour.conditions;
+  if(!c) return "";
+  const dirs=t("wdir");
+  const cell=(label,value,unit,cls)=>value==null?"":
+    `<div class="${cls||""}"><b>${esc(value)}${esc(unit||"")}</b><i>${esc(label)}</i></div>`;
+  const windy=c.wind_kmh!=null&&c.wind_kmh>=25;
+  const dir=c.wind_dir_deg==null?"":" "+dirs[Math.round(c.wind_dir_deg/45)%8];
+  return `<p class="cap" style="margin-top:12px">${esc(t("cond"))} · ${esc(ICT(top.at))}</p>
+    <div class="cond">
+      ${cell(t("wind"), c.wind_kmh==null?null:Math.round(c.wind_kmh)+dir, " km/h", windy?"rough":"")}
+      ${cell(t("gust"), c.gust_kmh==null?null:Math.round(c.gust_kmh), " km/h")}
+      ${cell(t("cloud"), c.cloud_percent==null?null:Math.round(c.cloud_percent), "%")}
+      ${cell(t("rain"), c.rain_mm==null?null:c.rain_mm, " mm")}
+      ${cell(t("temp"), c.temp_c==null?null:Math.round(c.temp_c), "°C")}
+      ${cell(t("press"), c.pressure_change_hpa==null?null:
+        (c.pressure_change_hpa>0?"+":"")+c.pressure_change_hpa, " hPa")}
+    </div>
+    ${windy?`<p class="cap rough" style="margin-top:6px">⚠ ${esc(t("rough"))}</p>`:""}`;
 }
 
 function drawChart(d){

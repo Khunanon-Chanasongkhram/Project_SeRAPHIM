@@ -15,7 +15,7 @@ reservoirs**, all fetched live.
 Fixed 2026-09-16, see the session entry: `min_bank: 0` is ThaiWater's "not published"
 sentinel, not a bank at sea level. Anyone who saw the map before this fix saw a national
 emergency that was not happening.
-**231 tests.** Live: https://khunanon-chanasongkhram.github.io/Project_SeRAPHIM/
+**251 tests.** Live: https://khunanon-chanasongkhram.github.io/Project_SeRAPHIM/
 
 **Next action:** push. Pushing also triggers a deploy, which the site needs.
 
@@ -62,6 +62,96 @@ account except GitHub. The SOS component was removed before deploy and lives on 
 
 Beyond the plan: validation/backtesting, per-country data splitting, world radio,
 rain radar, earthquakes, active fires, satellite imagery, TH/EN switch.
+
+---
+
+## 2026-09-16 - Session 19: the prediction was worse than doing nothing
+
+He asked for bugs, UI, better fishing, longer tide, more weather, and prediction in hours
+and weeks. The bug hunt found the headline feature was actively harmful.
+
+**Straight-line extrapolation had NEGATIVE skill.** The validation table had been
+printing it for sessions and I had read it as "weak at long leads":
+
+    lead   skill vs persistence
+     1 h   +12%
+     2 h    -3%
+     3 h    -4%
+     6 h   -72%
+    12 h   -48%
+
+Negative skill means you would have done better predicting the level does not change.
+The headline number, time-to-bank, was built on it.
+
+**Fixed by letting the rate decay:** `d(L) = rate * tau * (1 - exp(-L/tau))`. Straight
+line for short leads, flattening beyond. Tau was swept over the archive, not guessed:
+every value from 2 to 24 h beat the straight line at every lead. Six hours chosen, best
+on rivers that are actually moving and matching the regression window, so we trust a rate
+about as far forward as we measured it backward.
+
+Measured effect, same archive:
+
+    lead   straight line   damped   persistence
+     6 h      0.062 m      0.045 m     0.036 m
+    12 h      0.080 m      0.054 m     0.055 m
+
+Skill went from -72% to -26% at 6 h and from -48% to +2% at 12 h. Bank-call median
+timing error fell from **5.80 h to 0.46 h**. The published report now carries a `linear`
+column so this stays measured rather than asserted.
+
+**The cost, stated plainly:** the model asymptotes, so it will not promise a river 4 m
+below its bank and creeping up gets there. Bank calls fell from 616 to 90. Far fewer
+warnings, far better ones. A warning whose timing is out by most of a day is not a
+warning.
+
+**A second bug in my own fix**, caught by a test I wrote for it: near the asymptote the
+inverse blows up, solving to 208 hours for a gap 99.9% of the way to the ceiling. That is
+arithmetic, not a forecast. Capped at 48 h.
+
+**Weeks ahead** is a different model on a different source, because it has to be. GloFAS
+gives 30 days of daily discharge with an ensemble spread. It is published as river
+**flow, never a level**: converting discharge to metres needs a rating curve per gauge
+that nobody publishes and our archive cannot fit. The outlook never raises a risk level
+either, it earns a line of reasoning, and it hedges out loud when the ensemble disagrees
+(measured max/min ratios of 15x at day 30 on real Thai points).
+
+**Tide was capped at 3 days for no reason.** The marine API silently returns exactly 216
+non-null hours whatever you ask for, so 9 days exist. Asking for 16 publishes a week of
+nulls that look like a gap rather than a limit. The planner now covers **7 days**, a day
+inside both the tide and weather horizons.
+
+**More weather**, all on the 40-spot batch so it costs one call: gusts, wind direction,
+cloud, rain, air temperature and a weather code, over 10 days. Pressure and wind still
+feed the score; the rest is shown rather than scored, because it is what decides whether
+to go at all. A planner that scores an hour 82 without mentioning the gale is not a
+planner.
+
+**UI, the things that were invisible**
+- **Calm mode was reachable only through a link inside the disclaimer paragraph.** Now a
+  button of its own.
+- **Day buttons were `flex:1`**, which is survivable at 3 days and unusable at 7. Now a
+  scroll-snapped row of real touch targets, each showing that day's peak score with a
+  star on the best one, so "which day should I go" is answered by looking rather than by
+  tapping through seven days.
+- Spot picker had an empty label and looked like text. Now labelled and obvious.
+- Station popups show the projected level at +1/3/6/12 h, and the weeks-ahead flow
+  outlook, each labelled with what it is and is not.
+
+**A cost I am not hiding.** `fishing.json` went from 41 KB to 211 KB gzipped: seven days
+instead of three, with per-hour conditions. Rounding the conditions to what is readable
+(nobody needs a wind bearing to a tenth of a degree) saved 16 KB; the rest is the
+per-hour factor text, which the page actually uses for the chart tooltip and the table.
+It is a deliberately opened page, not the map's critical path, so it is accepted rather
+than solved. If it needs solving later, the move is to send factor codes and render the
+text client-side.
+
+**Still open**
+- Bank-call hit rate is ~5% and the archive cannot properly judge it: median series span
+  is 1.5 h, so most calls are never observable. That number needs days of cron, not a
+  better model, before it means anything.
+- Terrain still covers Thai gauges only.
+
+251 tests.
 
 ---
 

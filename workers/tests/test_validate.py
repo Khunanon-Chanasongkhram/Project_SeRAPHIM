@@ -119,7 +119,14 @@ def write_archive(root: Path, station: str, points, bank=10.0):
 
 
 class TestBacktest(unittest.TestCase):
-    def test_a_perfectly_linear_river_is_predicted_exactly(self):
+    def test_a_moving_river_still_beats_standing_still(self):
+        """The model deliberately under-shoots a perfectly straight line.
+
+        It damps the measured rate, so on a synthetic river that rises forever at
+        exactly 0.2 m/hr it will predict low. That is the whole point: real rivers do
+        not do this, and assuming they do scored -72% skill at a 6 hour lead. What must
+        still hold is that predicting a rise beats predicting no change at all.
+        """
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             pts = [(T0 + timedelta(hours=i), 1.0 + 0.2 * i) for i in range(12)]
@@ -127,10 +134,9 @@ class TestBacktest(unittest.TestCase):
             r = backtest(root)
             self.assertGreater(r["predictions_scored"], 0)
             for lead in r["by_lead"]:
-                self.assertLess(lead["median_error_m"], 0.01,
-                                "a straight line should be predicted almost exactly")
                 self.assertTrue(lead["beats_persistence"],
                                 "on a moving river the trend must beat standing still")
+                self.assertLess(lead["median_error_m"], lead["median_persistence_error_m"])
 
     def test_a_flat_river_cannot_beat_persistence(self):
         """Persistence is exactly right on a flat river, so the trend can only add
