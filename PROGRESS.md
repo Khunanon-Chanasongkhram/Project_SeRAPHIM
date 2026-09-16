@@ -15,7 +15,7 @@ reservoirs**, all fetched live.
 Fixed 2026-09-16, see the session entry: `min_bank: 0` is ThaiWater's "not published"
 sentinel, not a bank at sea level. Anyone who saw the map before this fix saw a national
 emergency that was not happening.
-**265 tests.** Live: https://khunanon-chanasongkhram.github.io/Project_SeRAPHIM/
+**272 tests.** Live: https://khunanon-chanasongkhram.github.io/Project_SeRAPHIM/
 
 **Next action:** push. Pushing also triggers a deploy, which the site needs.
 
@@ -62,6 +62,58 @@ account except GitHub. The SOS component was removed before deploy and lives on 
 
 Beyond the plan: validation/backtesting, per-country data splitting, world radio,
 rain radar, earthquakes, active fires, satellite imagery, TH/EN switch.
+
+---
+
+## 2026-09-16 - Session 21: the nice-to-haves, and what they exposed
+
+He asked me to build the improvement list. Two of them found problems rather than just
+adding features.
+
+**Per-country validation, and it immediately said something uncomfortable.**
+`validate.py` had zero country awareness: one blended skill figure covering Thai, British,
+American and Dutch rivers, shown next to every prediction. Country now comes from the
+station id prefix, which is the adapter id, which maps one-to-one onto a country, so it
+works on archive files written before any of this existed.
+
+The first run printed **only Thailand**. Not a bug: US and GB gauges have a median of
+**3 archived readings** each because they were added the same day, so nothing outside
+Thailand has enough history to score. Which means the accuracy figure the map has been
+showing beside American and British predictions was earned almost entirely on Thai
+rivers. The UI now shows the figure for the country on screen, and where there is none it
+says accuracy has not been measured there yet and names where it has.
+
+**903 US reservoirs we were already downloading and calling rivers.** The NWS feed has a
+SHEF code per gauge; `HP` is a reservoir pool elevation. 844 reservoirs, 276 of them with
+a flood-pool threshold, plus 478 tidal and 5 lake gauges, were all being labelled "river"
+and having their threshold called a "bank level". A reservoir 2 m below its flood pool is
+a different sentence from a river 2 m below its bank, even though the arithmetic is
+identical. `Station.kind` is descriptive only, deliberately separate from `tidal`, which
+changes behaviour.
+
+**Local alerts, with no server.** The biggest gap was that the app could not tell you
+anything unless you already had it open. The watch list is station ids in localStorage,
+the page already polls its own static snapshot every minute, and the browser's own
+Notification API does the alerting. Nothing is sent anywhere, so it stays static-first and
+there is no new personal data to be responsible for. Permission is requested on the first
+watch, never on load. It alerts on **escalation only**: re-announcing "still at level 4"
+every minute is how someone learns to dismiss the thing without reading it. Blocked
+notifications fall back to an in-page banner rather than silently doing nothing.
+
+**Service worker cache name was a constant.** `seraphim-v1` never changed, so the
+`activate` cleanup it already had could never find an old cache to delete, and assets from
+previous deploys just accumulated. Now stamped with the commit and run number at assemble
+time, with the literal left as the local-development fallback.
+
+**Station permalinks.** `index.html` had no URL state at all, so there was no way to send
+someone "look at this gauge". `?station=<id>` now flies to it and opens it, and each popup
+has a copy-link button that falls back to showing the link when the clipboard is blocked.
+
+**The i18n checker earned its keep**, refusing the commit because three new `t()` keys had
+no translations. That is exactly the failure it exists to catch, and it caught it before a
+browser did.
+
+272 tests.
 
 ---
 

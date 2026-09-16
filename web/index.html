@@ -193,6 +193,14 @@
   #livebtn.on{border-color:#2f7d4a}
   #livebtn.on .box{background:#2f7d4a;border-color:#2f7d4a;color:#fff}
   #livebtn small{display:block;color:#8b949e;font-size:10.5px;line-height:1.35;margin-top:2px}
+  .wrow{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;
+    background:#171b21;border:1px solid #2a2f36;margin-bottom:5px;cursor:pointer;font-size:12px}
+  .wrow .d{width:9px;height:9px;border-radius:50%;flex:none}
+  .wname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .wdel{background:none;border:0;color:#6b7280;font:inherit;cursor:pointer;padding:0 3px}
+  .sharebtn{margin-top:9px;width:100%;background:#1b2027;border:1px solid #2a2f36;
+    color:#8b949e;border-radius:7px;padding:7px;font:inherit;font-size:11.5px;cursor:pointer}
+  .sharebtn:active{opacity:.7}
   .fcrow{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:7px 0 2px;font-size:11.5px}
   .fcrow b{font-weight:600;color:var(--dim);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em}
   .fcrow span{background:#1b2027;border:1px solid #2a2f36;border-radius:7px;padding:3px 7px;color:#8b949e}
@@ -248,6 +256,8 @@
     <div class="age" id="age"></div>
     <div id="livebar"></div>
     <a id="fishbtn" href="./fish.html"></a>
+    <h5 id="h-watch"></h5>
+    <div id="watchlist"></div>
     <div class="modes" id="modes"></div>
     <h5 id="h-legend"></h5>
     <div class="legend" id="legend"></div>
@@ -309,6 +319,14 @@ const I18N={
     f_note:"ประมาณการจากอัตราการขึ้นที่วัดได้ ซึ่งจะค่อย ๆ ลดลง ไม่ใช่เส้นตรง",
     f_flow:"เป็นปริมาณน้ำท่า (GloFAS) ไม่ใช่ระดับน้ำ",
     f_spread:"แบบจำลองต่างกัน",
+    acc_notyet:"ยังไม่มีการวัดความแม่นยำสำหรับประเทศนี้ (ต้องมีข้อมูลย้อนหลังมากกว่านี้)",
+    acc_only:"วัดแล้วเฉพาะ:", floodpool:"ระดับเก็บกักสูงสุด", sharelbl:"คัดลอกลิงก์",
+    watch:"เฝ้าระวังสถานีนี้", unwatch:"เลิกเฝ้าระวัง", alert_pre:"เตือน:",
+    watching:"สถานีที่เฝ้าระวัง", watchnone:"ยังไม่ได้เลือกสถานี แตะหมุดแล้วกด เฝ้าระวัง",
+    watchhint:"แจ้งเตือนบนเครื่องนี้เท่านั้น ไม่มีการส่งข้อมูลออกไปที่ใด",
+    watchblocked:"เบราว์เซอร์ปิดการแจ้งเตือน จะแสดงเป็นแถบบนหน้าจอแทน",
+    k_river:"แม่น้ำ/ลำคลอง", k_reservoir:"อ่างเก็บน้ำ", k_lake:"ทะเลสาบ",
+    k_tidal:"สถานีน้ำขึ้นน้ำลง", k_sea:"สถานีกลางทะเล", share:"คัดลอกลิงก์สถานีแล้ว",
     dams:"เขื่อน/อ่างเก็บน้ำ", dams_s:"ปริมาณน้ำกักเก็บ (ไทย)",
     dam_pct:"ปริมาณน้ำกักเก็บ", dam_lvl:"ระดับกักเก็บ", dam_in:"น้ำไหลเข้า",
     dam_out:"ระบายน้ำ", dam_spill:"น้ำล้นทางระบาย", dam_size:"ขนาด",
@@ -362,6 +380,14 @@ const I18N={
     f_note:"Projected from the measured rate of rise, which is damped rather than extended in a straight line",
     f_flow:"River flow (GloFAS), not a water level",
     f_spread:"models disagree by",
+    acc_notyet:"Accuracy has not been measured here yet, there is not enough archive.",
+    acc_only:"Measured so far in:", floodpool:"Flood pool", sharelbl:"Copy link",
+    watch:"Watch this gauge", unwatch:"Stop watching", alert_pre:"Alert:",
+    watching:"Watched gauges", watchnone:"None yet. Tap a gauge and choose Watch.",
+    watchhint:"Alerts fire on this device only. Nothing is sent anywhere.",
+    watchblocked:"Notifications are blocked, alerts will show as a banner instead.",
+    k_river:"River", k_reservoir:"Reservoir", k_lake:"Lake",
+    k_tidal:"Tidal gauge", k_sea:"Offshore", share:"Station link copied",
     dams:"Dams & reservoirs", dams_s:"Stored water (Thailand)",
     dam_pct:"Storage", dam_lvl:"Reservoir level", dam_in:"Inflow",
     dam_out:"Released", dam_spill:"Spilled", dam_size:"Size",
@@ -631,6 +657,7 @@ async function refreshLive(){
     }
   }
   if(map.getSource("st")) map.getSource("st").setData(gj);
+  checkWatches();
   renderChrome();
 }
 
@@ -657,6 +684,36 @@ function setLive(on){
     clearLive();
   }
   renderChrome();
+}
+
+function renderWatchList(){
+  const el=$("watchlist"); if(!el) return;
+  $("h-watch").textContent=t("watching");
+  const ids=watchList();
+  const blocked="Notification" in window && Notification.permission==="denied";
+  const hint=`<div class="conf" style="margin-top:6px">${
+    esc(blocked?t("watchblocked"):t("watchhint"))}</div>`;
+  if(!ids.length){
+    el.innerHTML=`<div class="conf">${esc(t("watchnone"))}</div>`; return;
+  }
+  const byId=new Map((gj?.features||[]).map(f=>[f.properties.id,f.properties]));
+  el.innerHTML=ids.map(id=>{
+    const p=byId.get(id);
+    const lvl=p?Number(p.risk_level)||1:null;
+    const col=lvl?RISK[lvl]:"#6b7280";
+    return `<div class="wrow" data-goto="${esc(id)}">
+      <span class="d" style="background:${col}"></span>
+      <span class="wname">${esc(p?.name||id)}</span>
+      <button class="wdel" data-unwatch="${esc(id)}" title="remove">✕</button>
+    </div>`;
+  }).join("")+hint;
+  el.querySelectorAll("[data-goto]").forEach(r=>r.onclick=(e)=>{
+    if(e.target.closest("[data-unwatch]")) return;
+    openStationById(r.dataset.goto); $("sheet").classList.remove("open");
+  });
+  el.querySelectorAll("[data-unwatch]").forEach(b=>b.onclick=async (e)=>{
+    e.stopPropagation(); await toggleWatch(b.dataset.unwatch);
+  });
 }
 
 function renderLiveBar(){
@@ -1040,6 +1097,114 @@ function applyVisibility(){
     $("rplay").classList.remove("playing"); }
 }
 
+/* ------------------------------------------------------- watched gauges
+ * The app could not tell you anything unless you had it open, which for a flood
+ * warning tool is most of the problem. This fixes that without a server, and without
+ * this becoming a thing that knows where you live:
+ *
+ *   - the watch list is station ids in localStorage, on this device only
+ *   - nothing is sent anywhere; the page already polls its own static snapshot
+ *   - the browser's own Notification API does the alerting, locally
+ *   - permission is asked for when you add your first watch, never on load
+ *
+ * It alerts on ESCALATION only. Re-announcing "still at level 4" every minute is how a
+ * person learns to dismiss the thing without reading it.
+ */
+const WATCH_KEY="seraphim_watch", SEEN_KEY="seraphim_watch_seen";
+//: Escalating to this or above is worth interrupting someone for.
+const WATCH_ALERT_LEVEL=4;
+
+function watchList(){
+  try{ return JSON.parse(localStorage.getItem(WATCH_KEY)||"[]"); }catch{ return []; }
+}
+function saveWatches(ids){
+  try{ localStorage.setItem(WATCH_KEY, JSON.stringify(ids)); }catch{}
+}
+function seenLevels(){
+  try{ return JSON.parse(localStorage.getItem(SEEN_KEY)||"{}"); }catch{ return {}; }
+}
+function saveSeen(m){
+  try{ localStorage.setItem(SEEN_KEY, JSON.stringify(m)); }catch{}
+}
+function isWatched(id){ return watchList().includes(id); }
+
+async function toggleWatch(id){
+  const ids=watchList();
+  const i=ids.indexOf(id);
+  if(i>=0){ ids.splice(i,1); }
+  else {
+    ids.push(id);
+    // Asked on the first watch, not on page load: a permission prompt before the user
+    // has expressed any interest is how people learn to click Block.
+    if("Notification" in window && Notification.permission==="default"){
+      try{ await Notification.requestPermission(); }catch{}
+    }
+  }
+  saveWatches(ids);
+  renderChrome();
+  return ids.includes(id);
+}
+
+/** Check watched gauges against the snapshot and alert on escalation only. */
+function checkWatches(){
+  const ids=watchList();
+  if(!ids.length||!gj) return;
+  const seen=seenLevels();
+  const fired=[];
+  for(const f of gj.features){
+    const p=f.properties;
+    if(!ids.includes(p.id)) continue;
+    const level=Number(p.risk_level)||0;
+    const before=Number(seen[p.id])||0;
+    if(level>=WATCH_ALERT_LEVEL && level>before) fired.push({p, level});
+    seen[p.id]=level;
+  }
+  // Forget levels for gauges no longer watched, so re-adding one alerts again.
+  for(const k of Object.keys(seen)) if(!ids.includes(k)) delete seen[k];
+  saveSeen(seen);
+  for(const {p, level} of fired) alertWatched(p, level);
+}
+
+function alertWatched(p, level){
+  const title=`${t("alert_pre")} ${p.name||p.id}`;
+  const body=`${t("r"+level)} · ${p.freeboard_m!=null&&p.freeboard_m<=0
+    ? t("above")+" "+Math.abs(p.freeboard_m).toFixed(2)+" m"
+    : t("fb")+" "+(p.freeboard_m==null?"-":p.freeboard_m.toFixed(2)+" m")}`;
+  let shown=false;
+  try{
+    if("Notification" in window && Notification.permission==="granted"){
+      const n=new Notification(title,{body, tag:"seraphim-"+p.id, renotify:false});
+      n.onclick=()=>{ window.focus(); openStationById(p.id); };
+      shown=true;
+    }
+  }catch{}
+  // Denied, unsupported, or the tab is focused anyway: say it in the page instead of
+  // swallowing it. An alert nobody can receive is worse than no alert feature.
+  if(!shown){
+    const el=$("degraded");
+    el.classList.add("show");
+    el.innerHTML=`<b>⚠ ${esc(title)}</b><br>${esc(body)}`;
+  }
+}
+
+/** A link to one gauge. Until now there was no way to send someone "look at this one":
+ *  the map had no URL state at all. */
+/** Fly to a gauge by id and open its popup, for ?station= links. */
+function openStationById(id){
+  const f=(gj?.features||[]).find(x=>x.properties.id===id);
+  if(!f) return false;
+  const [lon,lat]=f.geometry.coordinates;
+  map.flyTo({center:[lon,lat], zoom:Math.max(map.getZoom(),11)});
+  map.once("moveend",()=>stationPopup({features:[f], lngLat:{lng:lon,lat:lat}}));
+  return true;
+}
+
+function stationLink(id){
+  const u=new URL(location.href);
+  u.searchParams.set("station", id);
+  return u.toString();
+}
+
 function stationPopup(e){
   const p=e.features[0].properties;
   const n=k=>(p[k]==null||p[k]==="")?null:Number(p[k]);
@@ -1054,13 +1219,14 @@ function stationPopup(e){
   new maplibregl.Popup({maxWidth:"300px",closeButton:true}).setLngLat(e.lngLat).setHTML(`
     ${tag}
     <div class="ph">${esc(p.name)||"-"}</div>
-    <div class="psub">${esc(p.district)||""} ${esc(p.province)||""}${stale?" · "+esc(t("stale")):""}</div>
+    <div class="psub">${esc(p.district)||""} ${esc(p.province)||""}${
+      p.kind&&p.kind!=="river"?" · "+esc(t("k_"+p.kind)):""}${stale?" · "+esc(t("stale")):""}</div>
     ${ttb!==null?`<div class="pttb">⚠ ${esc(t("ttb"))} ~${ttb} ${esc(t("hr"))} ${esc(t("est"))}</div>
       ${meta?.validation?`<div class="conf">${esc(t("acc_err"))} ±${meta.validation.median_error_m} m
         ${esc(t("acc_at"))} ${meta.validation.lead_hours}h · n=${meta.validation.samples}</div>`:""}`:""}
     <div class="pr"><span>${esc(p.live?t("live_lvl"):t("level"))}</span><span class="num">${fmt(n("level_msl")," m")}</span></div>
     ${p.live&&p.live_at?`<div class="pr"><span>${esc(t("live_at"))}</span><span class="num">${esc(new Date(Number(p.live_at)).toLocaleString(LANG==="th"?"th-TH":"en-GB",{hour:"2-digit",minute:"2-digit",day:"2-digit",month:"short"}))}</span></div>`:""}
-    <div class="pr"><span>${esc(t("bank"))}</span><span class="num">${fmt(n("bank_msl")," m")}</span></div>
+    <div class="pr"><span>${esc(thresholdLabel(p))}</span><span class="num">${fmt(n("bank_msl")," m")}</span></div>
     <div class="pr"><span>${esc(over?t("above"):t("fb"))}</span><span class="num" style="color:${over?RISK[5]:"inherit"}">${fb===null?"-":fmt(Math.abs(fb)," m")}</span></div>
     <div class="pr"><span>${esc(t("rain24"))}</span><span class="num">${fmt(n("rain_next_24h_mm")," mm",1)}</span></div>
     <div class="pr"><span>${esc(t("trend"))}</span><span class="num">${n("discharge_rise_ratio")===null?"-":n("discharge_rise_ratio")+"x"}</span></div>
@@ -1070,11 +1236,20 @@ function stationPopup(e){
     ${p.risk_confidence?`<div class="conf">${esc(t("conf"))}: ${esc(p.risk_confidence)}</div>`:""}
     ${forecastRows(p)}
     ${p.live_over_bank?`<div class="pttb">⚠ ${esc(t("live_new"))}</div>`:""}
-    ${p.live?`<div class="conf">${esc(t("live_note"))}</div>`:""}`)
+    ${p.live?`<div class="conf">${esc(t("live_note"))}</div>`:""}
+    <button class="sharebtn" data-watch="${esc(p.id)}">${
+      isWatched(p.id)?"★ "+esc(t("unwatch")):"☆ "+esc(t("watch"))}</button>
+    <button class="sharebtn" data-share="${esc(p.id)}">🔗 ${esc(t("sharelbl"))}</button>`)
     .addTo(map);
 }
 
 /** Hours ahead (projected level) and weeks ahead (river flow, never a level). */
+/** A reservoir 2 m below its flood pool is a different sentence from a river 2 m below
+ *  its bank, even though the arithmetic is identical. */
+function thresholdLabel(p){
+  return p.kind==="reservoir"||p.kind==="lake" ? t("floodpool") : t("bank");
+}
+
 function forecastRows(p){
   let fc=p.level_forecast;
   if(typeof fc==="string"){ try{fc=JSON.parse(fc);}catch{fc=null;} }
@@ -1136,6 +1311,7 @@ function renderChrome(){
   $("h-acc").textContent=t("acc");
   renderAccuracy();
   renderLiveBar();
+  renderWatchList();
   document.querySelectorAll("#lang button").forEach(b=>b.classList.toggle("on",b.dataset.l===LANG));
   document.querySelectorAll("#view button").forEach(b=>b.classList.toggle("on",b.dataset.v===country));
   $("o-osm") && null;
@@ -1183,13 +1359,26 @@ function renderAccuracy(){
   const v=meta?.validation;
   const el=$("acc");
   if(!v){ el.innerHTML=`<div style="font-size:11.5px;color:var(--faint)">${esc(t("accnone"))}</div>`; return; }
-  const skill=v.skill_vs_persistence;
+  // Show the figure for the country on screen. Publishing one blended number earned
+  // mostly on Thai rivers, next to a prediction for an American one, overstates what
+  // is known about the American one.
+  const cc=(country||"").toUpperCase();
+  const per=v.by_country&&v.by_country[cc];
+  if(cc&&cc!=="WORLD"&&!per){
+    const measured=(v.measured_countries||[]).join(", ");
+    el.innerHTML=`<div style="font-size:11.5px;color:var(--faint)">${esc(t("acc_notyet"))}`+
+      (measured?` ${esc(t("acc_only"))} ${esc(measured)}.`:"")+`</div>`;
+    return;
+  }
+  const shown=per||v;
+  const skill=shown.skill_vs_persistence;
   const good=skill!=null&&skill>0;
   const pct=skill==null?null:Math.round(Math.abs(skill)*100);
+  const medErr=shown.median_error_m;
   el.innerHTML=`
     <div class="legend" style="margin-bottom:4px">
       <div><span class="d" style="background:${good?"#3fb950":"#e5484d"}"></span>
-        ${esc(t("acc_err"))} ±${v.median_error_m} m ${esc(t("acc_at"))} ${v.lead_hours}h</div>
+        ${esc(t("acc_err"))} ±${medErr} m ${esc(t("acc_at"))} ${v.lead_hours}h</div>
       ${pct==null?"":`<div><span class="d" style="background:${good?"#3fb950":"#e5484d"}"></span>
         ${pct}% ${esc(good?t("acc_skill"):t("worse"))}</div>`}
       ${v.hit_rate==null?"":`<div><span class="d" style="background:#d99e0b"></span>
@@ -1246,7 +1435,13 @@ function setBasemap(name){
       +"layers inspired by gods-eye-view (MIT) · SeRAPHIM AGPL-3.0"}));
   map.addControl(new maplibregl.NavigationControl({showCompass:false}),"bottom-right");
   map.addControl(new maplibregl.GeolocateControl({trackUserLocation:true}),"bottom-right");
-  map.on("load",()=>{ addLayers(); renderChrome(); });
+  map.on("load",()=>{
+    addLayers(); renderChrome();
+    // ?station=<id> flies to that gauge and opens it, so a link to one river works.
+    const want=new URLSearchParams(location.search).get("station");
+    if(want) openStationById(want);
+    checkWatches();
+  });
 
   $("grab").onclick=()=>$("sheet").classList.toggle("open");
   $("stats").onclick=()=>$("sheet").classList.toggle("open");
@@ -1327,6 +1522,7 @@ function setBasemap(name){
       // A new snapshot replaces every feature object, so the live overlay has to be
       // laid back over it or the map would silently revert to build-time levels.
       if(liveOn) refreshLive();
+      checkWatches();
       if(map.getSource("prov")&&provinces) map.getSource("prov").setData(provinces);
       if(map.getSource("quakes")&&quakes) map.getSource("quakes").setData(quakes);
       if(map.getSource("fires")&&fires) map.getSource("fires").setData(fires);

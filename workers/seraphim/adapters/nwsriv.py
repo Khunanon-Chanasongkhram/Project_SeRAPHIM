@@ -75,6 +75,11 @@ HEIGHT_PREFIX = "H"
 #: of rise describes the last three hours rather than predicting the next twelve.
 #: 195 of the 12,842 gauges carry it.
 TIDAL_PREFIX = "HT"
+#: SHEF physical elements mapped to what the water actually is. "HP" is a reservoir pool
+#: elevation and there are 903 of them in this feed: we were already downloading every
+#: one and calling it a river. A reservoir 2 m below its flood pool is a different
+#: sentence from a river 2 m below its bank.
+KIND_BY_PE = {"HP": "reservoir", "HT": "tidal", "HM": "tidal", "HL": "lake"}
 #: The only unit this adapter will read a level from. Anything else is refused rather
 #: than converted on a guess.
 LEVEL_UNIT = "ft"
@@ -187,6 +192,7 @@ class NWSRiverGaugesAdapter(SourceAdapter):
                 basin=text(r.get("waterbody")),
                 agency="NOAA / National Weather Service",
                 tidal=pedts.startswith(TIDAL_PREFIX),
+                kind=KIND_BY_PE.get(pedts[:2], "river"),
                 admin=Admin(country="US", province=state, province_code=state,
                             district=wfo.upper() if wfo else None),
             ))

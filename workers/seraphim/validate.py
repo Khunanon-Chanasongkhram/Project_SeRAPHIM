@@ -23,6 +23,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from statistics import median
 
+from seraphim.adapters import registry
 from seraphim.forecast import displacement, hours_to_level
 from seraphim.history import fit_trend
 
@@ -87,6 +88,19 @@ def load_timelines(archive_root: Path) -> tuple[dict[str, list], dict[str, float
             if p.get("bank_msl") is not None:
                 banks[sid] = float(p["bank_msl"])
     return {k: sorted(v.items()) for k, v in levels.items()}, banks
+
+
+def country_of(station_id: str) -> str | None:
+    """Country for a namespaced station id, e.g. "nwsriv:AAIT2" -> "US".
+
+    The id prefix is the adapter id and every adapter declares one country, so this
+    needs no extra field in the archive and works on files written before per-country
+    reporting existed.
+    """
+    source = station_id.split(":", 1)[0] if ":" in station_id else station_id
+    adapter = registry.get(source)
+    country = getattr(adapter, "country", None)
+    return country if country and country != "*" else None
 
 
 def _actual_at(series: list, target: datetime) -> float | None:
@@ -199,6 +213,23 @@ def _summarise(scored: list[Scored], calls: list[BankCall], timelines: dict) -> 
         entry["moving_only"] = moving
         by_lead.append(entry)
 
+    # --- per country ------------------------------------------------------
+    # The headline skill number blended four countries. A river in Iowa reports on a
+    # different interval, against a different datum, with a different threshold
+    # convention than one in Ayutthaya, and publishing one accuracy figure earned
+    # mostly on Thai rivers as if it applied to all of them overstates what is known
+    # about the others. Country comes from the station id prefix, which is the adapter
+    # id, which maps one-to-one onto a country.
+    by_country = []
+    for code in sorted({country_of(s.station) for s in scored} - {None}):
+        rows = [s for s in scored if country_of(s.station) == code and s.lead <= 3.0]
+        entry = stats(rows)
+        if entry is None:
+            continue
+        entry["country"] = code
+        entry["moving_only"] = stats([s for s in rows if s.moved >= MOVING_THRESHOLD_M])
+        by_country.append(entry)
+
     by_conf = []
     for conf in ("good", "fair", "poor", "steady"):
         rows = [s for s in scored if s.confidence == conf and s.lead <= 3.0]
@@ -220,6 +251,7 @@ def _summarise(scored: list[Scored], calls: list[BankCall], timelines: dict) -> 
         "predictions_scored": len(scored),
         "stations_with_timeline": len(timelines),
         "by_lead": by_lead,
+        "by_country": by_country,
         "by_confidence": by_conf,
         "bank_calls": {
             "made": len(calls),
@@ -262,6 +294,16 @@ def format_report(result: dict) -> str:
                    f"{r['median_error_m']:>8.3f}m{r.get('median_linear_error_m', 0):>8.3f}m"
                    f"{r['median_persistence_error_m']:>8.3f}m{sk:>7}"
                    f"   | {mn:>9}{mmed:>9}{msk:>7}")
+    if result.get("by_country"):
+        out += ["", "  by country (lead <= 3h):"]
+        for c in result["by_country"]:
+            sk = "n/a" if c["skill_vs_persistence"] is None else f"{c['skill_vs_persistence']:+.0%}"
+            m = c.get("moving_only")
+            msk = ("n/a" if not m or m["skill_vs_persistence"] is None
+                   else f"{m['skill_vs_persistence']:+.0%}")
+            out.append(f"    {c['country']:<4} n={c['n']:>6,}  median {c['median_error_m']:.3f} m"
+                       f"  skill {sk:>5}  |  moving n={m['n'] if m else 0:>5} skill {msk:>5}")
+
     if result["by_confidence"]:
         out += ["", "  confidence tiers (lead <= 3h):"]
         for c in result["by_confidence"]:

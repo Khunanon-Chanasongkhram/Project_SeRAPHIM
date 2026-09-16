@@ -138,6 +138,10 @@ def build_geojson(states: list[StationState], risks: dict | None = None,
                     # thresholds. Published so the UI can say so rather than implying
                     # every gauge on the map shares one vertical reference.
                     "datum": st.datum,
+                    # river | reservoir | lake | tidal | sea. Changes what the popup
+                    # calls this gauge and what its threshold is named, nothing else.
+                    "kind": st.kind,
+                    "tidal": st.tidal or None,
                     "freeboard_m": s.freeboard_m,
                     "discharge_cms": ob.discharge_cms,
                     "storage_percent": ob.storage_percent,
@@ -489,6 +493,18 @@ def _validation_headline(validation: dict | None) -> dict | None:
         "median_error_m": m["median_error_m"],
         "skill_vs_persistence": m["skill_vs_persistence"],
         "hit_rate": (validation.get("bank_calls") or {}).get("hit_rate"),
+        # Which countries this figure is actually earned on. A reader in Iowa should
+        # not be shown an accuracy measured on Thai rivers as if it were theirs: the
+        # reporting intervals, datums and threshold conventions are all different.
+        "measured_countries": sorted(
+            c["country"] for c in (validation.get("by_country") or [])),
+        "by_country": {
+            c["country"]: {
+                "samples": c["n"],
+                "median_error_m": c["median_error_m"],
+                "skill_vs_persistence": c["skill_vs_persistence"],
+            } for c in (validation.get("by_country") or [])
+        },
         "note": "measured on rivers that actually moved; see validation.json",
     }
 

@@ -85,6 +85,13 @@ because it is fun, and because this is a project for enjoying.
 them, so you can see where the trouble is before you start tapping dots. Elsewhere the
 map ranks the worst districts and catchments in the panel instead.
 
+**Watch a gauge, and get told.** Tap a gauge and choose Watch, and your browser alerts
+you when it escalates — even when the page is closed. The watch list lives on your device
+and **nothing is sent anywhere**: the page already downloads the same public snapshot
+every minute, and the alert is your own browser reacting to it. Permission is asked for
+when you add your first watch, never on load, and if you have notifications blocked the
+alert shows as a banner instead of vanishing.
+
 **Predict, in hours and in weeks.** Every gauge with a trustworthy trend carries a
 projected level at +1, +3, +6 and +12 hours, and rivers that GloFAS can see carry a
 30-day outlook. The outlook is river *flow*, never a water level, because converting one
@@ -158,6 +165,11 @@ rather than continuing forever, because the version that assumed otherwise was m
 *worse than predicting no change at all* beyond an hour. The cost is that it will not
 give a time-to-bank for a river far below its bank creeping up slowly. It would rather
 say nothing than say a number that is out by most of a day.
+
+**Accuracy is measured per country, and mostly it is not measured yet.** The skill
+figures come from replaying our own archive, and that archive only really covers Thailand
+so far. Where a country has not been measured, the panel says so instead of showing you a
+number earned on Thai rivers.
 
 **A quiet gauge is not a safe gauge.** If a gauge stops reporting it is marked stale
 rather than dropped, because a gauge that goes silent during a flood is telling you

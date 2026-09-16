@@ -193,6 +193,7 @@ class RijkswaterstaatAdapter(SourceAdapter):
                 # 12-hour projection of +1.2 m, which is a flooding tide read as a
                 # flood. The NAP-datum inland stations are left alone.
                 tidal=(datum == "MSL"),
+                kind=("sea" if datum == "MSL" else "river"),
                 admin=Admin(country="NL", province=_place_from_code(code)),
             ))
             observations.append(Observation(

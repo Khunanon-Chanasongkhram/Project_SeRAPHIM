@@ -57,6 +57,14 @@ class Station:
     #: because sources do not always agree with themselves.
     critical_msl: float | None = None
     ground_msl: float | None = None
+    #: What kind of water this gauge sits in, where the network says.
+    #:
+    #: Purely descriptive: it changes what the popup calls the station, not how it is
+    #: scored. A reservoir 2 m below its flood pool is a different sentence from a river
+    #: 2 m below its bank, even though the arithmetic is identical.
+    #:
+    #: Deliberately separate from `tidal`, which changes behaviour rather than wording.
+    kind: str = "river"
     #: True where the level here is driven by the tide rather than by catchment flow.
     #:
     #: A tidal gauge rises and falls twice a day, so fitting a rate of rise to it and

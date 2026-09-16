@@ -83,6 +83,12 @@ jobs:
           mkdir -p _site/data/out
           cp web/*.html web/*.js _site/
           cp -r data/out/. _site/data/out/
+
+          # Stamp the service worker cache with this build, so its activate() step can
+          # actually find and delete the previous one. With a fixed name the cleanup
+          # never fired and assets from earlier deploys just stayed.
+          sed -i "s/__BUILD__/${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}/" _site/sw.js
+          grep -m1 "const CACHE" _site/sw.js
           # Stop Jekyll from eating files and directories that start with an underscore.
           touch _site/.nojekyll
 

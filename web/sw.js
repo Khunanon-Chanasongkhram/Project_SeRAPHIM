@@ -4,7 +4,11 @@
  * first visit, so if the network goes the map still opens with the last data it had,
  * clearly labelled as old rather than blank.
  */
-const CACHE = "seraphim-v1";
+// Stamped by the build. A fixed name meant the activate() cleanup below never deleted
+// anything, because there was never an old cache to find: assets from a previous deploy
+// simply stayed. __BUILD__ is substituted when the site is assembled; the literal is the
+// local-development fallback.
+const CACHE = "seraphim-__BUILD__";
 const SHELL = ["./index.html", "./fish.html"];
 // Snapshots are cached too, so a failed origin degrades to last-known data rather
 // than a blank page. During a flood, yesterday's water levels clearly labelled as
