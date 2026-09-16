@@ -85,6 +85,20 @@ because it is fun, and because this is a project for enjoying.
 them, so you can see where the trouble is before you start tapping dots. Elsewhere the
 map ranks the worst districts and catchments in the panel instead.
 
+**3D terrain, and a forecast timeline.** Turn on 3D and the map gets real elevation
+(Copernicus/SRTM, the same DEM family the gauge terrain profiles use), exaggerated 1.6x
+because the delta that actually floods is almost flat. A scrub bar steps through
+**now → +1h → +3h → +6h → +12h**, recolouring every gauge by its own projected level, and
+then through **+3d → +7d → +30d** on river flow.
+
+**It is not a flood simulation, and it does not pretend to be.** Nothing spreads across
+the ground when you drag the slider. What moves is each gauge's own water surface, which
+is a number this project measures its own accuracy on. Simulating where water actually
+goes needs a hydraulic model, a 30 m DEM, channel cross-sections and flood defences, and
+inventing that on top of 90 m elevation samples would produce a confident, beautiful,
+wrong flood map. The day and week steps are flow rather than level for the same reason:
+converting discharge to metres needs a rating curve nobody publishes.
+
 **Watch a gauge, and get told.** Tap a gauge and choose Watch, and your browser alerts
 you when it escalates — even when the page is closed. The watch list lives on your device
 and **nothing is sent anywhere**: the page already downloads the same public snapshot

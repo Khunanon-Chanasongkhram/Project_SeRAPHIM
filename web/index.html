@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://server.arcgisonline.com https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://tilecache.rainviewer.com; connect-src 'self' https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://server.arcgisonline.com https://api.rainviewer.com https://*.api.radio-browser.info https://gibs.earthdata.nasa.gov; media-src https: blob:; worker-src 'self' blob:; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://server.arcgisonline.com https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://tilecache.rainviewer.com https://s3.amazonaws.com https://elevation-tiles-prod.s3.amazonaws.com; connect-src 'self' https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://server.arcgisonline.com https://api.rainviewer.com https://*.api.radio-browser.info https://gibs.earthdata.nasa.gov https://s3.amazonaws.com https://elevation-tiles-prod.s3.amazonaws.com https://api-v3.thaiwater.net https://mapservices.weather.noaa.gov https://environment.data.gov.uk; media-src https: blob:; worker-src 'self' blob:; base-uri 'self'; form-action 'self'">
 <title>SeRAPHIM</title>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <script src="./config.js"></script>
@@ -193,6 +193,15 @@
   #livebtn.on{border-color:#2f7d4a}
   #livebtn.on .box{background:#2f7d4a;border-color:#2f7d4a;color:#fff}
   #livebtn small{display:block;color:#8b949e;font-size:10.5px;line-height:1.35;margin-top:2px}
+  #timeline{margin:8px 0 2px}
+  .tlhead{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;
+    text-transform:uppercase;letter-spacing:.06em;color:var(--dim);margin-bottom:6px}
+  .tlhead span{color:#e8edf3;font-weight:700;font-size:12.5px;letter-spacing:0}
+  .tlbtns{display:flex;gap:5px}
+  .tlbtns button{flex:1;background:#171b21;border:1px solid #2a2f36;color:#8b949e;
+    border-radius:7px;padding:7px 4px;font:inherit;font-size:11.5px;cursor:pointer}
+  .tlbtns button.flow{border-style:dashed}
+  .tlbtns button.on{background:#e8edf3;color:#0d1117;border-color:#e8edf3;font-weight:700}
   .wrow{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;
     background:#171b21;border:1px solid #2a2f36;margin-bottom:5px;cursor:pointer;font-size:12px}
   .wrow .d{width:9px;height:9px;border-radius:50%;flex:none}
@@ -254,6 +263,7 @@
   <div id="sheetbody">
     <div class="stats" id="stats"></div>
     <div class="age" id="age"></div>
+    <div id="timeline"></div>
     <div id="livebar"></div>
     <a id="fishbtn" href="./fish.html"></a>
     <h5 id="h-watch"></h5>
@@ -322,6 +332,11 @@ const I18N={
     acc_notyet:"ยังไม่มีการวัดความแม่นยำสำหรับประเทศนี้ (ต้องมีข้อมูลย้อนหลังมากกว่านี้)",
     acc_only:"วัดแล้วเฉพาะ:", floodpool:"ระดับเก็บกักสูงสุด", sharelbl:"คัดลอกลิงก์",
     watch:"เฝ้าระวังสถานีนี้", unwatch:"เลิกเฝ้าระวัง", alert_pre:"เตือน:",
+    tl_title:"คาดการณ์ล่วงหน้า", tl_now:"ตอนนี้", tl_over:"ล้นตลิ่ง", tl_viewing:"กำลังดูภาพคาดการณ์",
+    tl_level:"ระดับน้ำ", tl_flow:"ปริมาณน้ำท่า", tl_rising:"น้ำท่าเพิ่มขึ้นชัดเจน",
+    tl_flownote:"เป็นปริมาณน้ำท่า (GloFAS) ไม่ใช่ระดับน้ำ และไม่ใช่การจำลองการไหล",
+    tl_note:"เลื่อนดูระดับน้ำที่คาดการณ์ของแต่ละสถานี ไม่ใช่การจำลองการไหลของน้ำ",
+    d3:"ภูมิประเทศ 3 มิติ", d3_s:"ความสูงจริง (Copernicus/SRTM) ขยายแนวตั้ง 1.6 เท่า",
     watching:"สถานีที่เฝ้าระวัง", watchnone:"ยังไม่ได้เลือกสถานี แตะหมุดแล้วกด เฝ้าระวัง",
     watchhint:"แจ้งเตือนบนเครื่องนี้เท่านั้น ไม่มีการส่งข้อมูลออกไปที่ใด",
     watchblocked:"เบราว์เซอร์ปิดการแจ้งเตือน จะแสดงเป็นแถบบนหน้าจอแทน",
@@ -383,6 +398,11 @@ const I18N={
     acc_notyet:"Accuracy has not been measured here yet, there is not enough archive.",
     acc_only:"Measured so far in:", floodpool:"Flood pool", sharelbl:"Copy link",
     watch:"Watch this gauge", unwatch:"Stop watching", alert_pre:"Alert:",
+    tl_title:"Forecast timeline", tl_now:"Now", tl_over:"Over bank", tl_viewing:"Showing the projection for",
+    tl_level:"level", tl_flow:"flow", tl_rising:"Flow rising sharply",
+    tl_flownote:"river flow (GloFAS), not a water level, and not a flow simulation",
+    tl_note:"scrubs each gauge's own projected level, it does not simulate water flowing",
+    d3:"3D terrain", d3_s:"Real elevation (Copernicus/SRTM), 1.6x vertical",
     watching:"Watched gauges", watchnone:"None yet. Tap a gauge and choose Watch.",
     watchhint:"Alerts fire on this device only. Nothing is sent anywhere.",
     watchblocked:"Notifications are blocked, alerts will show as a banner instead.",
@@ -415,7 +435,7 @@ let radioAll=[], radioNear=[], radioIdx=0, audio=null;
 let map=null, mode="risk", basemap="satellite";
 const shown={provinces:true, stations:true, tide:true,
              radar:false, quakes:false, fires:false, radio:false, events:false,
-             terrain:false, dams:false};
+             terrain:false, dams:false, d3:false};
 
 const OSM="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const SAT="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
@@ -454,6 +474,7 @@ const LAYERS=[
   {id:"radio",     label:"radio",  sub:"radio_s",   colour:"#a78bfa"},
   {id:"events",    label:"events", sub:"events_s",  colour:"#ef4444"},
   {id:"terrain",   label:"terrain",sub:"terrain_s", colour:"#8b5cf6", optional:true},
+  {id:"d3",        label:"d3",     sub:"d3_s",      colour:"#64748b"},
 ];
 
 /** Where the map looks. Thailand has gauges with bank levels; the UK has gauges with
@@ -656,13 +677,17 @@ async function refreshLive(){
       }
     }
   }
-  if(map.getSource("st")) map.getSource("st").setData(gj);
+  // The timeline colours from a baseline; a live reading changes what that baseline
+  // is, so drop it and let applyTimeline take the new value as "now".
+  for(const f of gj.features) delete f.properties.base_risk;
+  applyTimeline();
   checkWatches();
   renderChrome();
 }
 
 /** Put every gauge back to exactly what the build published. */
 function clearLive(){
+  for(const f of gj.features) delete f.properties.base_risk;
   for(const f of gj.features){
     const p=f.properties;
     if(p.snap_level===undefined) continue;
@@ -885,6 +910,7 @@ function addHazardLayers(){
       new maplibregl.Popup({maxWidth:"290px"}).setLngLat(e.lngLat).setHTML(
         `<div class="pt" style="background:${col}">${esc(t("dam_"+(p.status==="spilling"?"spilling":p.status==="high"?"high":"normal")))}</div>
          <div class="ph">${esc(p.name)||"-"}</div>
+    ${hours>0?`<div class="conf">${esc(t("tl_viewing"))} +${hours} h</div>`:""}
          <div class="psub">${esc(p.province)||""} ${esc(p.basin)||""} · ${esc(t(p.size==="large"?"dam_large":"dam_medium"))}</div>
          ${row(t("dam_pct"), pct==null?null:pct+"%")}
          ${row(t("dam_lvl"), n("level_msl")==null?null:n("level_msl")+" m")}
@@ -1097,6 +1123,161 @@ function applyVisibility(){
     $("rplay").classList.remove("playing"); }
 }
 
+/* ------------------------------------------------------------ 3D terrain
+ * Real elevation, not a stylised bump map: AWS's public Terrarium tiles, which are
+ * Copernicus/SRTM encoded into RGB. Keyless, CORS-open, and the same DEM family the
+ * gauge terrain profiles already use, so the hills under the map and the low-ground
+ * layer draped on them come from the same measurement of the world.
+ *
+ * Off by default. It costs tiles, it costs GPU, and on a phone in a flood a flat map
+ * that loads is worth more than a pretty one that stutters.
+ */
+const DEM_TILES="https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
+const DEM_ATTRIB="Elevation: AWS Terrain Tiles (Copernicus, SRTM, NED)";
+//: Vertical exaggeration. Thailand's delta is nearly flat, and at 1x the 3D view of the
+//: place that actually floods looks identical to the 2D one.
+const TERRAIN_EXAGGERATION=1.6;
+let terrain3d=false;
+
+function setTerrain3D(on){
+  terrain3d=on;
+  try{ localStorage.setItem("seraphim_3d", on?"1":"0"); }catch{}
+  if(!map) return;
+  if(on){
+    if(!map.getSource("dem")){
+      map.addSource("dem",{type:"raster-dem",tiles:[DEM_TILES],tileSize:256,
+        encoding:"terrarium",maxzoom:13,attribution:DEM_ATTRIB});
+    }
+    map.setTerrain({source:"dem",exaggeration:TERRAIN_EXAGGERATION});
+    if(map.getPitch()<45) map.easeTo({pitch:60,duration:700});
+  } else {
+    map.setTerrain(null);
+    if(map.getPitch()>5) map.easeTo({pitch:0,duration:500});
+  }
+  renderChrome();
+}
+
+/* -------------------------------------------------- the forecast timeline
+ * "What happens next" as a scrub bar over numbers we already publish and have
+ * measured: the damped level projection at +1/3/6/12 h.
+ *
+ * This is NOT a hydraulic simulation. There is no flow routing, no roughness, no
+ * structures and no DEM at a resolution that could support one. What moves when you
+ * drag the slider is each gauge's own projected water surface, which is a thing this
+ * project measures its own accuracy on. Anything that looked like spreading water
+ * would be invented, so nothing spreads.
+ */
+//: Steps. Hours are LEVELS, from the gauge's own damped projection. Days are FLOW,
+//: from GloFAS, because beyond about twelve hours a level is not something this data
+//: can support: converting discharge to metres needs a rating curve nobody publishes.
+//: The two are deliberately labelled differently rather than blended into one scale.
+const TIMELINE=[
+  {h:0,   mode:"level"},
+  {h:1,   mode:"level"},
+  {h:3,   mode:"level"},
+  {h:6,   mode:"level"},
+  {h:12,  mode:"level"},
+  {d:3,   mode:"flow"},
+  {d:7,   mode:"flow"},
+  {d:14,  mode:"flow"},
+  {d:30,  mode:"flow"},
+];
+//: Flow multiples worth colouring. Matches the risk engine's own outlook threshold, so
+//: the map and the reasoning text agree about what a meaningful rise is.
+const FLOW_WATCH=1.8, FLOW_STRONG=3.0;
+let timeIndex=0;
+
+function stepLabel(st){
+  if(st.mode==="flow") return "+"+st.d+"d";
+  return st.h===0 ? t("tl_now") : "+"+st.h+"h";
+}
+
+/** Projected flow divided by today's, at a day step, or null. */
+function flowRatioAt(p, day){
+  let o=p.discharge_outlook_cms;
+  if(typeof o==="string"){ try{o=JSON.parse(o);}catch{o=null;} }
+  if(!Array.isArray(o)||o.length<=day) return null;
+  const now=Number(o[0]), then=Number(o[day]);
+  if(!isFinite(now)||!isFinite(then)||now<0.1) return null;
+  return then/now;
+}
+
+/** Level at the selected step: the observed level at 0, the projection after that. */
+function levelAt(p, hours){
+  if(hours<=0) return p.level_msl==null?null:Number(p.level_msl);
+  let fc=p.level_forecast;
+  if(typeof fc==="string"){ try{fc=JSON.parse(fc);}catch{fc=null;} }
+  if(!Array.isArray(fc)) return null;
+  const hit=fc.find(f=>Number(f.in_hours)===hours);
+  return hit?Number(hit.level_msl):null;
+}
+
+/** Freeboard at the selected step, or null where no honest projection exists. */
+function freeboardAt(p, hours){
+  const bank=p.bank_msl==null?null:Number(p.bank_msl);
+  const lvl=levelAt(p, hours);
+  if(bank==null||lvl==null||!isFinite(bank)||!isFinite(lvl)) return null;
+  return bank-lvl;
+}
+
+/** Recolour the gauge layer for the selected step. */
+function applyTimeline(){
+  if(!gj||!map||!map.getSource("st")) return;
+  const st=TIMELINE[timeIndex];
+  for(const f of gj.features){
+    const p=f.properties;
+    if(p.base_risk===undefined) p.base_risk=p.risk_level;
+    p.t_fb=null; p.t_flow=null;
+
+    if(st.mode==="level"){
+      if(st.h===0){ p.risk_level=p.base_risk; p.t_fb=p.freeboard_m; continue; }
+      const fb=freeboardAt(p, st.h);
+      p.t_fb=fb;
+      // Only ever raises. A projection may warn; it may not reassure, because the
+      // published score can rest on rain, a tide window or an upstream signal that a
+      // single gauge's own trend line knows nothing about.
+      p.risk_level = (fb!=null&&fb<=0) ? Math.max(5, p.base_risk||1)
+                   : (fb!=null&&fb<=0.5) ? Math.max(4, p.base_risk||1)
+                   : p.base_risk;
+    } else {
+      // Flow, not level. It never reaches 5: 5 means water is over the bank, an
+      // observation, and a flow multiple three weeks out is not one.
+      const r=flowRatioAt(p, st.d);
+      p.t_flow=r;
+      p.risk_level = (r!=null&&r>=FLOW_STRONG) ? Math.max(4, p.base_risk||1)
+                   : (r!=null&&r>=FLOW_WATCH)  ? Math.max(3, p.base_risk||1)
+                   : p.base_risk;
+    }
+  }
+  map.getSource("st").setData(gj);
+  renderTimeline();
+}
+
+function renderTimeline(){
+  const el=$("timeline"); if(!el) return;
+  const st=TIMELINE[timeIndex];
+  let n=0, counted=0;
+  for(const f of (gj?.features||[])){
+    const p=f.properties;
+    if(st.mode==="level"){
+      const fb=st.h===0?p.freeboard_m:p.t_fb;
+      if(fb!=null){ counted++; if(fb<=0) n++; }
+    } else if(p.t_flow!=null){ counted++; if(p.t_flow>=FLOW_WATCH) n++; }
+  }
+  const readout = st.mode==="level"
+    ? `${esc(t("tl_over"))}: <b>${n}</b> / ${counted} · ${esc(t("tl_note"))}`
+    : `${esc(t("tl_rising"))}: <b>${n}</b> / ${counted} · ${esc(t("tl_flownote"))}`;
+  el.innerHTML=`<div class="tlhead"><b>${esc(t("tl_title"))}</b>
+      <span>${esc(stepLabel(st))} · ${esc(st.mode==="level"?t("tl_level"):t("tl_flow"))}</span></div>
+    <div class="tlbtns">${TIMELINE.map((x,i)=>
+      `<button data-t="${i}" class="${i===timeIndex?"on":""}${x.mode==="flow"?" flow":""}">${
+        esc(stepLabel(x))}</button>`).join("")}</div>
+    <div class="conf">${readout}</div>`;
+  el.querySelectorAll("[data-t]").forEach(b=>b.onclick=()=>{
+    timeIndex=+b.dataset.t; applyTimeline();
+  });
+}
+
 /* ------------------------------------------------------- watched gauges
  * The app could not tell you anything unless you had it open, which for a flood
  * warning tool is most of the problem. This fixes that without a server, and without
@@ -1208,7 +1389,11 @@ function stationLink(id){
 function stationPopup(e){
   const p=e.features[0].properties;
   const n=k=>(p[k]==null||p[k]==="")?null:Number(p[k]);
-  const fb=n("freeboard_m"), lv=n("risk_level"), ttb=n("time_to_bank_hr");
+  // At a future step, show that step's projected freeboard rather than the one now.
+  const step=TIMELINE[timeIndex];
+  const hours=step.mode==="level"?step.h:0;
+  const fb=hours===0?n("freeboard_m"):(p.t_fb==null?n("freeboard_m"):Number(p.t_fb));
+  const lv=n("risk_level"), ttb=n("time_to_bank_hr");
   const over=fb!==null&&fb<=0, stale=p.stale===true||p.stale==="true";
   let reasons=p.reasons;
   if(typeof reasons==="string"){ try{reasons=JSON.parse(reasons);}catch{reasons=[];} }
@@ -1305,12 +1490,16 @@ function renderChrome(){
       <span class="dotc" style="background:${l.colour}"></span>
     </div>`).join("");
   document.querySelectorAll("[data-layer]").forEach(el=>el.onclick=()=>{
-    shown[el.dataset.layer]=!shown[el.dataset.layer]; applyVisibility(); renderChrome();
+    const id=el.dataset.layer;
+    shown[id]=!shown[id];
+    // 3D is the map's terrain, not a data layer, so it takes a different path.
+    if(id==="d3") setTerrain3D(shown.d3); else { applyVisibility(); renderChrome(); }
   });
   $("h-legend").textContent=t("legend"); $("h-worst").textContent=t("worst");
   $("h-acc").textContent=t("acc");
   renderAccuracy();
   renderLiveBar();
+  renderTimeline();
   renderWatchList();
   document.querySelectorAll("#lang button").forEach(b=>b.classList.toggle("on",b.dataset.l===LANG));
   document.querySelectorAll("#view button").forEach(b=>b.classList.toggle("on",b.dataset.v===country));
@@ -1440,7 +1629,9 @@ function setBasemap(name){
     // ?station=<id> flies to that gauge and opens it, so a link to one river works.
     const want=new URLSearchParams(location.search).get("station");
     if(want) openStationById(want);
+    applyTimeline();
     checkWatches();
+    try{ if(localStorage.getItem("seraphim_3d")==="1"){ shown.d3=true; setTerrain3D(true); } }catch{}
   });
 
   $("grab").onclick=()=>$("sheet").classList.toggle("open");
@@ -1521,7 +1712,7 @@ function setBasemap(name){
       if(map.getSource("st")) map.getSource("st").setData(gj);
       // A new snapshot replaces every feature object, so the live overlay has to be
       // laid back over it or the map would silently revert to build-time levels.
-      if(liveOn) refreshLive();
+      if(liveOn) refreshLive(); else applyTimeline();
       checkWatches();
       if(map.getSource("prov")&&provinces) map.getSource("prov").setData(provinces);
       if(map.getSource("quakes")&&quakes) map.getSource("quakes").setData(quakes);

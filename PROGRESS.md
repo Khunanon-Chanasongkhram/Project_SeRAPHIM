@@ -65,6 +65,51 @@ rain radar, earthquakes, active fires, satellite imagery, TH/EN switch.
 
 ---
 
+## 2026-09-16 - Session 22: 3D terrain and a forecast timeline, and what I refused to build
+
+He asked for a 3D terrain map with a simulation of water level and flow over hours, days
+and weeks, focused on Thailand.
+
+**What I built:** real 3D terrain, and a timeline that scrubs the forecast.
+- **AWS Terrarium DEM tiles**, keyless, CORS-open, decoded and checked before wiring:
+  a tile over Ubon returns 86-664 m, which is the right country. Same DEM family the
+  gauge terrain profiles already use, so the hills and the low-ground layer draped on
+  them come from the same measurement of the world. Exaggerated 1.6x, because at 1x the
+  Chao Phraya delta in 3D looks exactly like the 2D map, and the delta is the part that
+  floods. Off by default: on a phone in a flood, a flat map that loads beats a pretty
+  one that stutters.
+- **Timeline:** now, +1h, +3h, +6h, +12h recolour each gauge by its own damped level
+  projection; +3d, +7d, +14d, +30d switch to GloFAS flow. The two are labelled
+  differently and drawn with different button styling rather than blended into one
+  scale, because they are different quantities.
+- Forward steps may only **raise** a gauge's level, never lower it, for the same reason
+  the live layer may not: the published score can rest on rain, a tide window or an
+  upstream signal that one gauge's trend line cannot see. Flow steps never reach 5,
+  because 5 means water is over the bank now and a flow multiple three weeks out is not
+  an observation.
+
+**What I did not build, and why.** Not a hydraulic simulation. Water does not spread
+across the ground when the slider moves. Doing that honestly needs a 2D shallow-water
+model, a 30 m DEM, channel cross-sections, roughness and flood defences; what exists here
+is 90 m elevation samples at 25 points around each of a few hundred gauges. This project
+already tried to turn elevation into depth twice and got rivers flowing underground and a
+0.4 m overtopping rendered as 3.4 m of water. A third attempt dressed in 3D would be the
+most convincing wrong answer the project has produced.
+
+**A real bug found on the way.** The Content-Security-Policy `connect-src` never listed
+ThaiWater, NOAA or the Environment Agency, so **the entire opt-in live refresh built two
+sessions ago would have been blocked in the browser** and silently done nothing on the
+deployed site. It was never caught because there is no browser here. Fixed, along with
+adding the DEM host.
+
+**Thailand focus:** terrain coverage topped up **220 -> 468** of 1,117 Thai gauges,
+worst-risk first. The elevation API 429s under load, so the last few batches were
+refused and skipped rather than retried; 649 remain and another run picks them up.
+
+272 tests.
+
+---
+
 ## 2026-09-16 - Session 21: the nice-to-haves, and what they exposed
 
 He asked me to build the improvement list. Two of them found problems rather than just
