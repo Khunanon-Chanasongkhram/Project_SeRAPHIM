@@ -8,7 +8,23 @@ name: ingest
 # because this is a custom workflow deploying an artifact rather than a Jekyll build.
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    # Deliberately NOT "*/15", which fires at :00/:15/:30/:45 - the four most contended
+    # minutes on GitHub, and :00 is the worst minute of the hour. GitHub's own docs warn
+    # that `schedule` is delayed or dropped under load and advise picking another minute.
+    #
+    # Measured on 2026-09-18, after three days of "*/15": GitHub delivered 6.4 runs a day
+    # against the 96 requested, median gap 224 min. Every run succeeded; they simply were
+    # not started. Two things broke as a result, and both are the whole product:
+    #   - the snapshot was routinely older than the 180 min at which the UI dot goes red
+    #   - trends need 3 readings inside a 6 h window (history.py), and a 224 min gap
+    #     yields 2, so time-to-bank was unavailable on 16,238 of 16,245 gauges
+    #
+    # These minutes are off the quarter marks and off every multiple of 5, and avoid :37
+    # which floodhist already uses. Still four an hour: the ask is unchanged, only the
+    # queue we ask from. If delivery is still sparse after a day, the cron alone cannot
+    # fix it and the next step is a self-dispatch chain (needs a PAT; GITHUB_TOKEN is
+    # blocked from re-triggering workflows by design).
+    - cron: "8,23,38,53 * * * *"
   workflow_dispatch: {}
   push:
     branches: [main]

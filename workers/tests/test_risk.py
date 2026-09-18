@@ -25,8 +25,11 @@ from seraphim.history import (  # noqa: E402
     merge_current,
 )
 from seraphim.models import Admin, Forecast, Observation, Station, StationState  # noqa: E402
+from seraphim.models import SourceHealth  # noqa: E402
+from seraphim.publish import MIN_TREND_COVERAGE, build_meta  # noqa: E402
 from seraphim.risk import (  # noqa: E402
     MAX_TTB_HOURS,
+    Risk,
     assess,
     haversine_km,
     rollup,
@@ -421,3 +424,74 @@ class TestArchivePruning(unittest.TestCase):
             prune_archive(root, NOW, keep_hours=48)
             hist = load_history(root, NOW, window_hours=8)
             self.assertGreaterEqual(len(hist.get("t:1", [])), 12)
+
+
+class TestADarkPredictionEngineIsVisible(unittest.TestCase):
+    """The regression this exists for ran unnoticed for three days.
+
+    Between 2026-09-15 and 2026-09-18 GitHub delivered the ingest cron roughly 6 times
+    a day instead of the 96 requested. The archive stopped spanning the 6 h trend
+    window, so no station could be fitted, and time-to-bank - the headline number - was
+    unavailable on 16,238 of 16,245 gauges. Every published health check passed the
+    whole time, because each one measures the readings and none measured what is
+    inferred from them.
+
+    So: a snapshot whose sources are healthy and whose readings are fresh must still
+    announce that it has stopped being able to predict anything.
+    """
+
+    def _risks(self, confidences):
+        return {
+            str(i): Risk(station_id=str(i), level=1, time_to_bank_hr=None,
+                         rate_m_per_hr=None, trend_confidence=c, confidence="fair")
+            for i, c in enumerate(confidences)
+        }
+
+    def _coverage_check(self, confidences):
+        states = [state(sid=str(i)) for i in range(len(confidences))]
+        m = build_meta(states, [SourceHealth(source="t", ok=True)], NOW,
+                       risks=self._risks(confidences))
+        return next((c for c in m["health"]["checks"]
+                     if c["check"] == "prediction_coverage"), None)
+
+    def test_a_starved_archive_is_reported_even_though_the_data_is_fine(self):
+        c = self._coverage_check(["none"] * 20)
+        self.assertEqual(c["status"], "warn")
+        self.assertIn("0%", c["detail"])
+
+    def test_the_detail_names_the_cause_and_the_casualty(self):
+        c = self._coverage_check(["none"] * 20)
+        self.assertIn("trend window", c["detail"])
+        self.assertIn("time-to-bank", c["detail"])
+
+    def test_a_healthy_run_passes(self):
+        c = self._coverage_check(["good", "fair", "poor", "steady"] * 5)
+        self.assertEqual(c["status"], "pass")
+
+    def test_a_flat_river_is_coverage_not_absence(self):
+        """`steady` is a fitted trend on a river that is not moving. Calm weather must
+        never look like a broken pipeline, or this would cry wolf every dry season."""
+        c = self._coverage_check(["steady"] * 20)
+        self.assertEqual(c["status"], "pass")
+
+    def test_oscillating_counts_too(self):
+        """A tidal station that refuses to publish a slope still had enough data to
+        decide that. That is the engine working, not the engine starved."""
+        c = self._coverage_check(["oscillating"] * 20)
+        self.assertEqual(c["status"], "pass")
+
+    def test_the_floor_is_a_floor_not_a_target(self):
+        below = ["good"] + ["none"] * 199        # 0.5%
+        above = ["good"] * 15 + ["none"] * 85    # 15%
+        self.assertLess(1 / 200, MIN_TREND_COVERAGE)
+        self.assertGreater(15 / 100, MIN_TREND_COVERAGE)
+        self.assertEqual(self._coverage_check(below)["status"], "warn")
+        self.assertEqual(self._coverage_check(above)["status"], "pass")
+
+    def test_a_run_with_no_risk_engine_at_all_says_nothing(self):
+        """Callers that publish without risks (fixtures, partial builds) must not be
+        told the prediction engine is broken. Absent is not zero."""
+        m = build_meta([state()], [SourceHealth(source="t", ok=True)], NOW)
+        self.assertIsNone(next((c for c in m["health"]["checks"]
+                                if c["check"] == "prediction_coverage"), None))
+

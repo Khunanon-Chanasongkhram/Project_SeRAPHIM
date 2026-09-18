@@ -2,7 +2,7 @@
 
 Legend: ✅ tested working, keyless · 🔑 needs key/registration · ⚠️ needs legal check · ❓ unverified
 
-Last verified: 2026-09-16
+Last verified: 2026-09-18
 
 ## Tier 1, Thailand core (verified live)
 
@@ -131,6 +131,72 @@ documented rule, so a rate over an assumed Δt would be wrong by up to 6×.
 `https://data.tmd.go.th/api/index1.php`, timed out from here (HTTP 000).
 robots.txt disallows automated collection → **must register for official API access**.
 Use Open-Meteo as the interim rainfall source; TMD is the authoritative upgrade.
+
+### Yala municipal CCTV ✅⚠️⚠️ (probed 2026-09-18)
+`https://yala-cctv.localth.ai/` — five street cameras branded เทศบาลนครยะลา (Yala City
+Municipality), served through a vendor. **Everything below was probed, not read off a
+page.**
+
+| Endpoint | Returns | Notes |
+|---|---|---|
+| `/cameraData.json` | 5 cameras: `id`, `name`, `zone`, `lat`, `lng`, `customerCode`, `deviceCode`, `signal_status` | 1.5 KB, `access-control-allow-origin: *` |
+| `https://gg89f6g289.execute-api.ap-southeast-1.amazonaws.com/stream/hls-url/{customerCode}-{deviceCode}` | AWS Kinesis Video Streams HLS session URL | CORS `*` **on GET**; HEAD returns 403 |
+
+Stream verified end to end: master playlist → media playlist → a 264 KB MPEG-TS fragment
+with valid sync bytes. **H.264, 704x576, 14.96 fps.** No `EXT-X-ENDLIST`, so it is a live
+rolling window, not a recording.
+
+**4 of the 5 are flood infrastructure**, which is why this is here at all:
+
+| Camera | Place | Stream | Nearest gauge |
+|---|---|---|---|
+| `WATER-PUMP-PA-05` | สะพานท่าสาป (river side) | ✅ live | บ้านท่าสาบ, **0.17 km** |
+| `WATER-PUMP-PA-06` | สะพานท่าสาป (municipality side) | ✅ live | บ้านท่าสาบ, **0.21 km** |
+| `WATER-PUMP-PB-02` | ตลาดเมืองใหม่ | ✅ live | 1.76 km, too far to pair |
+| `WATER-PUMP-PC-01` | จารู | ✅ live | 4.87 km, too far to pair |
+| `BaanRom-04` | บ้านร่ม | ❌ **no stream** | 1.73 km, too far to pair |
+
+The two Tha Sap cameras point at the bridge the gauge บ้านท่าสาบ measures. That is the
+first thing in this project that lets a reader *look at the river* instead of comparing
+one model with another.
+
+### ⚠️⚠️ `signal_status` is wrong, in the same way `situation_level` is wrong
+All five cameras report `signal_status: 1`. `BaanRom-04` has no stream: the mint endpoint
+returns `ResourceNotFoundException: No fragments found in the stream`. The source's own
+status field is unreliable exactly where it matters, which is the ThaiWater
+`situation_level` lesson again (null on 302 of 306 overtopped stations).
+
+**Consequence:** `signal_status` is never read and never published. Liveness is measured
+by minting a real session, and published as `stream_ok` with `stream_checked_at`. A
+failure to *check* is `null`, never `false` — reporting our own outage as the
+municipality's would be a false report about public safety equipment.
+
+### ⚠️ The Lambda reports failures inside an HTTP 200
+The mint endpoint returns 200 with `{"errorType": ..., "errorMessage": ..., "stackTrace": [...]}`
+on failure, and on success wraps the payload as a **JSON string** in `body`. Neither the
+status code nor the outer object can be trusted; both have to be unwrapped. It also leaks
+a full Python stack trace, so this is not a hardened API.
+
+### ⚠️⚠️ No licence, no terms, no named owner
+Probed: there is **no robots.txt and no terms page** — every path (`/robots.txt`,
+`/terms`) returns the same 38,984-byte single-page app. The `localth.ai` apex **does not
+resolve** (HTTP 000). The page carries no owner, credit or copyright anywhere.
+
+This is weaker footing than ThaiWater, whose terms are also unconfirmed but which at
+least has HII to ask. The layer publishes `licence: "unknown"`, the map credit line says
+"no stated licence", and the popup repeats it. **Find a named owner before promoting
+this anywhere.**
+
+### ⚠️ Thai PDPA
+Street CCTV shows identifiable people and vehicles, which is personal data. The operator
+publishes these feeds openly and unauthenticated. This project does not copy, record,
+re-host or cache a single frame: the snapshot carries only `customer_code`/`device_code`,
+the browser mints its own session on an explicit click, and the service worker skips
+cross-origin requests entirely so no frame can reach our cache. That keeps the operator
+the controller. **It is not a substitute for permission.**
+
+Session URLs carry a `SessionToken` and expire, so none is ever written into a snapshot:
+one baked into a file a CDN serves for 15 minutes is dead before most people load it.
 
 ## Tier 2, Global backbone (verified live, keyless, no registration)
 

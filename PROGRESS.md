@@ -15,15 +15,33 @@ reservoirs**, all fetched live.
 Fixed 2026-09-16, see the session entry: `min_bank: 0` is ThaiWater's "not published"
 sentinel, not a bank at sea level. Anyone who saw the map before this fix saw a national
 emergency that was not happening.
-**356 tests.** Live: https://khunanon-chanasongkhram.github.io/Project_SeRAPHIM/
+**386 tests.** Live: https://khunanon-chanasongkhram.github.io/Project_SeRAPHIM/
 
 **Flood history is live for Thailand only.** 246 of ~7,800 forecast grid cells carry a
 12-year GloFAS flow climatology. The rest of the world correctly says it has not been
 measured there yet. The `flood history` workflow tops up ~300 cells a day; Thailand
 finishes in about one more run, the world in about a month.
 
-**Next action:** push. Pushing also triggers a deploy, which the site needs. Then let
-the daily `flood history` workflow run at least once and check its step summary.
+⚠️ **Time-to-bank has been off nationwide since launch, and the cause is the cron.**
+Measured 2026-09-18: GitHub delivers the ingest schedule about **6.4 times a day against
+the 96 requested**, median gap **224 min**. Every run succeeds; they are simply not
+started. That single fact caused both visible symptoms:
+- the snapshot is routinely older than the 180 min at which the UI dot goes **red**
+- a trend needs 3 readings inside a 6 h window, and a 224 min gap yields 2, so
+  `with_time_to_bank` was **0** and `trend_confidence` was `none` on 16,238 of 16,245
+  gauges — for three days, with every health check passing
+
+**Next action:** push, then **come back in a day and re-measure delivery** (the one-liner
+is in the Session 25 entry). The cron minutes are now off GitHub's congested marks, which
+is the documented lever and the only free one. If delivery is still sparse, the cron alone
+cannot fix it and the next step is a self-dispatch chain — that needs a PAT, because
+`GITHUB_TOKEN` is blocked from re-triggering workflows by design.
+
+**Yala street cameras are live**, and they are the first thing here that lets a reader
+look at the river rather than compare one model with another. Two of the five sit
+**170 m and 210 m** from the ThaiWater gauge บ้านท่าสาบ and point at the bridge it
+measures. 4 of 5 stream; `BaanRom-04` is dark while claiming otherwise. ⚠️ **The feed
+has no licence, no terms and no named owner** — find one before promoting this anywhere.
 
 **Google Flood Hub is built but dark.** It needs an API key and access is waitlisted
 (https://developers.google.com/flood-forecasting). Once you have one: set it as the
@@ -78,6 +96,152 @@ account except GitHub. The SOS component was removed before deploy and lives on 
 Beyond the plan: validation/backtesting, per-country data splitting, world radio,
 rain radar, earthquakes, active fires, satellite imagery, TH/EN switch, flood
 climatology and reported past floods.
+
+---
+
+## 2026-09-18 - Session 26: a camera pointed at the gauge
+
+He asked to add `https://yala-cctv.localth.ai/`. It is in, and the reason it earns its
+place is narrower and better than "we have CCTV now".
+
+**Two of the five cameras are 170 m and 210 m from the gauge บ้านท่าสาบ, and are named
+สะพานท่าสาป — Tha Sap Bridge, river side and municipality side.** They point at the
+bridge that gauge measures. Every cross-check this project has ever had is one model
+against another; this is the first one that is a picture. So the layer publishes each
+camera's nearest gauge, and refuses to pair beyond 1 km: จารู is 4.87 km from บ้านท่าสาบ
+and offering it as a check on that gauge would invite belief in a picture of different
+water.
+
+**`signal_status` is a lie, and finding that took one request.** All five cameras report
+`signal_status: 1`. `BaanRom-04` has no stream at all — the mint endpoint answers
+`ResourceNotFoundException: No fragments found in the stream`. This is `situation_level`
+again, which is null on 302 of 306 overtopped stations: the source's own status field is
+unreliable exactly where it matters. So `signal_status` is never read and never
+published. Liveness is **measured** by minting a real session, and a failure to *check*
+is `null`, never `false` — rendering our own outage as the municipality's would be a
+false report about public safety equipment.
+
+**Probed before trusting, per rule 1.** Camera list and mint endpoint both send
+`access-control-allow-origin: *` on GET (the HEAD 403 is a red herring). Followed the
+whole chain to a 264 KB MPEG-TS fragment with valid sync bytes: H.264, 704x576,
+14.96 fps, no `EXT-X-ENDLIST`, so a live rolling window rather than a recording. The
+vendor's Lambda reports failures *inside* an HTTP 200 and wraps the payload as a JSON
+string, so neither the status nor the outer object can be trusted; both are unwrapped,
+in the worker and again in the browser.
+
+**Not a SourceAdapter**, same decision as Google Flood Hub: a camera yields no water
+level, and forcing one into `Observation` would mean inventing a level. It is
+`cameras.geojson`, beside the gauges, never merged into them.
+
+**No session URL is ever written to a snapshot.** They carry a `SessionToken` and
+expire; one baked into a file the CDN serves for 15 minutes is dead before most people
+load it, and a dead player is indistinguishable from a dead camera. The snapshot carries
+`customer_code`/`device_code`; the browser mints its own on click. There is a test that
+greps the published layer for `SessionToken`.
+
+**Video loads only on an explicit press of play**, which is also the only moment a third
+party enters the page. hls.js (414 KB) is lazily loaded for the same reason; Safari uses
+native HLS and never fetches it. Re-reading the player found three real leaks — a fatal
+error replacing the `<video>` without destroying the `Hls` attached to it, a second press
+orphaning the first instance, and the Safari path never being torn down. All three left
+a CCTV stream running in the background after the reader had moved on. One `stopCamera`
+now covers close, error and replay.
+
+**Politeness budget, not a freshness one.** The layer is cached an hour because probing
+liveness mints a real Kinesis session on somebody else's AWS account, and we have no
+relationship with them and no licence to point at. An hour is ~120 mints a day instead
+of ~480 on a 15-minute build.
+
+⚠️ **No licence, no terms, no named owner.** Probed: no robots.txt and no terms page
+(every path returns the same SPA), the `localth.ai` apex does not resolve, and the page
+carries no owner or copyright. That is weaker footing than ThaiWater, whose terms are
+also unconfirmed but which at least has HII to ask. Published as `licence: "unknown"`,
+credited in the map attribution as "no stated licence", and repeated in the popup.
+**Find a named owner before promoting this anywhere.**
+
+⚠️ **PDPA.** Street CCTV is personal data. Nothing is copied, recorded, re-hosted or
+cached: the service worker now skips cross-origin entirely, so no frame can reach our
+cache. That keeps the operator the controller and is *not* a substitute for permission.
+The same service-worker change fixed a pre-existing bug, where a failed cross-origin
+asset fell back to returning `./index.html`.
+
+**`web/_headers` was inert and is now accurate.** It is a Cloudflare file; the site is on
+GitHub Pages, and `ingest.yml` copies only `web/*.html` and `web/*.js`, so its CSP has
+never been enforced. Left in place but corrected — `media-src` had to be named, because
+it otherwise falls back to `default-src 'self'` and forbids video outright — so that
+moving back behind Cloudflare does not silently break the feature.
+
+386 tests. Client changes are `check_js.py`-clean and were read twice, which is what
+found the three teardown leaks; **there is still no browser here, so open the map and
+press play on a Tha Sap camera before trusting it.**
+
+---
+
+## 2026-09-18 - Session 25: the cron was never running
+
+He said the red dot told him the data was not up to date, and asked for the data **and
+the prediction** to auto-update. Both were broken, by the same single cause, and it was
+not the code.
+
+**GitHub was delivering the schedule 6.4 times a day against the 96 asked for.** Median
+gap 224 minutes. All 26 runs succeeded — there was nothing failing to find, which is why
+this survived three days. `*/15` fires at :00/:15/:30/:45, the four most contended minutes
+on GitHub, and GitHub's own docs warn that `schedule` is delayed or dropped under load and
+advise picking another minute.
+
+**That one fact explains both symptoms**, which is worth stating because they looked like
+two bugs:
+- the dot goes red past 180 min, and the median gap is 224 min, so it was red **by
+  construction**, more often than not
+- trends need 3 readings in a 6 h window (`history.py`), and a 224 min gap yields 2, so
+  time-to-bank — the headline number — was unavailable on 16,238 of 16,245 gauges
+
+Ruled out before touching anything: the Actions cache is healthy (the archive grows
+2 → 20 MB across runs, so history *is* surviving), and runs take 1-4 minutes, so nothing
+is resource-bound. Cadence was the whole story.
+
+**Fixed:** cron moved to `8,23,38,53` — off the quarter marks, off every multiple of 5,
+and off :37 which `floodhist` already uses. Still four an hour: the ask is unchanged, only
+the queue we ask from. He chose this over a PAT-backed self-dispatch chain, which is the
+real fix if this is not enough. Predictions are only *just* below threshold — gaps of
+≤3 h restore them — so a modest improvement is enough to bring time-to-bank back.
+
+**The part that matters more than the cron.** Nothing anywhere said the prediction engine
+had stopped. `station_count`, `sources`, `data_freshness` and `reporting_rate` all passed
+throughout, because every one of them measures the *readings* and none measured what is
+inferred from them. Added a `prediction_coverage` check: the fraction of gauges carrying a
+fitted trend of any tier, floor 10%, severity `warn`. Verified on a real build — every
+other check passes and this one alone fires:
+
+    warn  prediction_coverage: a fitted trend on 0% of gauges (expect >= 10%); below
+    this the archive no longer spans the 6 h trend window, so rate of rise and
+    time-to-bank are unavailable
+
+Deliberately a floor, not a target: at healthy cadence it sits near 95%, and 10% cannot be
+reached by calm weather, because a flat river still fits — as `steady`. `steady` and
+`oscillating` count as coverage, and there are tests for both, or the check would cry wolf
+every dry season. `warn` not `fail`, because the data being served is still true and a
+cold start is briefly indistinguishable from the fault.
+
+**Re-measure delivery with this**, which needs no auth on a public repo:
+
+```bash
+curl -s "https://api.github.com/repos/Khunanon-Chanasongkhram/Project_SeRAPHIM/actions/workflows/ingest.yml/runs?per_page=30" \
+  | python3 -c "
+import json,sys,datetime
+ts=sorted(datetime.datetime.fromisoformat(r['run_started_at'].replace('Z','+00:00'))
+          for r in json.load(sys.stdin)['workflow_runs'] if r['event']=='schedule')
+g=[(b-a).total_seconds()/60 for a,b in zip(ts,ts[1:])]
+print('gaps:',[round(x) for x in g]); print('median',round(sorted(g)[len(g)//2]),'min')"
+```
+
+**Two things found but not changed**, both deliberate:
+- `_risk_counts` publishes only `good/fair/poor/none`, so `steady` and `oscillating` are
+  dropped from `meta.json` and the tiers do not sum to the station count (16,238 vs
+  16,245). The check above counts them correctly; the published summary still hides them.
+- `openmeteo_spot_weather` was failing on the live snapshot, unrelated to any of this.
+
+363 tests.
 
 ---
 

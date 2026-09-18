@@ -13,7 +13,7 @@ const SHELL = ["./index.html", "./fish.html"];
 // Snapshots are cached too, so a failed origin degrades to last-known data rather
 // than a blank page. During a flood, yesterday's water levels clearly labelled as
 // old beat nothing at all.
-const DATA = /\/(index\.json|stations-[a-z]{2}\.geojson|areas-[a-z]{2}\.json|stations\.geojson|meta\.json|tide\.json|areas\.json|fishing\.json|provinces\.geojson|quakes\.geojson|fires\.geojson|validation\.json|events\.geojson|terrain\.geojson|dams\.geojson|floods-past\.geojson|floods-google\.geojson)$/;
+const DATA = /\/(index\.json|stations-[a-z]{2}\.geojson|areas-[a-z]{2}\.json|stations\.geojson|meta\.json|tide\.json|areas\.json|fishing\.json|provinces\.geojson|quakes\.geojson|fires\.geojson|validation\.json|events\.geojson|terrain\.geojson|dams\.geojson|floods-past\.geojson|floods-google\.geojson|cameras\.geojson)$/;
 
 self.addEventListener("install", (e) => {
   // Cache what we can; a single failed asset must not abort the whole install and
@@ -34,6 +34,13 @@ self.addEventListener("fetch", (e) => {
   if (request.method !== "GET") return;               // never cache submissions
   const url = new URL(request.url);
   if (url.pathname.includes("/api/")) return;         // API is always live
+
+  // Cross-origin goes straight to the network. It was never cached anyway (see the
+  // origin test below), and now that a camera can stream video, routing someone
+  // else's CCTV frames through our fetch handler buys nothing and guarantees no
+  // frame can ever reach our cache. It also fixes a real bug: the catch below falls
+  // back to ./index.html, so a failed basemap tile used to resolve to a page of HTML.
+  if (url.origin !== location.origin) return;
 
   // The page itself must revalidate every time. GitHub Pages serves it with
   // `cache-control: max-age=600`, so without this a deploy is invisible for ten

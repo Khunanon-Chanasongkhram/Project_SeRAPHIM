@@ -179,6 +179,13 @@
   .why li{font-size:11.5px;margin:3px 0 3px -14px;line-height:1.4}
   .why ul{margin:0;padding-left:16px}
   .conf{font-size:10px;color:var(--faint);margin-top:6px}
+  /* The play button is the moment a third party enters the page, so it is an
+     explicit control rather than an autoplaying frame. */
+  .cctvbox{margin-top:8px;min-height:32px}
+  .cctvplay{width:100%;padding:7px 10px;font:inherit;font-size:12px;font-weight:600;
+    color:#1a1a1a;background:#eab308;border:0;border-radius:6px;cursor:pointer}
+  .cctvplay:hover{background:#facc15}
+  .cctvbox video{max-height:240px}
 
   .chk{display:flex;align-items:center;gap:9px;padding:8px;border-radius:9px;cursor:pointer;
     font-size:12.5px;user-select:none}
@@ -551,6 +558,14 @@ const I18N={
     gfh_note:"เป็นการคาดการณ์ของ Google ซึ่งเป็นอิสระจากค่าที่วัดได้ในโครงการนี้ แสดงคู่กันเพื่อให้เปรียบเทียบได้ ไม่ได้นำมารวมเป็นค่าเดียว",
     gfh_nokey:"ไม่มีชั้นข้อมูล Google Flood Hub เพราะยังไม่ได้ตั้งค่าคีย์ API",
     gfh_nolevel:"ไม่มีค่าระดับน้ำ เป็นระดับความรุนแรงกับแนวโน้มเท่านั้น",
+    cctv:"กล้อง CCTV", cctv_s:"กล้องเทศบาลนครยะลา",
+    cctv_play:"ดูภาพสด", cctv_live:"มีสัญญาณ", cctv_dark:"ไม่มีสัญญาณ",
+    cctv_unknown:"ตรวจสอบสัญญาณไม่ได้", cctv_checked:"ตรวจสัญญาณเมื่อ",
+    cctv_gauge:"สถานีวัดใกล้เคียง", cctv_away:"ห่าง",
+    cctv_loading:"กำลังเชื่อมต่อ…", cctv_fail:"เล่นภาพสดไม่ได้ กล้องอาจไม่มีสัญญาณ",
+    cctv_check:"ใช้ดูสภาพน้ำจริงเทียบกับค่าที่สถานีวัดรายงาน",
+    cctv_third:"วิดีโอโหลดจากผู้ให้บริการโดยตรงเมื่อกดดู โครงการนี้ไม่ได้บันทึกหรือเก็บภาพไว้",
+    cctv_nolicence:"ไม่พบเงื่อนไขการใช้งานหรือผู้ถือสิทธิ์ของภาพชุดนี้",
     loading:"กำลังโหลดข้อมูล", dismiss:"ปิด", tl_play:"เล่นภาพคาดการณ์", tl_pause:"หยุด",
     live_first:"ข้อมูลสดเปิดอยู่ เบราว์เซอร์ของคุณจะติดต่อกับ",
     live_first2:"โดยตรงทุก 2 นาที แตะเพื่อปิดได้ตลอดเวลา",
@@ -647,6 +662,14 @@ const I18N={
     gfh_note:"Google's own forecast, independent of this project's gauge readings. Shown beside them so the two can be compared, never merged into one number.",
     gfh_nokey:"No Google Flood Hub layer: an API key is not configured.",
     gfh_nolevel:"Carries no water level: severity and trend only.",
+    cctv:"Street cameras", cctv_s:"Yala municipal CCTV",
+    cctv_play:"Watch live", cctv_live:"signal", cctv_dark:"no signal",
+    cctv_unknown:"signal could not be checked", cctv_checked:"signal checked",
+    cctv_gauge:"nearest gauge", cctv_away:"away",
+    cctv_loading:"connecting…", cctv_fail:"Stream unavailable. The camera may be dark.",
+    cctv_check:"Look at the river and check it against what the gauge reports.",
+    cctv_third:"Video loads straight from the operator when you press play. Nothing is recorded or stored by this project.",
+    cctv_nolicence:"No licence or named owner could be found for this feed.",
     loading:"Loading data", dismiss:"Dismiss", tl_play:"Play the forecast", tl_pause:"Pause",
     live_first:"Live data is on. Your browser contacts",
     live_first2:"directly every 2 minutes. Tap to turn it off at any time.",
@@ -664,7 +687,7 @@ const loc=(o,base)=> LANG==="th" ? (o[base+"_th"] ?? o[base] ?? "") : (o[base] ?
 /* ------------------------------------------------------------------ data */
 const BASE=(window.SERAPHIM&&window.SERAPHIM.dataBase)||"../data/out";
 const RISK={1:"#2f81f7",2:"#d99e0b",3:"#e8590c",4:"#e5484d",5:"#ff2d55"};
-let gj=null, meta=null, tide=null, areas=null, provinces=null, quakes=null, fires=null, events=null, terrain=null, dams=null, pastFloods=null, gfh=null;
+let gj=null, meta=null, tide=null, areas=null, provinces=null, quakes=null, fires=null, events=null, terrain=null, dams=null, pastFloods=null, gfh=null, cameras=null;
 let radarFrames=[], radarIdx=0, radarTimer=null;
 let radioAll=[], radioNear=[], radioIdx=0, audio=null;
 let map=null, mode="risk", basemap="satellite";
@@ -678,7 +701,10 @@ let map=null, mode="risk", basemap="satellite";
  *  `floodprone` is off by default on purpose, even though it is new. It is about
  *  history, not about today, and a permanent wash of colour over the places that
  *  always flood would compete with the gauges that are flooding now. */
-const shown={provinces:true, stations:true, tide:true, dams:true,
+/*  `cctv` is on by default, but only the markers are: pressing play is what contacts
+ *  the operator, so an ordinary map view still touches nobody. The layer exists in one
+ *  Thai municipality and is simply absent everywhere else, the same as `dams`. */
+const shown={provinces:true, stations:true, tide:true, dams:true, cctv:true,
              radar:false, quakes:false, fires:false, radio:false, events:false,
              terrain:false, floodprone:false, pastfloods:false, gfh:false, d3:false};
 // Layer visibility is remembered, so a reader who turns the dams off does not get them
@@ -729,6 +755,7 @@ const LAYERS=[
   {id:"floodprone",label:"floodprone", sub:"floodprone_s", colour:"#f97316", optional:true},
   {id:"pastfloods",label:"pastfloods", sub:"pastfloods_s", colour:"#c084fc", optional:true},
   {id:"gfh",       label:"gfh",    sub:"gfh_s",     colour:"#4285f4", optional:true},
+  {id:"cctv",      label:"cctv",   sub:"cctv_s",    colour:"#eab308", optional:true},
   {id:"radar",     label:"radar",  sub:"radar_s",   colour:"#38bdf8"},
   {id:"quakes",    label:"quakes", sub:"quakes_s",  colour:"#f59e0b"},
   {id:"fires",     label:"fires",  sub:"fires_s",   colour:"#f97316", optional:true},
@@ -1122,6 +1149,7 @@ async function load(){
     j("meta.json"), j("quakes.geojson"), j("fires.geojson"), j("events.geojson"),
     j("terrain.geojson"), j("dams.geojson"), j("floods-past.geojson")]);
   gfh = await j("floods-google.geojson");
+  cameras = await j("cameras.geojson");
   if(country==="th"||loaded.th){
     [tide,provinces]=await Promise.all([j("tide.json"), j("provinces.geojson")]);
   }
@@ -1376,6 +1404,27 @@ function addHazardLayers(){
     map.on("mouseleave","gfh-ring",()=>map.getCanvas().style.cursor="");
   }
 
+  // Street cameras. Drawn as a small square so they never read as a gauge: a camera
+  // measures nothing, and the whole point of the layer is that it is a *different kind
+  // of evidence* sitting next to the numbers rather than another number.
+  if(cameras?.features?.length && !map.getSource("cctv")){
+    map.addSource("cctv",{type:"geojson",data:cameras});
+    map.addLayer({id:"cctv-c",type:"circle",source:"cctv",paint:{
+      "circle-color":"#eab308",
+      "circle-radius":["interpolate",["linear"],["zoom"],7,3,11,6,15,9],
+      // Liveness is the *measured* stream_ok, never the source's signal_status, which
+      // claims all five are up while one has no stream at all. A camera we could not
+      // check (null) is drawn like a live one rather than like a dark one: reporting
+      // our own outage as the municipality's would be the wrong way round.
+      "circle-opacity":["case",["==",["get","stream_ok"],false],.3,.95],
+      "circle-stroke-width":1.4,
+      "circle-stroke-color":["case",["==",["get","stream_ok"],false],
+        "rgba(255,255,255,.35)","#fff"]}});
+    map.on("click","cctv-c",e=>cameraPopup(e));
+    map.on("mouseenter","cctv-c",()=>map.getCanvas().style.cursor="pointer");
+    map.on("mouseleave","cctv-c",()=>map.getCanvas().style.cursor="");
+  }
+
   if(terrain && !map.getSource("terrain")){
     map.addSource("terrain",{type:"geojson",data:terrain});
     // Under the gauges: this is context for a spilling channel, not the alert itself.
@@ -1616,6 +1665,7 @@ function applyVisibility(){
   set("past-c",shown.pastfloods);
   set("gfh-c",shown.gfh);
   set("gfh-ring",shown.gfh);
+  set("cctv-c",shown.cctv);
   $("radio").classList.toggle("show",shown.radio);
   if(shown.radio&&!radioNear.length) refreshDial();
   if(!shown.radio&&audio){ audio.pause(); $("rplay").textContent="▶";
@@ -2121,6 +2171,126 @@ function forecastRows(p){
 /** Google's forecast for one point. Deliberately never shows a water level, because
  *  the API does not publish one here and inventing one is how this project's worst
  *  possible bug would look. */
+/* ---------------------------------------------------------------- cameras
+ *
+ * Video is the one thing on this map that is fetched from somebody else's origin, and
+ * it happens only when a reader presses play. Until then a camera is a marker and no
+ * request leaves for the operator. hls.js is lazily loaded for the same reason: 414 KB
+ * that most visitors never need has no business in the critical path of a flood map.
+ */
+const HLS_JS="https://unpkg.com/hls.js@1.5.20/dist/hls.min.js";
+let hlsLoading=null;
+
+function loadHls(){
+  if(window.Hls) return Promise.resolve(window.Hls);
+  if(hlsLoading) return hlsLoading;
+  hlsLoading=new Promise((resolve,reject)=>{
+    const el=document.createElement("script");
+    el.src=HLS_JS;
+    el.onload=()=>resolve(window.Hls);
+    el.onerror=()=>{ hlsLoading=null; reject(new Error("hls.js failed to load")); };
+    document.head.appendChild(el);
+  });
+  return hlsLoading;
+}
+
+/** Stop whatever this popup is playing and let go of it.
+ *
+ *  Called on close, on a fatal error, and before a second press of play. All three
+ *  matter: an HLS instance whose <video> has been thrown away carries on fetching
+ *  segments, so without this a reader who closes a popup, or presses play twice, keeps
+ *  pulling a CCTV stream they can no longer see. */
+function stopCamera(root){
+  if(!root) return;
+  if(root._hls){ try{ root._hls.destroy(); }catch(err){} root._hls=null; }
+  const v=root.querySelector(".cctvbox video");
+  // Safari plays HLS natively, so there is no Hls instance to destroy and the
+  // <video> has to be stopped directly.
+  if(v){ try{ v.pause(); v.removeAttribute("src"); v.load(); }catch(err){} }
+}
+
+/** Mint a session and attach it. Session URLs carry a token and expire, which is why
+ *  none of this can live in the snapshot: the browser asks for its own, at play time. */
+async function playCamera(root,props){
+  const box=root.querySelector(".cctvbox");
+  if(!box) return;
+  stopCamera(root);
+  box.innerHTML=`<div class="conf">${esc(t("cctv_loading"))}</div>`;
+  const tmpl=(cameras&&cameras.stream_url_template)
+    || "https://gg89f6g289.execute-api.ap-southeast-1.amazonaws.com/stream/hls-url/{key}";
+  try{
+    const res=await fetch(tmpl.replace("{key}",encodeURIComponent(props.stream_key)));
+    const raw=await res.json();
+    // The vendor's Lambda reports its own failures inside a 200 and wraps the payload
+    // as a JSON string, so neither the status nor the outer object can be trusted.
+    let body=raw&&raw.body;
+    if(typeof body==="string") body=JSON.parse(body);
+    const url=body&&body.live_stream_url;
+    if(!url) throw new Error("no stream");
+
+    const v=document.createElement("video");
+    v.controls=true; v.autoplay=true; v.muted=true; v.playsInline=true;
+    v.setAttribute("playsinline","");
+    v.style.cssText="width:100%;border-radius:6px;background:#000;display:block";
+    box.innerHTML="";
+    box.appendChild(v);
+
+    if(v.canPlayType("application/vnd.apple.mpegurl")){
+      v.src=url;                       // Safari and iOS play HLS natively.
+    }else{
+      const Hls=await loadHls();
+      if(!Hls||!Hls.isSupported()) throw new Error("hls unsupported");
+      const h=new Hls({lowLatencyMode:true});
+      h.on(Hls.Events.ERROR,(_evt,data)=>{
+        if(!data||!data.fatal) return;
+        // Tear down before replacing the box: the <video> this is attached to is
+        // about to be removed, and a detached Hls keeps downloading regardless.
+        stopCamera(root);
+        box.innerHTML=`<div class="conf">${esc(t("cctv_fail"))}</div>`;
+      });
+      h.loadSource(url);
+      h.attachMedia(v);
+      // Kept on the popup element so closing it can tear the stream down. Without
+      // this an abandoned popup keeps pulling video in the background, which costs
+      // the reader bandwidth and keeps a camera running that nobody is watching.
+      root._hls=h;
+    }
+  }catch(err){
+    stopCamera(root);
+    box.innerHTML=`<div class="conf">${esc(t("cctv_fail"))}</div>`;
+  }
+}
+
+function cameraPopup(e){
+  const p=e.features[0].properties;
+  const ok=p.stream_ok;
+  const live=(ok===true||ok==="true");
+  const dark=(ok===false||ok==="false");
+  const when=(iso)=>iso?new Date(iso).toLocaleString(LANG==="th"?"th-TH":"en-GB",
+    {day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}):null;
+  const row=(lbl,val)=>val==null||val===""?"":
+    `<div class="pr"><span>${esc(lbl)}</span><span class="num">${esc(val)}</span></div>`;
+  const status=live?t("cctv_live"):dark?t("cctv_dark"):t("cctv_unknown");
+  const gauge=p.gauge_id?`${p.gauge_name} · ${Number(p.gauge_km).toFixed(2)} km ${t("cctv_away")}`:null;
+
+  const pop=new maplibregl.Popup({maxWidth:"340px"}).setLngLat(e.lngLat).setHTML(`
+    <div class="pt" style="background:#eab308">${esc(t("cctv"))}</div>
+    <div class="ph">${esc(p.name)}</div>
+    <div class="psub">${esc(p.zone||"")} · ${esc(status)}</div>
+    ${row(t("cctv_checked"), when(p.stream_checked_at))}
+    ${gauge?row(t("cctv_gauge"), gauge):""}
+    ${gauge?`<div class="conf">${esc(t("cctv_check"))}</div>`:""}
+    <div class="cctvbox"><button type="button" class="cctvplay">${
+      esc(t("cctv_play"))}</button></div>
+    <div class="conf">${esc(t("cctv_third"))}</div>
+    <div class="conf">${esc(t("cctv_nolicence"))}</div>`).addTo(map);
+
+  const root=pop.getElement();
+  const btn=root&&root.querySelector(".cctvplay");
+  if(btn) btn.onclick=()=>playCamera(root,p);
+  pop.on("close",()=>stopCamera(root));
+}
+
 function gfhPopup(e){
   const p=e.features[0].properties;
   const lv=Number(p.level)||null;
@@ -2188,6 +2358,10 @@ function renderChrome(){
   const have={fires:!!fires, terrain:!!terrain, dams:!!dams,
               pastfloods:!!pastFloods?.features?.length,
               gfh:!!gfh?.features?.length,
+              // Five cameras in one Thai municipality. The toggle appears only where
+              // the layer has something to draw, so it is not a dead tick box in
+              // front of a reader in Hull or Houston.
+              cctv:!!cameras?.features?.length,
               // Offered only where history actually exists *for the country on screen*.
               // A global check would put a toggle in front of an American reader that
               // draws nothing, which reads as "no flood-prone ground here" rather than
@@ -2428,6 +2602,9 @@ function setBasemap(name){
     customAttribution:"ThaiWater (HII) · UK Environment Agency (OGL) · "
       +"Rijkswaterstaat · NOAA/NWS · Open-Meteo (CC-BY 4.0) · USGS · RainViewer · Radio Browser · "
       +"Google Flood Hub (CC-BY 4.0) · GDACS · "
+      // Named with "no stated licence" rather than left off, because an attribution
+      // line that lists only the sources with clean terms quietly implies they all do.
+      +"Yala City Municipality CCTV (no stated licence) · "
       +"layers inspired by gods-eye-view (MIT) · SeRAPHIM AGPL-3.0"}));
   map.addControl(new maplibregl.NavigationControl({showCompass:false}),"bottom-right");
   map.addControl(new maplibregl.GeolocateControl({trackUserLocation:true}),"bottom-right");

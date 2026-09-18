@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from seraphim.forecast import LEAD_HOURS as FORECAST_LEADS, project
+from seraphim.history import DEFAULT_WINDOW_HOURS as TREND_WINDOW_HOURS
 from seraphim.models import SourceHealth, StationState
 
 #: Bump when the output shape changes in a way clients must notice.
@@ -46,7 +47,15 @@ def _wants_reasons(state: StationState, level: int | None) -> bool:
 MIN_EXPECTED_STATIONS = 800        # ~1,121 normally; a big drop means a silent break
 MAX_MEDIAN_AGE_MINUTES = 180.0
 MAX_STALE_FRACTION = 0.60
-MAX_SNAPSHOT_AGE_MINUTES = 90.0    # cron is every 30 min; 3 misses is a real fault
+MAX_SNAPSHOT_AGE_MINUTES = 90.0    # cron asks for 4 an hour; 6 misses is a real fault
+
+#: Fraction of gauges that must carry a *fitted* trend, of any tier, before the
+#: prediction engine counts as working. This is deliberately a floor and not a target:
+#: at a healthy cadence it sits around 95%, and the only thing that drives it near zero
+#: is an archive that no longer spans the trend window. 10% cannot be reached by calm
+#: weather - a flat river still fits, as `steady` - so tripping this means the pipeline
+#: stopped feeding the engine, not that the rivers stopped moving.
+MIN_TREND_COVERAGE = 0.10
 
 
 #: Station properties that must survive even when null, because the MapLibre *station*
@@ -420,7 +429,7 @@ def build_meta(
         "health": build_health(states, health, {
             "stations": len(states),
             "stale": sum(1 for s in states if s.is_stale),
-        }),
+        }, risks),
         "data_age_minutes": {
             "min": round(min(ages), 1) if ages else None,
             "median": round(sorted(ages)[len(ages) // 2], 1) if ages else None,
@@ -477,7 +486,7 @@ def _flood_history_headline(states) -> dict:
     }
 
 
-def build_health(states, health, meta_counts: dict) -> dict:
+def build_health(states, health, meta_counts: dict, risks: dict | None = None) -> dict:
     """An explicit verdict, not a pile of numbers.
 
     The failure this guards against is the quiet one: the pipeline keeps running, the
@@ -513,6 +522,29 @@ def build_health(states, health, meta_counts: dict) -> dict:
     check("reporting_rate", stale_fraction <= MAX_STALE_FRACTION,
           f"{stale_fraction:.0%} of stations not reporting (limit {MAX_STALE_FRACTION:.0%})",
           severity="warn")
+
+    # The prediction engine can go dark while every check above still passes: the
+    # sources stay up, the readings stay fresh, the map keeps rendering, and
+    # time-to-bank quietly stops existing. That is exactly what happened between
+    # 2026-09-15 and 2026-09-18. GitHub delivered the cron about 6 times a day instead
+    # of 96, the archive stopped spanning the 6 h trend window, and the headline
+    # feature was unavailable on 16,238 of 16,245 gauges for three days with nothing
+    # anywhere saying so. Every other check measures the *readings*; none measured
+    # what we infer from them, so nothing noticed.
+    #
+    # Coverage is the outcome a reader would care about, so coverage is what is
+    # checked, rather than a proxy like archive file count. Warn, not fail: the data
+    # being served is still true, an inference on top of it is missing - and a genuine
+    # cold start, with an empty archive, is briefly indistinguishable from the fault.
+    if risks:
+        fitted = sum(1 for r in risks.values() if r.trend_confidence != "none")
+        coverage = fitted / len(risks)
+        check("prediction_coverage", coverage >= MIN_TREND_COVERAGE,
+              f"a fitted trend on {coverage:.0%} of gauges "
+              f"(expect >= {MIN_TREND_COVERAGE:.0%}); below this the archive no longer "
+              f"spans the {TREND_WINDOW_HOURS:g} h trend window, so rate of "
+              f"rise and time-to-bank are unavailable",
+              severity="warn")
 
     worst = "pass"
     for c in checks:

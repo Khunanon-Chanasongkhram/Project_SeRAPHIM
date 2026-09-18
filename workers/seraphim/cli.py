@@ -19,6 +19,7 @@ from seraphim.history import fit_trend, load_history, merge_current
 from seraphim.adapters.hazards import (
     fetch_earthquakes, fetch_events, fetch_fires, fetch_past_floods)
 from seraphim.adapters.thaidam import fetch_dams
+from seraphim.adapters.cameras import fetch_cameras
 from seraphim.adapters.googlefloods import fetch_google_floods
 from seraphim.adapters.spots import all_spots, fetch_weather
 from seraphim.fishing import build_fishing
@@ -467,6 +468,34 @@ def build(
                 print(f"[google-floods] {gh.stations} flood-status points")
             else:
                 print(f"[google-floods] skipped: {gh.error}")
+
+        # Yala municipal CCTV. Cached for an hour, which is a politeness budget rather
+        # than a freshness one: liveness is measured by minting a real Kinesis session
+        # on someone else's AWS account, and this feed carries no licence and names no
+        # owner to have asked. An hour is ~120 mints a day instead of ~480 on a
+        # 15-minute build. The browser mints its own session on click regardless, so a
+        # camera that comes back between builds still plays; the layer publishes
+        # `stream_checked_at` so the UI can say how old the liveness claim is.
+        hit = cache.load(cache_root, "yala_cctv", 1.0 * refresh_scale)
+        if hit:
+            extra["cameras.geojson"] = hit["data"]
+            print("[cameras] cache hit")
+        else:
+            cams, ch = fetch_cameras(states)
+            health.append(ch)
+            for w in ch.warnings:
+                print(f"[cameras] warning: {w}", file=sys.stderr)
+            if cams:
+                extra["cameras.geojson"] = cams
+                cache.save(cache_root, "yala_cctv", cams)
+                live = sum(1 for f in cams["features"]
+                           if f["properties"]["stream_ok"] is True)
+                paired = sum(1 for f in cams["features"]
+                             if f["properties"]["gauge_id"])
+                print(f"[cameras] {ch.stations} Yala cameras, {live} live, "
+                      f"{paired} paired to a gauge")
+            else:
+                print(f"[cameras] skipped: {ch.error}")
 
         hit = cache.load(cache_root, "fires", 3.0 * refresh_scale)
         if hit:
