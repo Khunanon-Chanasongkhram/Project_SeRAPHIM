@@ -15,7 +15,7 @@ reservoirs**, all fetched live.
 Fixed 2026-09-16, see the session entry: `min_bank: 0` is ThaiWater's "not published"
 sentinel, not a bank at sea level. Anyone who saw the map before this fix saw a national
 emergency that was not happening.
-**386 tests.** Live: https://khunanon-chanasongkhram.github.io/Project_SeRAPHIM/
+**406 tests.** Live: https://khunanon-chanasongkhram.github.io/Project_SeRAPHIM/
 
 **Flood history is live for Thailand only.** 246 of ~7,800 forecast grid cells carry a
 12-year GloFAS flow climatology. The rest of the world correctly says it has not been
@@ -37,11 +37,15 @@ is the documented lever and the only free one. If delivery is still sparse, the 
 cannot fix it and the next step is a self-dispatch chain — that needs a PAT, because
 `GITHUB_TOKEN` is blocked from re-triggering workflows by design.
 
-**Yala street cameras are live**, and they are the first thing here that lets a reader
-look at the river rather than compare one model with another. Two of the five sit
-**170 m and 210 m** from the ThaiWater gauge บ้านท่าสาบ and point at the bridge it
-measures. 4 of 5 stream; `BaanRom-04` is dark while claiming otherwise. ⚠️ **The feed
-has no licence, no terms and no named owner** — find one before promoting this anywhere.
+**Street cameras are live in two cities: Hat Yai and Yala.** 23 cameras, 9 of them
+within 1 km of a ThaiWater gauge, several within 20-30 m and sitting on the floodgates
+those gauges measure. This is the first thing here that lets a reader look at the water
+rather than compare one model with another.
+- **Hat Yai** (18 published, 17 under 2 min old) is the better source on every axis:
+  **CC BY-SA 3.0**, a named foundation (SCCCRN) with an address, and `robots.txt` that
+  permits what we use. JPEG stills with real timestamps.
+- **Yala** (5 cameras, 4 streaming) is live HLS video. ⚠️ **No licence, no terms and no
+  named owner** — find one before promoting that half anywhere.
 
 **Google Flood Hub is built but dark.** It needs an API key and access is waitlisted
 (https://developers.google.com/flood-forecasting). Once you have one: set it as the
@@ -96,6 +100,148 @@ account except GitHub. The SOS component was removed before deploy and lives on 
 Beyond the plan: validation/backtesting, per-country data splitting, world radio,
 rain radar, earthquakes, active fires, satellite imagery, TH/EN switch, flood
 climatology and reported past floods.
+
+---
+
+## 2026-09-18 - Session 28: a camera is a shape, not a colour
+
+He reported three things after looking at the deployed map: Yala video would not connect,
+the position looked wrong, and the camera dots were indistinguishable from water-level
+dots. Two were real bugs in my code. One I could not reproduce and have asked about.
+
+**The dots, and the "wrong area" report, were the same bug.** He said the cameras
+appeared in the wrong area entirely. The data was fine - deployed GeoJSON is correct
+`[lon,lat]` floats, all in Yala, cross-checked against two ThaiWater gauges named ท่าสาป
+9 m apart. The cause was **colour collision**:
+
+| camera colour | collides with | how many dots |
+|---|---|---|
+| `#eab308` video | `RISK[2]` `#d99e0b` | **1,709 gauges** |
+| `#38bdf8` photo | radar (exactly), `RISK[1]` `#2f81f7` | **14,091 gauges** |
+
+So the map was full of amber and blue dots that were *gauges*, the five cameras were lost
+among them, and the sensible conclusion from the outside is that the cameras are
+scattered all over the world. It was never a projection fault; it was that I picked
+camera colours out of the severity palette.
+
+**Fixed in two ways, because either alone was fragile.** Colour: the camera body is now
+`#1f2937`, dark and deliberately *not* a palette colour, because every coloured dot here
+means a severity and a camera means none. Only the small lens iris is coloured
+(`#f5b301` video, `#7dd3fc` photo), carrying the video/photo cue without competing for
+the eye. Shape: **every point layer on this map was a circle** - gauges, tide, dams,
+quakes, fires, Google's rings - so a camera is now a square body with a white plate and a
+lens, drawn to a canvas and registered with `map.addImage` on a `symbol` layer. Nothing
+else on the map is square, so it survives even for a reader who cannot separate the
+hues at all. Falls back to a circle if the canvas is unavailable, because a symbol layer
+whose image is missing renders *nothing*, and a camera that silently vanishes is worse
+than one that looks like a dot. `addCameraIcons()` is idempotent because `setStyle`
+(basemap switching) wipes registered images and `addLayers()` re-runs on `styledata`.
+
+**The connect bug was mine, and it was the browser check backwards.** I had:
+
+    if (v.canPlayType("application/vnd.apple.mpegurl")) native; else hls.js;
+
+**Android Chrome answers that with `"maybe"` and then cannot play the stream.** So on
+exactly the phones most likely to be used in a flood, it took the native path and
+produced a silent black box. hls.js is now preferred wherever Media Source Extensions
+exist - everywhere except iOS Safari, which has genuine native HLS - with native as the
+fallback, plus one free fallback to native on a fatal hls.js error. This is the
+documented hls.js ordering; I had inverted it.
+
+**The other half of that bug: every failure printed the same sentence.** Unreachable
+server, dark camera, unsupported browser and a blocked player all said "Stream
+unavailable", which made "it doesn't connect" impossible to act on - including for me,
+three sessions later. Failures now name which of the four happened, carry a Try again
+button, and log the technical detail to the console. A reason a reader can repeat back is
+the difference between a bug report and a shrug.
+
+**A second, smaller position bug, fixed alongside it:** the popup anchored to
+`e.lngLat`, the point the finger landed on, which at city zoom on a phone is hundreds of
+metres from the camera - so the popup opened beside the marker rather than on it. Now
+anchored to the feature's own geometry.
+
+**Lesson worth keeping: pick layer colours against the palette that is already on screen,
+not against a blank page.** There was no check that a new layer's colour differed from
+the 16,000 dots already drawn, and there still is not one - the defence here is that the
+camera is a different *shape*, which no palette change can undo.
+
+**Found while checking coordinates:** `HATYAI_BOUNDS` reached east to 101.3, past Yala at
+101.26. Each operator's bounds exist to catch a coordinate error in *that* feed, so
+overlapping them would let a Yala coordinate in the Hat Yai feed sail through the check
+meant to stop it. Tightened to 101.0, with a test asserting neither operator's bounds
+contain the other's cameras.
+
+**Caught by rendering the marker rather than trusting it.** There is no browser here, so
+the canvas geometry was re-implemented in Python and rendered to a PNG against both
+basemaps. That is also how I caught a regression I had *just* introduced: moving from
+`circle` to `symbol` silently dropped the dark-camera dimming, because `circle-opacity`
+has no effect on a symbol layer. Restored as `icon-opacity`.
+
+406 tests. **Still no browser here.** If video still fails after this, the popup now names
+which of the four failures it is - that answer is what to bring back.
+
+---
+
+## 2026-09-18 - Session 27: Hat Yai, and a third status field that lies
+
+He asked to add `https://hatyaicityclimate.org/flood/`. It is in, and it is **better than
+the Yala feed on every axis** — which is worth saying plainly, because the two now sit in
+one layer and are not equally trustworthy.
+
+**Why it matters more.** Hat Yai floods badly and often, and 11 of its cameras are within
+1 km of a ThaiWater gauge — `klongwha2` at **10 m**, `khlongs1r1`, `bangyheeus` and
+`klongetum` at **20 m**, `bangsala` at **30 m**. Several sit on the floodgates (ปตร.) the
+gauge is measuring. Nine cameras across both operators are now offered as a visual check
+on a specific gauge.
+
+**It has a real licence, which Yala does not.** CC BY-SA 3.0, stated in the footer and
+linked; a named foundation behind it (SCCCRN, with a street address in Hat Yai); and a
+`robots.txt` that explicitly permits `/api` and `/floodphoto`. It disallows `/file` —
+which is where `sponsorLogo` points, so sponsor logos are **not** fetched. The per-camera
+image credit (สำนักงานทรัพยากรน้ำภาค 8 supply the คลองอู่ตะเภา cameras) travels with each
+camera rather than collapsing into one footer line, because attribution is mandatory and
+the images are not all SCCCRN's to begin with.
+
+**Two traps, both of which would have shipped a six-month-old photo as live.**
+
+1. **`atDate` is Thai wall-clock, not UTC.** Naive local time at UTC+7 with no offset.
+   Reading it as UTC ages every image by seven hours and hides exactly the pictures worth
+   looking at during a flood. It goes through `parse_local_naive`, the same helper
+   ThaiWater uses. Three tests pin the conversion.
+2. **`last-modified` is a lie.** The JPEGs are served with `last-modified` set to the
+   moment you ask — three probed at 10:01:49 all came back `last-modified: 10:01:49`, and
+   one of those images was 28 days old. The header is ignored entirely.
+
+**Third source, third status field that cannot be believed.** `situation_level` is null
+on 302 of 306 overtopped stations. Yala's `signal_status` is 1 on all five cameras
+including one with no stream. Hat Yai's `enable` is 1 on all 35 entries, whose real ages
+span **1 minute to 1,018 days**. None of the three is read. Cameras older than 24 h are
+dropped rather than drawn as stale — same threshold and same reasoning as
+`rws.MAX_READING_AGE_HOURS`, because a six-month-old photograph of a canal sitting beside
+live ones is read as "this is the canal now".
+
+**Not everything in a camera feed is a camera.** Four entries are pictures of the sky: two
+weather radars, a satellite image and a synoptic chart. Two carry the radar site's
+coordinates ~53 km away and one carries a placeholder `(7, 101)`. Drawn at a point, each
+would claim to be what that place looks like. Filtered on title keywords rather than
+`code`, because `sathingphra` has no code at all.
+
+**Generalised rather than copied.** `cameras.py` now has a small operator registry and
+returns one layer with a `kind` per feature — `video` for Yala's HLS, `photo` for Hat
+Yai's stills. They are deliberately *not* flattened into a pretend-common shape: one
+plays, one is a still with a timestamp, and the popup has to promise the right thing
+before the tap. Markers are amber for video and blue for photo. `fetch_cameras` now
+returns a list of `SourceHealth`, one per operator, so a Hat Yai outage and a Yala outage
+are distinguishable in `meta.json`, and one failing never takes the other off the map.
+
+**Verified on a real build:** 35 entries → 4 not a camera, 2 no location, 11 stale →
+**18 published**, 17 under two minutes old. Published photo URLs fetched back at HTTP 200
+with cache-busting. ⚠️ **The stills are 600-730 KB each**, which is why they load only on
+an explicit tap; on a phone during a flood that is a real cost and the reader should be
+the one choosing to pay it.
+
+404 tests. `check_js.py` clean. **Still no browser here** — open the map on Hat Yai and
+tap a blue camera before trusting it.
 
 ---
 

@@ -7,9 +7,11 @@
 # Cloudflare a stale CSP would silently break whatever it forgot to allow. The
 # kinesisvideo and execute-api entries are the Yala camera streams: `media-src` had
 # to be named explicitly because it otherwise falls back to `default-src 'self'`,
-# which forbids video outright.
+# which forbids video outright. Hat Yai is a still rather than a stream, so it
+# needs `img-src` (to show the photo) and `connect-src` (to read the camera list),
+# and deliberately NOT `media-src`.
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com; media-src 'self' blob: https://*.kinesisvideo.ap-southeast-1.amazonaws.com; connect-src 'self' https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://api-v3.thaiwater.net https://gg89f6g289.execute-api.ap-southeast-1.amazonaws.com https://*.kinesisvideo.ap-southeast-1.amazonaws.com; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://hatyaicityclimate.org; media-src 'self' blob: https://*.kinesisvideo.ap-southeast-1.amazonaws.com; connect-src 'self' https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://api-v3.thaiwater.net https://gg89f6g289.execute-api.ap-southeast-1.amazonaws.com https://*.kinesisvideo.ap-southeast-1.amazonaws.com https://hatyaicityclimate.org; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), payment=(), geolocation=(self)

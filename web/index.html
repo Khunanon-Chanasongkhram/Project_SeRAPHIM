@@ -183,8 +183,8 @@
      explicit control rather than an autoplaying frame. */
   .cctvbox{margin-top:8px;min-height:32px}
   .cctvplay{width:100%;padding:7px 10px;font:inherit;font-size:12px;font-weight:600;
-    color:#1a1a1a;background:#eab308;border:0;border-radius:6px;cursor:pointer}
-  .cctvplay:hover{background:#facc15}
+    color:#11161c;background:#f5b301;border:0;border-radius:6px;cursor:pointer}
+  .cctvplay:hover{background:#ffc62e}
   .cctvbox video{max-height:240px}
 
   .chk{display:flex;align-items:center;gap:9px;padding:8px;border-radius:9px;cursor:pointer;
@@ -566,6 +566,11 @@ const I18N={
     cctv_check:"ใช้ดูสภาพน้ำจริงเทียบกับค่าที่สถานีวัดรายงาน",
     cctv_third:"วิดีโอโหลดจากผู้ให้บริการโดยตรงเมื่อกดดู โครงการนี้ไม่ได้บันทึกหรือเก็บภาพไว้",
     cctv_nolicence:"ไม่พบเงื่อนไขการใช้งานหรือผู้ถือสิทธิ์ของภาพชุดนี้",
+    cctv_photo:"ดูภาพล่าสุด", cctv_refresh:"โหลดภาพใหม่", cctv_shot:"เวลาถ่ายภาพ",
+    cctv_photofail:"โหลดภาพไม่ได้",
+    cctv_err_reach:"ติดต่อเซิร์ฟเวอร์ของกล้องไม่ได้", cctv_err_off:"กล้องนี้ไม่ได้ส่งสัญญาณอยู่ตอนนี้",
+    cctv_err_player:"เบราว์เซอร์นี้เล่นสัญญาณแบบนี้ไม่ได้", cctv_err_lib:"โหลดตัวเล่นวิดีโอไม่ได้",
+    cctv_retry:"ลองใหม่",
     loading:"กำลังโหลดข้อมูล", dismiss:"ปิด", tl_play:"เล่นภาพคาดการณ์", tl_pause:"หยุด",
     live_first:"ข้อมูลสดเปิดอยู่ เบราว์เซอร์ของคุณจะติดต่อกับ",
     live_first2:"โดยตรงทุก 2 นาที แตะเพื่อปิดได้ตลอดเวลา",
@@ -670,6 +675,11 @@ const I18N={
     cctv_check:"Look at the river and check it against what the gauge reports.",
     cctv_third:"Video loads straight from the operator when you press play. Nothing is recorded or stored by this project.",
     cctv_nolicence:"No licence or named owner could be found for this feed.",
+    cctv_photo:"Show latest photo", cctv_refresh:"Reload", cctv_shot:"photo taken",
+    cctv_photofail:"Photo unavailable",
+    cctv_err_reach:"Could not reach the camera server.", cctv_err_off:"This camera is not streaming right now.",
+    cctv_err_player:"This browser cannot play this kind of stream.", cctv_err_lib:"Could not load the video player.",
+    cctv_retry:"Try again",
     loading:"Loading data", dismiss:"Dismiss", tl_play:"Play the forecast", tl_pause:"Pause",
     live_first:"Live data is on. Your browser contacts",
     live_first2:"directly every 2 minutes. Tap to turn it off at any time.",
@@ -687,6 +697,19 @@ const loc=(o,base)=> LANG==="th" ? (o[base+"_th"] ?? o[base] ?? "") : (o[base] ?
 /* ------------------------------------------------------------------ data */
 const BASE=(window.SERAPHIM&&window.SERAPHIM.dataBase)||"../data/out";
 const RISK={1:"#2f81f7",2:"#d99e0b",3:"#e8590c",4:"#e5484d",5:"#ff2d55"};
+/* Camera colours, kept deliberately OUT of the risk palette above.
+ *
+ * The first attempt used #eab308 for video and #38bdf8 for photo. #eab308 is the same
+ * colour as RISK[2] (#d99e0b) to the eye, and 1,709 gauges sit at level 2; #38bdf8 is
+ * exactly the radar colour and close to RISK[1] (#2f81f7), which covers 14,091 gauges.
+ * So the map filled with amber and blue dots that were gauges, and the five cameras were
+ * lost among them - which read as the cameras being in the wrong place entirely.
+ *
+ * The body is now dark and colourless, because every coloured dot here means a severity
+ * and a camera means none. The iris carries the video/photo cue and nothing else. */
+const CCTV_BODY="#1f2937";
+const CCTV_VIDEO="#f5b301";
+const CCTV_PHOTO="#7dd3fc";
 let gj=null, meta=null, tide=null, areas=null, provinces=null, quakes=null, fires=null, events=null, terrain=null, dams=null, pastFloods=null, gfh=null, cameras=null;
 let radarFrames=[], radarIdx=0, radarTimer=null;
 let radioAll=[], radioNear=[], radioIdx=0, audio=null;
@@ -755,7 +778,7 @@ const LAYERS=[
   {id:"floodprone",label:"floodprone", sub:"floodprone_s", colour:"#f97316", optional:true},
   {id:"pastfloods",label:"pastfloods", sub:"pastfloods_s", colour:"#c084fc", optional:true},
   {id:"gfh",       label:"gfh",    sub:"gfh_s",     colour:"#4285f4", optional:true},
-  {id:"cctv",      label:"cctv",   sub:"cctv_s",    colour:"#eab308", optional:true},
+  {id:"cctv",      label:"cctv",   sub:"cctv_s",    colour:"#f5b301", optional:true},
   {id:"radar",     label:"radar",  sub:"radar_s",   colour:"#38bdf8"},
   {id:"quakes",    label:"quakes", sub:"quakes_s",  colour:"#f59e0b"},
   {id:"fires",     label:"fires",  sub:"fires_s",   colour:"#f97316", optional:true},
@@ -1157,6 +1180,55 @@ async function load(){
 }
 
 /* ------------------------------------------------------------------ map */
+
+/** A camera glyph: square body, white ring, dark lens.
+ *
+ *  Deliberately not a circle. Every other point layer here is one, and a camera that
+ *  looked like a gauge invited the one misreading this layer cannot afford - that the
+ *  picture is a measurement. Drawn at 3x and registered with pixelRatio 3 so it stays
+ *  sharp on a phone. `roundRect` is avoided on purpose: it is too new to rely on, and
+ *  a thrown call here would take the whole layer down with it.
+ */
+function cameraIcon(iris){
+  const S=54, R=3;
+  const c=document.createElement("canvas");
+  c.width=c.height=S;
+  const g=c.getContext&&c.getContext("2d");
+  if(!g) return null;
+  g.clearRect(0,0,S,S);
+  // White plate first, so the glyph survives the dark basemap AND satellite imagery.
+  g.fillStyle="#fff";
+  g.fillRect(4,8,S-8,S-16);
+  // Dark body. Deliberately NOT a palette colour: every coloured dot on this map means
+  // a severity, and a camera means no severity at all.
+  g.fillStyle=CCTV_BODY;
+  g.fillRect(4+R,8+R,S-8-R*2,S-16-R*2);
+  // The lens iris is the only colour, and it is small: it says video-or-photo without
+  // competing with the risk palette for the eye.
+  g.beginPath(); g.arc(S/2,S/2,S*0.19,0,Math.PI*2);
+  g.fillStyle=iris; g.fill();
+  g.beginPath(); g.arc(S/2,S/2,S*0.085,0,Math.PI*2);
+  g.fillStyle="#0b0f14"; g.fill();
+  try{ return g.getImageData(0,0,S,S); }catch(err){ return null; }
+}
+
+/** Register the glyphs, once per style. `setStyle` wipes registered images, and
+ *  addLayers() runs again on `styledata`, so this has to be idempotent. */
+function addCameraIcons(){
+  try{
+    const want=[["cctv-video",CCTV_VIDEO],["cctv-photo",CCTV_PHOTO]];
+    for(const [id,iris] of want){
+      if(map.hasImage&&map.hasImage(id)) continue;
+      const img=cameraIcon(iris);
+      if(!img) return false;
+      map.addImage(id,img,{pixelRatio:3});
+    }
+    return !!(map.hasImage&&map.hasImage("cctv-video")&&map.hasImage("cctv-photo"));
+  }catch(err){
+    return false;
+  }
+}
+
 function addLayers(){
   if(provinces && !map.getSource("prov")){
     map.addSource("prov",{type:"geojson",data:provinces});
@@ -1404,22 +1476,41 @@ function addHazardLayers(){
     map.on("mouseleave","gfh-ring",()=>map.getCanvas().style.cursor="");
   }
 
-  // Street cameras. Drawn as a small square so they never read as a gauge: a camera
-  // measures nothing, and the whole point of the layer is that it is a *different kind
-  // of evidence* sitting next to the numbers rather than another number.
+  // Street cameras.
+  //
+  // Every other point on this map is a circle - gauges, tide, dams, quakes, fires,
+  // Google's rings - so a camera drawn as one more circle was indistinguishable from a
+  // water level, which is the one thing it must never be mistaken for: a gauge carries
+  // a number and a camera carries no number at all. So a camera is a SHAPE, not a
+  // colour: a square body with a lens, drawn to a canvas and registered as a map icon.
+  // Nothing else on the map is square, so it reads as "not a reading" at a glance and
+  // at any zoom, including for a reader who cannot separate amber from blue.
   if(cameras?.features?.length && !map.getSource("cctv")){
     map.addSource("cctv",{type:"geojson",data:cameras});
-    map.addLayer({id:"cctv-c",type:"circle",source:"cctv",paint:{
-      "circle-color":"#eab308",
-      "circle-radius":["interpolate",["linear"],["zoom"],7,3,11,6,15,9],
-      // Liveness is the *measured* stream_ok, never the source's signal_status, which
-      // claims all five are up while one has no stream at all. A camera we could not
-      // check (null) is drawn like a live one rather than like a dark one: reporting
-      // our own outage as the municipality's would be the wrong way round.
-      "circle-opacity":["case",["==",["get","stream_ok"],false],.3,.95],
-      "circle-stroke-width":1.4,
-      "circle-stroke-color":["case",["==",["get","stream_ok"],false],
-        "rgba(255,255,255,.35)","#fff"]}});
+    // Falls back to a circle if the canvas is unavailable, because an icon layer whose
+    // image is missing renders NOTHING, and a camera that silently vanishes is worse
+    // than one that looks like a dot.
+    if(addCameraIcons()){
+      map.addLayer({id:"cctv-c",type:"symbol",source:"cctv",layout:{
+        "icon-image":["match",["get","kind"],"photo","cctv-photo","cctv-video"],
+        "icon-size":["interpolate",["linear"],["zoom"],6,.55,11,.85,15,1.15],
+        // Cameras are few and they matter; they must never be dropped for collision
+        // with a label or with each other.
+        "icon-allow-overlap":true,"icon-ignore-placement":true},
+        paint:{
+          // Liveness is the *measured* stream_ok, never the source's own status field,
+          // which claims all five Yala cameras are up while one has no stream at all.
+          // A camera we could not check (null) is drawn like a live one rather than
+          // like a dark one: reporting our own outage as the operator's is the wrong
+          // way round.
+          "icon-opacity":["case",["==",["get","stream_ok"],false],.45,1]}});
+    }else{
+      map.addLayer({id:"cctv-c",type:"circle",source:"cctv",paint:{
+        "circle-color":["match",["get","kind"],"photo",CCTV_PHOTO,CCTV_VIDEO],
+        "circle-radius":["interpolate",["linear"],["zoom"],7,4,11,7,15,10],
+        "circle-opacity":["case",["==",["get","stream_ok"],false],.3,.95],
+        "circle-stroke-width":2,"circle-stroke-color":"#fff"}});
+    }
     map.on("click","cctv-c",e=>cameraPopup(e));
     map.on("mouseenter","cctv-c",()=>map.getCanvas().style.cursor="pointer");
     map.on("mouseleave","cctv-c",()=>map.getCanvas().style.cursor="");
@@ -2209,6 +2300,27 @@ function stopCamera(root){
   if(v){ try{ v.pause(); v.removeAttribute("src"); v.load(); }catch(err){} }
 }
 
+/** Say WHY it failed, and leave a way to retry.
+ *
+ *  The first version printed one message for every failure - unreachable server, dark
+ *  camera, unsupported browser, blocked player - which made a report of "it doesn't
+ *  connect" impossible to act on, including for me. A reason the reader can repeat back
+ *  is the difference between a bug report and a shrug. The technical detail goes to the
+ *  console rather than the popup, because it is for whoever is debugging, not for
+ *  somebody checking whether their road is flooded. */
+function cameraFailed(root,props,reasonKey,detail){
+  const box=root&&root.querySelector(".cctvbox");
+  stopCamera(root);
+  if(detail) try{ console.warn("[cctv]",props&&props.id,reasonKey,detail); }catch(err){}
+  if(!box) return;
+  box.innerHTML=`<div class="conf">${esc(t(reasonKey))}</div>`;
+  const again=document.createElement("button");
+  again.type="button"; again.className="cctvplay"; again.style.marginTop="6px";
+  again.textContent=t("cctv_retry");
+  again.onclick=()=>playCamera(root,props);
+  box.appendChild(again);
+}
+
 /** Mint a session and attach it. Session URLs carry a token and expire, which is why
  *  none of this can live in the snapshot: the browser asks for its own, at play time. */
 async function playCamera(root,props){
@@ -2218,6 +2330,8 @@ async function playCamera(root,props){
   box.innerHTML=`<div class="conf">${esc(t("cctv_loading"))}</div>`;
   const tmpl=(cameras&&cameras.stream_url_template)
     || "https://gg89f6g289.execute-api.ap-southeast-1.amazonaws.com/stream/hls-url/{key}";
+
+  let url=null;
   try{
     const res=await fetch(tmpl.replace("{key}",encodeURIComponent(props.stream_key)));
     const raw=await res.json();
@@ -2225,44 +2339,100 @@ async function playCamera(root,props){
     // as a JSON string, so neither the status nor the outer object can be trusted.
     let body=raw&&raw.body;
     if(typeof body==="string") body=JSON.parse(body);
-    const url=body&&body.live_stream_url;
-    if(!url) throw new Error("no stream");
-
-    const v=document.createElement("video");
-    v.controls=true; v.autoplay=true; v.muted=true; v.playsInline=true;
-    v.setAttribute("playsinline","");
-    v.style.cssText="width:100%;border-radius:6px;background:#000;display:block";
-    box.innerHTML="";
-    box.appendChild(v);
-
-    if(v.canPlayType("application/vnd.apple.mpegurl")){
-      v.src=url;                       // Safari and iOS play HLS natively.
-    }else{
-      const Hls=await loadHls();
-      if(!Hls||!Hls.isSupported()) throw new Error("hls unsupported");
-      const h=new Hls({lowLatencyMode:true});
-      h.on(Hls.Events.ERROR,(_evt,data)=>{
-        if(!data||!data.fatal) return;
-        // Tear down before replacing the box: the <video> this is attached to is
-        // about to be removed, and a detached Hls keeps downloading regardless.
-        stopCamera(root);
-        box.innerHTML=`<div class="conf">${esc(t("cctv_fail"))}</div>`;
-      });
-      h.loadSource(url);
-      h.attachMedia(v);
-      // Kept on the popup element so closing it can tear the stream down. Without
-      // this an abandoned popup keeps pulling video in the background, which costs
-      // the reader bandwidth and keeps a camera running that nobody is watching.
-      root._hls=h;
-    }
+    url=body&&body.live_stream_url;
+    // A named error from the Lambda means the camera is dark, which is a different
+    // thing from the network being down and must not be reported as the same thing.
+    if(!url) return cameraFailed(root,props,"cctv_err_off",
+      (raw&&(raw.errorType||raw.errorMessage))||"no live_stream_url");
   }catch(err){
-    stopCamera(root);
-    box.innerHTML=`<div class="conf">${esc(t("cctv_fail"))}</div>`;
+    return cameraFailed(root,props,"cctv_err_reach",String(err));
   }
+
+  const v=document.createElement("video");
+  v.controls=true; v.autoplay=true; v.muted=true; v.playsInline=true;
+  v.setAttribute("playsinline","");
+  v.style.cssText="width:100%;border-radius:6px;background:#000;display:block";
+  box.innerHTML="";
+  box.appendChild(v);
+
+  const playNative=()=>{ v.src=url; };
+  // Order matters, and the first version had it backwards. Android Chrome answers
+  // `canPlayType("application/vnd.apple.mpegurl")` with "maybe" and then cannot
+  // actually play the stream, so preferring native whenever the browser claims it
+  // silently produced a black box on exactly the phones most likely to be used in a
+  // flood. hls.js is preferred wherever Media Source Extensions exist, which is
+  // everywhere except iOS Safari - and iOS Safari has genuine native HLS.
+  const nativeHls=!!v.canPlayType("application/vnd.apple.mpegurl");
+  const hasMSE=!!(window.MediaSource||window.WebKitMediaSource);
+  if(nativeHls&&!hasMSE) return playNative();
+
+  let Hls;
+  try{
+    Hls=await loadHls();
+  }catch(err){
+    if(nativeHls) return playNative();
+    return cameraFailed(root,props,"cctv_err_lib",String(err));
+  }
+  if(!Hls||!Hls.isSupported()){
+    if(nativeHls) return playNative();
+    return cameraFailed(root,props,"cctv_err_player","no MSE and no native HLS");
+  }
+
+  const h=new Hls();
+  let fellBack=false;
+  h.on(Hls.Events.ERROR,(_evt,data)=>{
+    if(!data||!data.fatal) return;
+    // One free retry through the browser's own player before giving up: a fatal
+    // hls.js error on a stream curl can fetch is usually the player, not the camera.
+    if(nativeHls&&!fellBack){
+      fellBack=true;
+      try{ h.destroy(); }catch(err){}
+      root._hls=null;
+      return playNative();
+    }
+    cameraFailed(root,props,"cctv_err_player",
+      (data.type||"")+" "+(data.details||""));
+  });
+  h.loadSource(url);
+  h.attachMedia(v);
+  // Kept on the popup element so closing it can tear the stream down. Without
+  // this an abandoned popup keeps pulling video in the background, which costs
+  // the reader bandwidth and keeps a camera running that nobody is watching.
+  root._hls=h;
+}
+
+/** Load the latest still. Cache-busted, because "latest" that a browser served from
+ *  cache is just a picture of the past with a confident label on it. */
+function showPhoto(root,props){
+  const box=root.querySelector(".cctvbox");
+  if(!box) return;
+  stopCamera(root);
+  box.innerHTML=`<div class="conf">${esc(t("cctv_loading"))}</div>`;
+  const img=new Image();
+  img.alt=props.name||"";
+  img.style.cssText="width:100%;border-radius:6px;background:#000;display:block";
+  img.onload=()=>{
+    box.innerHTML="";
+    box.appendChild(img);
+    const again=document.createElement("button");
+    again.type="button"; again.className="cctvplay"; again.style.marginTop="6px";
+    again.textContent=t("cctv_refresh");
+    again.onclick=()=>showPhoto(root,props);
+    box.appendChild(again);
+  };
+  img.onerror=()=>{ box.innerHTML=`<div class="conf">${esc(t("cctv_photofail"))}</div>`; };
+  const sep=props.photo_url.indexOf("?")<0?"?":"&";
+  img.src=props.photo_url+sep+"t="+Date.now();
 }
 
 function cameraPopup(e){
-  const p=e.features[0].properties;
+  const feat=e.features[0];
+  const p=feat.properties;
+  // Anchor to the camera, not to the finger. `e.lngLat` is where the tap landed, which
+  // on a phone is several hundred metres off at city zoom, so the popup used to open
+  // beside the camera rather than on it and the camera looked misplaced.
+  const at=(feat.geometry&&feat.geometry.type==="Point"&&feat.geometry.coordinates)
+    ? feat.geometry.coordinates : e.lngLat;
   const ok=p.stream_ok;
   const live=(ok===true||ok==="true");
   const dark=(ok===false||ok==="false");
@@ -2270,24 +2440,36 @@ function cameraPopup(e){
     {day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}):null;
   const row=(lbl,val)=>val==null||val===""?"":
     `<div class="pr"><span>${esc(lbl)}</span><span class="num">${esc(val)}</span></div>`;
-  const status=live?t("cctv_live"):dark?t("cctv_dark"):t("cctv_unknown");
+  const photo=(p.kind==="photo");
+  const op=(cameras&&cameras.operators&&cameras.operators[p.operator])||{};
+  const status=photo?null:live?t("cctv_live"):dark?t("cctv_dark"):t("cctv_unknown");
   const gauge=p.gauge_id?`${p.gauge_name} · ${Number(p.gauge_km).toFixed(2)} km ${t("cctv_away")}`:null;
+  // A still is only as good as its timestamp, and this feed lists cameras that have
+  // been dead for months. The worker drops anything over 24 h; the age is shown anyway,
+  // because "latest photo" with no time on it is the claim that caused the problem.
+  const shot=photo?when(p.observed_at):null;
 
-  const pop=new maplibregl.Popup({maxWidth:"340px"}).setLngLat(e.lngLat).setHTML(`
-    <div class="pt" style="background:#eab308">${esc(t("cctv"))}</div>
+  const pop=new maplibregl.Popup({maxWidth:"340px"}).setLngLat(at).setHTML(`
+    <div class="pt" style="background:${photo?CCTV_PHOTO:CCTV_VIDEO};color:#11161c">${esc(t("cctv"))}</div>
     <div class="ph">${esc(p.name)}</div>
-    <div class="psub">${esc(p.zone||"")} · ${esc(status)}</div>
-    ${row(t("cctv_checked"), when(p.stream_checked_at))}
+    <div class="psub">${esc(p.zone||"")}${status?" · "+esc(status):""}</div>
+    ${photo?row(t("cctv_shot"), shot?`${shot} · ${ageText(Number(p.age_minutes))} ${t("ago")}`:null)
+           :row(t("cctv_checked"), when(p.stream_checked_at))}
     ${gauge?row(t("cctv_gauge"), gauge):""}
     ${gauge?`<div class="conf">${esc(t("cctv_check"))}</div>`:""}
     <div class="cctvbox"><button type="button" class="cctvplay">${
-      esc(t("cctv_play"))}</button></div>
+      esc(photo?t("cctv_photo"):t("cctv_play"))}</button></div>
     <div class="conf">${esc(t("cctv_third"))}</div>
-    <div class="conf">${esc(t("cctv_nolicence"))}</div>`).addTo(map);
+    ${/* The two operators are on completely different footing: one publishes under
+          CC BY-SA with a named foundation behind it, the other has no licence and no
+          owner at all. Saying so per camera beats one averaged disclaimer. */""}
+    ${op.licence_note?`<div class="conf">${esc(op.licence_note)}</div>`:""}
+    ${op.attribution?`<div class="conf">${esc(op.attribution)}</div>`:""}
+    ${p.sponsor_text?`<div class="conf">${esc(p.sponsor_text)}</div>`:""}`).addTo(map);
 
   const root=pop.getElement();
   const btn=root&&root.querySelector(".cctvplay");
-  if(btn) btn.onclick=()=>playCamera(root,p);
+  if(btn) btn.onclick=()=>(photo?showPhoto(root,p):playCamera(root,p));
   pop.on("close",()=>stopCamera(root));
 }
 
@@ -2605,6 +2787,7 @@ function setBasemap(name){
       // Named with "no stated licence" rather than left off, because an attribution
       // line that lists only the sources with clean terms quietly implies they all do.
       +"Yala City Municipality CCTV (no stated licence) · "
+      +"Hatyai City Climate / SCCCRN (CC BY-SA 3.0) · "
       +"layers inspired by gods-eye-view (MIT) · SeRAPHIM AGPL-3.0"}));
   map.addControl(new maplibregl.NavigationControl({showCompass:false}),"bottom-right");
   map.addControl(new maplibregl.GeolocateControl({trackUserLocation:true}),"bottom-right");

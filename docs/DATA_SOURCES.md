@@ -198,6 +198,71 @@ the controller. **It is not a substitute for permission.**
 Session URLs carry a `SessionToken` and expire, so none is ever written into a snapshot:
 one baked into a file a CDN serves for 15 minutes is dead before most people load it.
 
+### Hat Yai flood cameras, Hatyai City Climate / SCCCRN ✅ (probed 2026-09-18)
+`https://hatyaicityclimate.org/flood/` — Hat Yai's own flood early-warning site, running
+since 2012. **The better of the two camera sources on every axis**, and Hat Yai floods
+badly and often.
+
+| Endpoint | Returns | Notes |
+|---|---|---|
+| `/api/flood/cams` | 35 entries: `name`, `title`, `code`, `enable`, `location.latitude/longitude`, `photo`, `atDate`, `sponsor*` | 31 KB, `access-control-allow-origin: *` |
+| `/floodphoto/last/{name}.jpg` | JPEG still, 115-770 KB | CORS `*`; **600-730 KB is typical** |
+
+**Licence: CC BY-SA 3.0**, stated in the site footer and linked to
+`http://creativecommons.org/licenses/by-sa/3.0/`. Attribution mandatory. Operator is
+named and reachable: มูลนิธิเครือข่ายเมืองภาคใต้เพื่อรับมือการเปลี่ยนแปลงสภาพภูมิอากาศ
+(SCCCRN), 73 ถนนเพชรเกษมซอย 5, อ.หาดใหญ่, จ.สงขลา 90110. Images for the คลองอู่ตะเภา
+cameras are supplied by **สำนักงานทรัพยากรน้ำภาค 8** (Regional Water Resources Office 8),
+and that per-camera credit travels with each camera rather than collapsing into a footer.
+
+`robots.txt` exists and **allows `/api` and `/floodphoto`**. It disallows `/admin`,
+`/contents`, `/db`, `/paper/list`, `/profile`, `/stat`, `/tags`, `/watchdog`,
+`/project/develop`, `/user`, `/upload` and **`/file`** — note that `sponsorLogo` points
+into `/file`, so sponsor logos are **not** fetched.
+
+**11 of the cameras are within 1 km of a ThaiWater gauge**, several within 20-30 m, and
+a number sit on the floodgates (ปตร.) those gauges measure:
+
+| Camera | Gauge | Distance |
+|---|---|---|
+| `klongwha2` | คลองหวะตอนล่าง | **0.01 km** |
+| `khlongs1r1` | ปตร.คลอง 1ซ-ร1 | **0.02 km** |
+| `bangyheeus` | ปตร.ท่าช้าง-บางกล่ำ | **0.02 km** |
+| `klongetum` | สถานีคลองต่ำ | **0.02 km** |
+| `bangsala` | คลองหอยโข่ง | **0.03 km** |
+| `utapao` | ปตร.อู่ตะเภา | 0.06 km *(dead 161 d, dropped)* |
+
+### ⚠️⚠️ `atDate` is Thai wall-clock, and `last-modified` is a lie
+`atDate` is naive local time at **UTC+7** with no offset, so it goes through
+`parse_local_naive` exactly as ThaiWater does. Reading it as UTC ages every image by
+seven hours and would hide the pictures worth looking at during a flood.
+
+Separately, the JPEGs are served with **`last-modified` set to the moment you request
+them**, whatever the picture's real age — three cameras probed at 10:01:49 all returned
+`last-modified: 10:01:49`, and one of those images was 28 days old. **The header is
+ignored entirely**; `atDate` is the only freshness signal.
+
+### ⚠️⚠️ `enable` is wrong, like `signal_status` and `situation_level` before it
+`enable` is `1` on all 35 entries. Actual last-image ages span **1 minute to 1,018
+days**: 17 are live, and the rest include cameras dead for 122, 161, 176 and 1,018 days.
+Third source, third status field that cannot be believed.
+
+**Consequence:** `enable` is never read. Cameras whose newest image is older than
+**24 h** are dropped, not drawn as stale — the same threshold and the same reasoning as
+`rws.MAX_READING_AGE_HOURS`. A six-month-old photograph of a canal, sitting on a flood
+map beside live ones, is read as "this is the canal now".
+
+### ⚠️ Not everything in the feed is a camera
+Four entries are pictures of the sky, not of a place: `radartmd` and `sathingphra`
+(เรดาร์สทิงพระ, weather radar), `weather` (ภาพถ่ายดาวเทียม, satellite) and `wc`
+(แผนที่อากาศ, synoptic chart). Two carry the radar site's coordinates, ~53 km from Hat
+Yai, and `wc` carries a placeholder `(7, 101)`. Drawn at a point they would each claim
+to be what that place looks like. Filtered on title keywords, because `sathingphra` has
+no `code` at all. This project already has its own radar layer (RainViewer).
+
+**Verified counts on a real build (2026-09-18):** 35 entries → 4 not a camera, 2 no
+location, 11 stale → **18 published**, 17 of them under 2 minutes old.
+
 ## Tier 2, Global backbone (verified live, keyless, no registration)
 
 These make global scaling real from day one, same code path works for any country.

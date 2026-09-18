@@ -469,33 +469,39 @@ def build(
             else:
                 print(f"[google-floods] skipped: {gh.error}")
 
-        # Yala municipal CCTV. Cached for an hour, which is a politeness budget rather
-        # than a freshness one: liveness is measured by minting a real Kinesis session
-        # on someone else's AWS account, and this feed carries no licence and names no
+        # Street cameras, Yala and Hat Yai. Cached for an hour, which is a politeness
+        # budget rather than a freshness one: probing Yala mints a real Kinesis session
+        # on someone else's AWS account, and that feed carries no licence and names no
         # owner to have asked. An hour is ~120 mints a day instead of ~480 on a
-        # 15-minute build. The browser mints its own session on click regardless, so a
-        # camera that comes back between builds still plays; the layer publishes
-        # `stream_checked_at` so the UI can say how old the liveness claim is.
-        hit = cache.load(cache_root, "yala_cctv", 1.0 * refresh_scale)
+        # 15-minute build. It costs nothing in freshness that matters: the browser
+        # fetches a live image or mints its own session on click, so a camera that
+        # comes back between builds still works. What the hour *does* stale is the
+        # published age of a Hat Yai still, which is why `observed_at` is published as
+        # a timestamp rather than as a precomputed "n minutes ago".
+        hit = cache.load(cache_root, "cctv", 1.0 * refresh_scale)
         if hit:
             extra["cameras.geojson"] = hit["data"]
             print("[cameras] cache hit")
         else:
-            cams, ch = fetch_cameras(states)
-            health.append(ch)
-            for w in ch.warnings:
-                print(f"[cameras] warning: {w}", file=sys.stderr)
+            cams, chs = fetch_cameras(states)
+            health.extend(chs)
+            for ch in chs:
+                for w in ch.warnings:
+                    print(f"[{ch.source}] warning: {w}", file=sys.stderr)
+                if not ch.ok:
+                    print(f"[{ch.source}] skipped: {ch.error}")
             if cams:
                 extra["cameras.geojson"] = cams
-                cache.save(cache_root, "yala_cctv", cams)
-                live = sum(1 for f in cams["features"]
-                           if f["properties"]["stream_ok"] is True)
+                cache.save(cache_root, "cctv", cams)
+                by_op = {}
+                for f in cams["features"]:
+                    by_op[f["properties"]["operator"]] = \
+                        by_op.get(f["properties"]["operator"], 0) + 1
                 paired = sum(1 for f in cams["features"]
                              if f["properties"]["gauge_id"])
-                print(f"[cameras] {ch.stations} Yala cameras, {live} live, "
+                print(f"[cameras] {len(cams['features'])} cameras "
+                      f"({', '.join(f'{k}={v}' for k, v in sorted(by_op.items()))}), "
                       f"{paired} paired to a gauge")
-            else:
-                print(f"[cameras] skipped: {ch.error}")
 
         hit = cache.load(cache_root, "fires", 3.0 * refresh_scale)
         if hit:
